@@ -1,0 +1,33 @@
+#!/bin/bash
+# Pre-installation script for macOS
+# Stops any running instance before upgrade
+
+LAUNCHAGENT="com.opencode.office-addin"
+APP_NAME="OpenCode Office Add-in"
+
+# Get the installing user
+if [ -n "$USER" ] && [ "$USER" != "root" ]; then
+    INSTALL_USER="$USER"
+elif [ -n "$SUDO_USER" ]; then
+    INSTALL_USER="$SUDO_USER"
+else
+    INSTALL_USER=$(stat -f "%Su" /dev/console)
+fi
+
+USER_HOME=$(dscl . -read /Users/$INSTALL_USER NFSHomeDirectory | awk '{print $2}')
+LAUNCHAGENT_PATH="$USER_HOME/Library/LaunchAgents/$LAUNCHAGENT.plist"
+
+# Stop existing service if running
+if [ -f "$LAUNCHAGENT_PATH" ]; then
+    echo "Stopping existing service..."
+    sudo -u $INSTALL_USER launchctl unload "$LAUNCHAGENT_PATH" 2>/dev/null || true
+fi
+
+# Kill any running Electron app
+pkill -f "$APP_NAME" 2>/dev/null || true
+
+# Also kill any old standalone server process (from previous versions)
+pkill -f "copilot-office-server" 2>/dev/null || true
+
+echo "Pre-install cleanup complete"
+exit 0
