@@ -17,9 +17,7 @@
   },
   "pkg": {
     "assets": [],
-    "scripts": [
-      "src/copilotProxy.js"
-    ],
+    "scripts": [],
     "outputPath": "build"
   },
   "build": {
@@ -29,14 +27,11 @@
     "directories": {
       "output": "build/electron"
     },
-    "asarUnpack": [
-      "node_modules/@github/copilot-sdk/**/*"
-    ],
+    "asarUnpack": [],
     "files": [
       ".opencode/**/*",
       "src/tray/**/*",
       "src/server-prod.js",
-      "src/copilotProxy.js",
       "node_modules/**/*",
       "!node_modules/office-addin-*/**",
       "!node_modules/npm-*/**",
@@ -120,7 +115,6 @@
   "dependencies": {
     "@fluentui/react-components": "^9.72.7",
     "@fluentui/react-icons": "^2.0.315",
-    "@github/copilot": "^0.0.412",
     "@github/copilot-sdk": "^0.1.25",
     "cors": "^2.8.5",
     "express": "^5.2.1",
