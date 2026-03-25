@@ -9,17 +9,18 @@ import { ChatInput, ImageAttachment } from "./components/ChatInput";
 import { Message, MessageList, DebugEvent } from "./components/MessageList";
 import { HeaderBar, ModelType } from "./components/HeaderBar";
 import { SessionHistory } from "./components/SessionHistory";
+import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
 import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge } from "./lib/office-tool-bridge";
+import { makeSessionTitle, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
+import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
 import {
   SavedSession,
   OfficeHost,
-  saveSession,
-  generateSessionTitle,
   getHostFromOfficeHost,
 } from "./sessionStorage";
 import React from "react";
@@ -110,7 +111,9 @@ export const App: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [officeHost, setOfficeHost] = useState<OfficeHost>("word");
   const [debugEnabled, setDebugEnabled] = useLocalStorage<boolean>("opencode-debug", false);
+  const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [runtimeMode, setRuntimeMode] = useState<string>("");
+  const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const isDarkMode = useIsDarkMode();
   const sessionCreatedAt = useRef<string>("");
   const started = useRef(false);
@@ -137,22 +140,6 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (messages.length === 0 || !currentSessionId) return;
-    if (!messages.some((message) => message.sender === "user")) return;
-
-    const saved: SavedSession = {
-      id: currentSessionId,
-      title: generateSessionTitle(messages),
-      model: selectedModel,
-      messages,
-      createdAt: sessionCreatedAt.current,
-      updatedAt: new Date().toISOString(),
-    };
-
-    saveSession(officeHost, saved);
-  }, [messages, currentSessionId, selectedModel, officeHost]);
-
-  useEffect(() => {
     const host = getHostFromOfficeHost(Office.context.host);
     setOfficeHost(host);
     const bridge = createOfficeToolBridge(host, getOfficeToolExecutor(Office.context.host));
@@ -160,6 +147,42 @@ export const App: React.FC = () => {
       void bridge.stop();
     };
   }, []);
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/opencode/permissions");
+        if (!response.ok) return;
+        const items = await response.json();
+        const next = items.find((item: OfficePermissionRequest) => item.sessionID === currentSessionId);
+        if (!next) return;
+        if (canAutoApprove(next)) {
+          await fetch(`/api/opencode/permission/${next.id}/reply`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reply: "once" }),
+          });
+          return;
+        }
+        setPermission((current) => current?.id === next.id ? current : next);
+      } catch {}
+    };
+
+    const timer = window.setInterval(poll, 1000);
+    void poll();
+    return () => window.clearInterval(timer);
+  }, [currentSessionId]);
+
+  const handlePermissionDecision = async (decision: PermissionDecision) => {
+    if (!permission) return;
+    const reply = decision === "deny" ? "reject" : decision === "always" ? "always" : "once";
+    await fetch(`/api/opencode/permission/${permission.id}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reply }),
+    }).catch(() => undefined);
+    setPermission(null);
+  };
 
   const startNewSession = async (_modelKey: ModelType, restored?: SavedSession) => {
     setError("");
@@ -177,8 +200,15 @@ export const App: React.FC = () => {
     sessionCreatedAt.current = restored?.createdAt || new Date().toISOString();
     setMessages(restored?.messages || []);
 
+    if (restored) {
+      setCurrentSessionId(restored.id);
+      const status = await client.getStatus().catch(() => null);
+      if (status?.mode) setRuntimeMode(status.mode);
+      return;
+    }
+
     try {
-      const session = await client.createSession();
+      const session = await client.createSession({ title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : "Word"}: New chat` });
       setCurrentSessionId(session.id);
     } catch (err) {
       setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
@@ -191,9 +221,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRestoreSession = (saved: SavedSession) => {
-    setSelectedModel(saved.model);
-    void startNewSession(saved.model, saved);
+  const handleRestoreSession = async (saved: OpencodeSessionInfo) => {
+    const restored = await restoreSession(saved.id, selectedModel);
+    void startNewSession(selectedModel, restored);
   };
 
   useEffect(() => {
@@ -213,6 +243,7 @@ export const App: React.FC = () => {
 
     const userInput = inputValue;
     const userImages = [...images];
+    const isFirstUserTurn = !messages.some((message) => message.sender === "user");
 
     setMessages((prev) => [
       ...prev,
@@ -257,6 +288,11 @@ export const App: React.FC = () => {
       const tools = Object.fromEntries(
         getToolNamesForHost(officeHost).map((name) => [name, true]),
       );
+
+      if (isFirstUserTurn && userInput.trim()) {
+        updateSessionTitle(currentSessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+      }
+
       let count = 0;
 
       for await (const event of client.query(currentSessionId, {
@@ -384,6 +420,7 @@ export const App: React.FC = () => {
       <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
         <SessionHistory
           host={officeHost}
+          shared={sharedHistory}
           onSelectSession={handleRestoreSession}
           onClose={() => setShowHistory(false)}
         />
@@ -405,6 +442,8 @@ export const App: React.FC = () => {
           models={availableModels}
           debugEnabled={debugEnabled}
           onDebugChange={setDebugEnabled}
+          sharedHistory={sharedHistory}
+          onSharedHistoryChange={setSharedHistory}
           subtitle={runtimeMode ? `OpenCode ${runtimeMode} • ${getToolNamesForHost(officeHost).length} Office tools` : undefined}
         />
 
@@ -426,6 +465,13 @@ export const App: React.FC = () => {
           images={images}
           onImagesChange={setImages}
         />
+        {permission && (
+          <PermissionDialog
+            request={permission}
+            cwd={null}
+            onDecision={handlePermissionDecision}
+          />
+        )}
       </div>
     </FluentProvider>
   );

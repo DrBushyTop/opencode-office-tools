@@ -12,6 +12,12 @@ const MODEL_FALLBACK = [
   },
 ];
 
+function hostPrefix(host) {
+  if (host === 'powerpoint') return 'PowerPoint: ';
+  if (host === 'excel') return 'Excel: ';
+  return 'Word: ';
+}
+
 function sessionEventSessionId(event) {
   return event?.properties?.sessionID || event?.properties?.info?.sessionID || event?.properties?.part?.sessionID || null;
 }
@@ -138,6 +144,49 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.get('/opencode/sessions', async (req, res) => {
+    try {
+      const host = String(req.query.host || 'word');
+      const shared = String(req.query.shared || '0') === '1';
+      const sessions = await runtime.request(`/session?roots=true&limit=100${shared ? '' : `&directory=${encodeURIComponent(runtime.directory())}`}`);
+      const prefix = hostPrefix(host);
+      const filtered = shared
+        ? sessions
+        : sessions.filter((item) => item.directory === runtime.directory() && String(item.title || '').startsWith(prefix));
+      res.json(filtered);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.get('/opencode/session/:id', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}`));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.patch('/opencode/session/:id', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: req.body || {},
+      }));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.delete('/opencode/session/:id', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}`, { method: 'DELETE' }));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.post('/opencode/session', async (req, res) => {
     try {
       const session = await runtime.request('/session', {
@@ -167,6 +216,26 @@ function createApiRouter(runtime, bridge) {
   apiRouter.get('/opencode/session/:id/messages', async (req, res) => {
     try {
       res.json(await runtime.request(`/session/${req.params.id}/message`));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.get('/opencode/permissions', async (req, res) => {
+    try {
+      res.json(await runtime.request('/permission'));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.post('/opencode/permission/:id/reply', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/permission/${req.params.id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: req.body || {},
+      }));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

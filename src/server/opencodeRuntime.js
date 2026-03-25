@@ -6,6 +6,12 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 4096;
 const OFFICE_ROOT = path.resolve(__dirname, '..', '..');
 
+function officeConfigDirectory() {
+  return process.env.OPENCODE_OFFICE_CONFIG_DIR
+    ? path.resolve(process.env.OPENCODE_OFFICE_CONFIG_DIR)
+    : path.join(officeDirectory(), '.opencode');
+}
+
 function trimSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
@@ -108,6 +114,7 @@ class OpencodeRuntime {
       env: {
         ...process.env,
         NODE_TLS_REJECT_UNAUTHORIZED: '0',
+        OPENCODE_CONFIG_DIR: officeConfigDirectory(),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -222,6 +229,7 @@ class OpencodeRuntime {
       mode: runtime.mode,
       baseUrl: runtime.baseUrl,
       directory: this.directory(),
+      configDirectory: officeConfigDirectory(),
       models,
     };
   }
@@ -230,4 +238,5 @@ class OpencodeRuntime {
 module.exports = {
   OpencodeRuntime,
   officeDirectory,
+  officeConfigDirectory,
 };

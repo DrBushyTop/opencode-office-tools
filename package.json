@@ -33,6 +33,7 @@
       "node_modules/@github/copilot-sdk/**/*"
     ],
     "files": [
+      ".opencode/**/*",
       "src/tray/**/*",
       "src/server-prod.js",
       "src/copilotProxy.js",
@@ -57,6 +58,10 @@
       {
         "from": "manifest.xml",
         "to": "manifest.xml"
+      },
+      {
+        "from": ".opencode",
+        "to": ".opencode"
       }
     ],
     "win": {
