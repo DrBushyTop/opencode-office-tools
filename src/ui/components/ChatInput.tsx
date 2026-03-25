@@ -23,49 +23,72 @@ interface ChatInputProps {
 
 const useStyles = makeStyles({
   inputContainer: {
-    margin: "16px",
-    padding: "4px 6px",
+    margin: "0 12px 12px",
+    padding: "0",
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-    borderRadius: "6px",
-    backgroundColor: "var(--colorNeutralBackground1)",
-    border: "1px solid var(--colorNeutralStroke1)",
+    borderRadius: "12px",
+    backgroundColor: "var(--oc-bg-strong)",
+    border: "1px solid var(--oc-border)",
+    boxShadow: "var(--oc-shadow)",
+    overflow: "hidden",
+  },
+  body: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "8px",
+    padding: "8px",
   },
   input: {
     flex: 1,
-    padding: "4px",
+    padding: "8px 10px",
     borderRadius: "0",
     border: "none !important",
     backgroundColor: "transparent !important",
     outline: "none !important",
     boxShadow: "none !important",
+    color: "var(--oc-text)",
+    fontSize: "14px",
+    lineHeight: "1.5",
     "::after": {
       display: "none !important",
     },
   },
+  inputWrap: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: "10px",
+    background: "var(--oc-bg)",
+    border: "1px solid var(--oc-border)",
+  },
   sendButton: {
-    width: "40px",
-    height: "40px",
-    minWidth: "40px",
+    width: "36px",
+    height: "36px",
+    minWidth: "36px",
     padding: "0",
     alignSelf: "flex-end",
-    backgroundColor: "transparent",
+    backgroundColor: "var(--oc-accent)",
     border: "none",
+    borderRadius: "9px",
+    color: "white",
+    ":hover": {
+      backgroundColor: "var(--oc-accent-strong)",
+    },
   },
   imagePreviewContainer: {
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
-    padding: "4px",
+    padding: "8px 8px 0",
   },
   imagePreview: {
     position: "relative",
     width: "80px",
     height: "80px",
-    borderRadius: "4px",
+    borderRadius: "8px",
     overflow: "hidden",
-    border: "1px solid var(--colorNeutralStroke1)",
+    border: "1px solid var(--oc-border)",
   },
   imagePreviewImg: {
     width: "100%",
@@ -80,12 +103,12 @@ const useStyles = makeStyles({
     width: "20px",
     height: "20px",
     padding: "0",
-    backgroundColor: "var(--colorNeutralBackground1)",
-    border: "1px solid var(--colorNeutralStroke1)",
+    backgroundColor: "var(--oc-bg)",
+    border: "1px solid var(--oc-border)",
     borderRadius: "50%",
     cursor: "pointer",
     ":hover": {
-      backgroundColor: "var(--colorNeutralBackground1Hover)",
+      backgroundColor: "var(--oc-bg-soft-hover)",
     },
   },
 });
@@ -166,26 +189,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           ))}
         </div>
       )}
-      <Textarea
-        ref={inputRef}
-        className={styles.input}
-        value={value}
-        onChange={(e, data) => onChange(data.value)}
-        onKeyDown={handleKeyPress}
-        onPaste={handlePaste}
-        placeholder="Type a message... (paste images with Ctrl+V)"
-        rows={2}
-      />
-      <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
-        <Button
-          appearance={isRunning ? "secondary" : "primary"}
-          icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
-          onClick={isRunning ? onStop : onSend}
-          disabled={isRunning ? !onStop : (!value.trim() && images.length === 0)}
-          aria-label={isRunning ? "Stop response" : "Send message"}
-          className={styles.sendButton}
-        />
-      </Tooltip>
+      <div className={styles.body}>
+        <div className={styles.inputWrap}>
+          <Textarea
+            ref={inputRef}
+            className={styles.input}
+            value={value}
+            onChange={(e, data) => onChange(data.value)}
+            onKeyDown={handleKeyPress}
+            onPaste={handlePaste}
+            placeholder="Type a message... (paste images with Ctrl+V)"
+            rows={2}
+          />
+        </div>
+        <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
+          <Button
+            appearance={isRunning ? "secondary" : "primary"}
+            icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
+            onClick={isRunning ? onStop : onSend}
+            disabled={isRunning ? !onStop : (!value.trim() && images.length === 0)}
+            aria-label={isRunning ? "Stop response" : "Send message"}
+            className={styles.sendButton}
+          />
+        </Tooltip>
+      </div>
     </div>
   );
 };

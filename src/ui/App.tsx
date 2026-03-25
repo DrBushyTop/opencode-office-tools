@@ -30,9 +30,60 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    backgroundColor: "var(--colorNeutralBackground3)",
+    padding: "10px",
+    boxSizing: "border-box",
+    background: "var(--oc-page)",
+    color: "var(--oc-text)",
+    fontFamily: '"Inter", "Segoe UI", sans-serif',
+  },
+  shell: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+    borderRadius: "14px",
+    background: "var(--oc-bg)",
+    border: "1px solid var(--oc-border)",
+    boxShadow: "var(--oc-shadow)",
+    overflow: "hidden",
+  },
+  error: {
+    margin: "0 12px 8px",
+    padding: "10px 12px",
+    borderRadius: "10px",
+    background: "var(--oc-danger-bg)",
+    border: "1px solid var(--oc-danger-border)",
+    color: "var(--oc-danger-text)",
   },
 });
+
+function getHostLabel(host: OfficeHost) {
+  return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : "Word";
+}
+
+function getSurfaceVars(isDarkMode: boolean): React.CSSProperties {
+  return {
+    "--oc-page": isDarkMode ? "#131010" : "#f3f3f3",
+    "--oc-bg": isDarkMode ? "#1b1818" : "#fcfcfc",
+    "--oc-bg-strong": isDarkMode ? "#252121" : "#f8f8f8",
+    "--oc-bg-soft": isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+    "--oc-bg-soft-hover": isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+    "--oc-border": isDarkMode ? "rgba(255,255,255,0.10)" : "#e5e5e5",
+    "--oc-border-strong": isDarkMode ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.14)",
+    "--oc-text": isDarkMode ? "#f1ecec" : "#171717",
+    "--oc-text-muted": isDarkMode ? "#b7b1b1" : "#6f6f6f",
+    "--oc-text-faint": isDarkMode ? "#7f7979" : "#8f8f8f",
+    "--oc-accent": isDarkMode ? "#89b5ff" : "#034cff",
+    "--oc-accent-strong": isDarkMode ? "#2558d0" : "#0443de",
+    "--oc-accent-bg": isDarkMode ? "rgba(137,181,255,0.16)" : "#ecf3ff",
+    "--oc-shadow": isDarkMode
+      ? "0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.24)"
+      : "0 0 0 1px rgba(0,0,0,0.05), 0 16px 48px rgba(0,0,0,0.06)",
+    "--oc-danger-bg": isDarkMode ? "rgba(252, 83, 58, 0.14)" : "#fff2f0",
+    "--oc-danger-border": isDarkMode ? "rgba(252, 83, 58, 0.28)" : "rgba(252, 83, 58, 0.24)",
+    "--oc-danger-text": isDarkMode ? "#fe806a" : "#ed4831",
+  } as React.CSSProperties;
+}
 
 const FALLBACK_MODELS: ModelInfo[] = [
   {
@@ -162,6 +213,7 @@ export const App: React.FC = () => {
   const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const isDarkMode = useIsDarkMode();
+  const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
   const started = useRef(false);
   const run = useRef<AbortController | null>(null);
@@ -480,61 +532,66 @@ export const App: React.FC = () => {
   if (showHistory) {
     return (
       <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-        <SessionHistory
-          host={officeHost}
-          shared={sharedHistory}
-          onSharedChange={setSharedHistory}
-          onSelectSession={handleRestoreSession}
-          onClose={() => setShowHistory(false)}
-        />
+        <div style={getSurfaceVars(isDarkMode)}>
+          <SessionHistory
+            host={officeHost}
+            shared={sharedHistory}
+            onSharedChange={setSharedHistory}
+            onSelectSession={handleRestoreSession}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
       </FluentProvider>
     );
   }
 
   return (
     <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-      <div className={styles.container}>
-        <HeaderBar
-          onNewChat={() => {
-            setCurrentSessionId("");
-            void startNewSession(selectedModel);
-          }}
-          onShowHistory={() => setShowHistory(true)}
-          selectedModel={selectedModel}
-          onModelChange={handleModelChange}
-          models={availableModels}
-          debugEnabled={debugEnabled}
-          onDebugChange={setDebugEnabled}
-          subtitle={runtimeMode ? `OpenCode ${runtimeMode} • ${getToolNamesForHost(officeHost).length} Office tools` : undefined}
-        />
-
-        <MessageList
-          messages={messages}
-          isTyping={isTyping}
-          isConnecting={!currentSessionId && !error}
-          currentActivity={currentActivity}
-          streamingText={streamingText}
-          debugEvents={debugEnabled ? debugEvents : undefined}
-        />
-
-        {error && <div style={{ color: "red", padding: "8px" }}>{error}</div>}
-
-        <ChatInput
-          value={inputValue}
-          onChange={setInputValue}
-          onSend={handleSend}
-          onStop={handleStop}
-          isRunning={isTyping}
-          images={images}
-          onImagesChange={setImages}
-        />
-        {permission && (
-          <PermissionDialog
-            request={permission}
-            cwd={null}
-            onDecision={handlePermissionDecision}
+      <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
+        <div className={styles.shell}>
+          <HeaderBar
+            onNewChat={() => {
+              setCurrentSessionId("");
+              void startNewSession(selectedModel);
+            }}
+            onShowHistory={() => setShowHistory(true)}
+            selectedModel={selectedModel}
+            onModelChange={handleModelChange}
+            models={availableModels}
+            debugEnabled={debugEnabled}
+            onDebugChange={setDebugEnabled}
+            subtitle={runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`}
           />
-        )}
+
+          <MessageList
+            messages={messages}
+            isTyping={isTyping}
+            isConnecting={!currentSessionId && !error}
+            currentActivity={currentActivity}
+            streamingText={streamingText}
+            debugEvents={debugEnabled ? debugEvents : undefined}
+            hostLabel={hostLabel}
+          />
+
+          {error && <div className={styles.error}>{error}</div>}
+
+          <ChatInput
+            value={inputValue}
+            onChange={setInputValue}
+            onSend={handleSend}
+            onStop={handleStop}
+            isRunning={isTyping}
+            images={images}
+            onImagesChange={setImages}
+          />
+          {permission && (
+            <PermissionDialog
+              request={permission}
+              cwd={null}
+              onDecision={handlePermissionDecision}
+            />
+          )}
+        </div>
       </div>
     </FluentProvider>
   );

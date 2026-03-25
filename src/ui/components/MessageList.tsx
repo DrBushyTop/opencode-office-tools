@@ -34,6 +34,7 @@ interface MessageListProps {
   currentActivity?: string;
   streamingText?: string;
   debugEvents?: DebugEvent[];
+  hostLabel?: string;
 }
 
 // Tool display configuration
@@ -197,35 +198,57 @@ const useStyles = makeStyles({
   chatContainer: {
     flex: 1,
     overflowY: "scroll",
-    padding: "16px",
+    padding: "20px 14px 14px",
     display: "flex",
     flexDirection: "column",
-    gap: "20px",
-    scrollbarColor: "var(--colorNeutralForeground4) transparent",
+    gap: "24px",
+    scrollbarColor: "var(--oc-text-faint) transparent",
     scrollbarWidth: "thin",
+  },
+  content: {
+    width: "100%",
+    maxWidth: "760px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "24px",
+    minHeight: "100%",
   },
   emptyState: {
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     height: "100%",
-    fontSize: "20px",
-    fontWeight: "300",
-    color: "var(--colorNeutralForeground4)",
+    minHeight: "100%",
+    textAlign: "center",
+    color: "var(--oc-text-faint)",
+    gap: "8px",
+  },
+  emptyTitle: {
+    fontSize: "28px",
+    lineHeight: "1.2",
+    color: "var(--oc-text)",
+    fontWeight: "500",
+  },
+  emptyMeta: {
+    fontSize: "13px",
+    color: "var(--oc-text-muted)",
   },
   assistantIcon: {
     width: "24px",
     height: "24px",
-    borderRadius: "4px",
+    borderRadius: "6px",
   },
   messageUser: {
     alignSelf: "flex-end",
-    backgroundColor: "#0078d4",
-    color: "white",
+    backgroundColor: "var(--oc-accent-bg)",
+    color: "var(--oc-text)",
     padding: "10px 14px",
     borderRadius: "12px",
     maxWidth: "70%",
     wordWrap: "break-word",
+    border: "1px solid rgba(3, 76, 255, 0.10)",
   },
   messageAssistant: {
     alignSelf: "flex-start",
@@ -233,9 +256,10 @@ const useStyles = makeStyles({
     wordWrap: "break-word",
     display: "grid",
     gridTemplateColumns: "24px 1fr",
-    gap: "8px",
+    gap: "10px",
     alignItems: "start",
     justifyItems: "center",
+    color: "var(--oc-text)",
     "& p:first-child": {
       marginTop: 0,
     },
@@ -243,20 +267,39 @@ const useStyles = makeStyles({
       marginBottom: 0,
     },
   },
+  assistantBody: {
+    width: "100%",
+    minWidth: 0,
+    lineHeight: "1.6",
+    color: "var(--oc-text)",
+    "& pre": {
+      background: "var(--oc-bg-strong)",
+      border: "1px solid var(--oc-border)",
+      borderRadius: "10px",
+      padding: "10px 12px",
+      overflowX: "auto",
+    },
+    "& code": {
+      background: "var(--oc-bg-soft)",
+      borderRadius: "6px",
+      padding: "1px 4px",
+    },
+  },
   messageTool: {
     alignSelf: "flex-start",
-    fontSize: "13px",
-    color: "var(--colorNeutralForeground2)",
+    fontSize: "12px",
+    color: "var(--oc-text-muted)",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
-    padding: "4px 10px",
-    borderRadius: "12px",
-    backgroundColor: "var(--colorNeutralBackground4)",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    backgroundColor: "var(--oc-bg-soft)",
+    border: "1px solid var(--oc-border)",
     transition: "background-color 0.15s",
     ":hover": {
-      backgroundColor: "var(--colorNeutralBackground5)",
+      backgroundColor: "var(--oc-bg-soft-hover)",
     },
   },
   toolIcon: {
@@ -267,7 +310,7 @@ const useStyles = makeStyles({
     fontFamily: "monospace",
     whiteSpace: "pre-wrap",
     marginTop: "4px",
-    color: "var(--colorNeutralForeground3)",
+    color: "var(--oc-text-faint)",
   },
   attachmentContainer: {
     display: "flex",
@@ -291,8 +334,7 @@ const useStyles = makeStyles({
     gap: "4px",
   },
   streamingIndicator: {
-    color: "var(--colorNeutralForeground3)",
-    fontStyle: "italic",
+    color: "var(--oc-text-muted)",
     display: "flex",
     alignItems: "center",
     gap: "4px",
@@ -418,6 +460,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   currentActivity,
   streamingText,
   debugEvents,
+  hostLabel,
 }) => {
   const styles = useStyles();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -438,20 +481,21 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   return (
     <div className={styles.chatContainer}>
-      {messages.length === 0 && !isConnecting && (
-        <div className={styles.emptyState}>
-          <div>What can I do for you?</div>
-          <div style={{ fontSize: '10px', color: 'var(--colorNeutralForeground4, #999)', marginTop: '8px' }}>build 20260221c</div>
-        </div>
-      )}
+      <div className={styles.content}>
+        {messages.length === 0 && !isConnecting && (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyTitle}>What can I do for you?</div>
+            <div className={styles.emptyMeta}>{hostLabel ? `${hostLabel} workspace` : "Open document workspace"}</div>
+          </div>
+        )}
 
-      {isConnecting && (
-        <div className={styles.emptyState}>
-          Connecting...
-        </div>
-      )}
-      
-      {messages.map((message) => {
+        {isConnecting && (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyTitle}>Connecting...</div>
+          </div>
+        )}
+
+        {messages.map((message) => {
         // Format tool calls nicely
         const toolDisplay = message.toolName 
           ? formatToolCall(message.toolName, message.toolArgs || {})
@@ -479,7 +523,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           ) : message.sender === "assistant" ? (
             <>
               <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
-              <div style={{ justifySelf: 'start' }}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
+              <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
             </>
           ) : (
             <>
@@ -498,51 +542,53 @@ export const MessageList: React.FC<MessageListProps> = ({
           )}
         </div>
       );
-      })}
-      
-      {isTyping && (
-        <div className={styles.messageAssistant}>
-          <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
-          <div style={{ justifySelf: 'start', width: '100%' }}>
-            {streamingText ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{streamingText}</Markdown>
-            ) : (
-              <>
-                <span className={styles.streamingIndicator}>
-                  {currentActivity || "Thinking"}
-                  <StreamingDots />
-                  <ElapsedTime />
-                </span>
-                <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
-              </>
-            )}
-            <TrafficCounter />
-            {debugEvents && debugEvents.length > 0 && (
-              <div style={{
-                marginTop: '8px',
-                maxHeight: '120px',
-                overflowY: 'auto',
-                fontSize: '10px',
-                fontFamily: 'monospace',
-                lineHeight: '1.6',
-                color: 'var(--colorNeutralForeground3, #999)',
-                backgroundColor: 'var(--colorNeutralBackground3, #f5f5f5)',
-                borderRadius: '4px',
-                padding: '6px 8px',
-              }}>
-                {debugEvents.map((ev, i) => (
-                  <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <span style={{ color: 'var(--colorBrandBackground, #0078d4)' }}>{ev.type}</span>
-                    {ev.preview && <span style={{ opacity: 0.7 }}> {ev.preview}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
+        })}
+
+        {isTyping && (
+          <div className={styles.messageAssistant}>
+            <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
+            <div className={styles.assistantBody}>
+              {streamingText ? (
+                <Markdown remarkPlugins={[remarkGfm]}>{streamingText}</Markdown>
+              ) : (
+                <>
+                  <span className={styles.streamingIndicator}>
+                    {currentActivity || "Thinking"}
+                    <StreamingDots />
+                    <ElapsedTime />
+                  </span>
+                  <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
+                </>
+              )}
+              <TrafficCounter />
+              {debugEvents && debugEvents.length > 0 && (
+                <div style={{
+                  marginTop: '8px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  lineHeight: '1.6',
+                  color: 'var(--oc-text-faint, #999)',
+                  backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
+                  borderRadius: '8px',
+                  padding: '6px 8px',
+                  border: '1px solid var(--oc-border, #e5e5e5)',
+                }}>
+                  {debugEvents.map((ev, i) => (
+                    <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ color: 'var(--oc-accent, #0078d4)' }}>{ev.type}</span>
+                      {ev.preview && <span style={{ opacity: 0.7 }}> {ev.preview}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-      
-      <div ref={chatEndRef} />
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
     </div>
   );
 };
