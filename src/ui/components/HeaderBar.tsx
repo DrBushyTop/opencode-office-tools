@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button, Tooltip, Switch, makeStyles, Combobox, Option, tokens } from "@fluentui/react-components";
+import { Button, Tooltip, Switch, makeStyles, Combobox, Option } from "@fluentui/react-components";
 import { Compose24Regular, History24Regular } from "@fluentui/react-icons";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo } from "../lib/opencode-client";
@@ -22,67 +22,90 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "8px 12px",
-    paddingRight: "40px",
-    gap: "8px",
-    minHeight: "40px",
+    padding: "10px 12px",
+    gap: "10px",
+    minHeight: "52px",
+    borderBottom: "1px solid var(--oc-border)",
+    background: "var(--oc-bg)",
   },
   leftSection: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "3px",
     minWidth: 0,
     flex: 1,
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    minWidth: 0,
+  },
+  title: {
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "var(--oc-text)",
   },
   debugRow: {
     display: "flex",
     alignItems: "center",
     gap: "4px",
     fontSize: "11px",
-    color: tokens.colorNeutralForeground3,
+    color: "var(--oc-text-muted)",
   },
   subtitle: {
     fontSize: "11px",
-    color: tokens.colorNeutralForeground3,
+    color: "var(--oc-text-faint)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
   dropdown: {
-    minWidth: "120px",
-    opacity: 0.6,
+    minWidth: "160px",
     fontSize: "12px",
-    borderBottom: "none",
+    borderRadius: "8px",
+    background: "var(--oc-bg-soft)",
+    border: "1px solid var(--oc-border) !important",
+    padding: "0 8px",
     ":hover": {
-      opacity: 1,
+      background: "var(--oc-bg-soft-hover)",
     },
   },
   buttonGroup: {
     display: "flex",
     alignItems: "center",
-    gap: "4px",
+    gap: "6px",
     flexShrink: 0,
   },
   iconButton: {
-    minWidth: "28px",
-    width: "28px",
-    height: "28px",
+    minWidth: "30px",
+    width: "30px",
+    height: "30px",
     padding: "0",
+    borderRadius: "8px",
+    color: "var(--oc-text-muted)",
+    background: "transparent",
+    border: "1px solid transparent",
+    ":hover": {
+      background: "var(--oc-bg-soft)",
+      color: "var(--oc-text)",
+      border: "1px solid var(--oc-border)",
+    },
   },
   clearButton: {
-    backgroundColor: "#0078d4",
+    backgroundColor: "var(--oc-accent)",
     color: "white",
-    borderRadius: "4px",
+    borderRadius: "8px",
     padding: "4px",
-    width: "28px",
-    height: "28px",
-    minWidth: "28px",
+    width: "30px",
+    height: "30px",
+    minWidth: "30px",
     border: "none",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     ":hover": {
-      backgroundColor: "#106ebe",
+      backgroundColor: "var(--oc-accent-strong)",
     },
   },
 });
@@ -111,9 +134,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   return (
     <div className={styles.header}>
       <div className={styles.leftSection}>
+        <div className={styles.titleRow}>
+          <div className={styles.title}>OpenCode</div>
+        </div>
         <Combobox
           className={styles.dropdown}
-          appearance="underline"
+          appearance="filled-darker"
           freeform
           placeholder="Search models"
           value={value}
