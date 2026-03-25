@@ -109,6 +109,10 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "📊",
     format: () => "Getting workbook structure",
   },
+  get_workbook_overview: {
+    icon: "🧭",
+    format: () => "Mapping workbook structure",
+  },
   get_workbook_content: {
     icon: "📄",
     format: (args) => args.sheetName ? `Reading "${args.sheetName}"` : "Reading worksheet",
@@ -116,6 +120,42 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
   set_workbook_content: {
     icon: "✏️",
     format: (args) => args.sheetName ? `Updating "${args.sheetName}"` : "Updating worksheet",
+  },
+  get_selected_range: {
+    icon: "✂️",
+    format: () => "Reading selected range",
+  },
+  set_selected_range: {
+    icon: "✏️",
+    format: () => "Updating selected range",
+  },
+  find_and_replace_cells: {
+    icon: "🔁",
+    format: (args) => `Replacing ${JSON.stringify(args.find || "")}`,
+  },
+  insert_chart: {
+    icon: "📈",
+    format: () => "Creating chart",
+  },
+  apply_cell_formatting: {
+    icon: "🎨",
+    format: () => "Formatting cells",
+  },
+  create_named_range: {
+    icon: "🏷️",
+    format: (args) => `Naming range ${JSON.stringify(args.name || "")}`,
+  },
+  get_slide_notes: {
+    icon: "📝",
+    format: () => "Reading slide notes",
+  },
+  set_slide_notes: {
+    icon: "📝",
+    format: () => "Updating slide notes",
+  },
+  duplicate_slide: {
+    icon: "📑",
+    format: () => "Duplicating slide",
   },
   web_fetch: {
     icon: "🌐",

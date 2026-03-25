@@ -13,6 +13,14 @@ const readOnly = new Set([
   "get_document_section",
   "get_selection",
   "get_selection_text",
+  "get_workbook_overview",
+  "get_workbook_info",
+  "get_workbook_content",
+  "get_selected_range",
+  "get_presentation_overview",
+  "get_presentation_content",
+  "get_slide_image",
+  "get_slide_notes",
 ]);
 
 export function toolName(request: OfficePermissionRequest) {
