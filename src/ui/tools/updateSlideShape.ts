@@ -1,4 +1,5 @@
 import type { Tool } from "./types";
+import { loadTextFrames } from "./powerpointText";
 
 export const updateSlideShape: Tool = {
   name: "update_slide_shape",
@@ -58,18 +59,19 @@ export const updateSlideShape: Tool = {
         }
 
         const shape = shapes.items[shapeIndex];
+        const [frame] = await loadTextFrames(context, [shape]);
         
-        try {
-          shape.textFrame.textRange.text = text;
-          await context.sync();
-        } catch (textError: any) {
+        if (!frame || frame.isNullObject) {
           return {
-            textResultForLlm: `Shape at index ${shapeIndex} does not support text content: ${textError.message}`,
+            textResultForLlm: `Shape at index ${shapeIndex} does not support text content.`,
             resultType: "failure",
-            error: textError.message,
+            error: "Shape does not support text content",
             toolTelemetry: {},
           };
         }
+
+        frame.textRange.text = text;
+        await context.sync();
 
         return `Updated shape ${shapeIndex + 1} on slide ${slideIndex + 1} with new text.`;
       });

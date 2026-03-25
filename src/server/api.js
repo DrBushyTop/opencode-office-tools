@@ -213,6 +213,14 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.post('/opencode/session/:id/abort', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}/abort`, { method: 'POST' }));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.get('/opencode/session/:id/messages', async (req, res) => {
     try {
       res.json(await runtime.request(`/session/${req.params.id}/message`));

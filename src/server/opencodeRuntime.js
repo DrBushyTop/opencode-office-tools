@@ -26,13 +26,6 @@ function configuredBaseUrl() {
   return value ? trimSlash(value) : '';
 }
 
-function parseModelKey(value) {
-  const [providerID, ...rest] = String(value || '').split('/');
-  const modelID = rest.join('/');
-  if (!providerID || !modelID) return null;
-  return { providerID, modelID };
-}
-
 function toModelInfo(provider, model) {
   const value = `${provider.id}/${model.id}`;
   return {
@@ -43,35 +36,18 @@ function toModelInfo(provider, model) {
   };
 }
 
-function configuredModels(configProviders, config) {
+function configuredModels(configProviders) {
   const providerItems = Array.isArray(configProviders?.providers) ? configProviders.providers : [];
-  const defaults = configProviders?.default && typeof configProviders.default === 'object'
-    ? Object.values(configProviders.default)
-    : [];
-  const configured = new Set([config?.model, ...defaults].filter(Boolean));
-
-  if (configured.size === 0) return [];
-
   const items = [];
   const seen = new Set();
 
-  for (const key of configured) {
-    const parsed = parseModelKey(key);
-    if (!parsed) continue;
-    const provider = providerItems.find((item) => item.id === parsed.providerID);
-    const model = provider?.models?.[parsed.modelID];
-    const modelInfo = provider && model
-      ? toModelInfo(provider, model)
-      : {
-          key,
-          label: key,
-          providerID: parsed.providerID,
-          modelID: parsed.modelID,
-        };
-
-    if (seen.has(modelInfo.key)) continue;
-    seen.add(modelInfo.key);
-    items.push(modelInfo);
+  for (const provider of providerItems) {
+    for (const model of Object.values(provider.models || {})) {
+      const modelInfo = toModelInfo(provider, model);
+      if (seen.has(modelInfo.key)) continue;
+      seen.add(modelInfo.key);
+      items.push(modelInfo);
+    }
   }
 
   return items;
@@ -223,11 +199,8 @@ class OpencodeRuntime {
   }
 
   async listModels() {
-    const [configProviders, config] = await Promise.all([
-      this.request('/config/providers'),
-      this.request('/config').catch(() => null),
-    ]);
-    const narrowed = configuredModels(configProviders, config);
+    const configProviders = await this.request('/config/providers');
+    const narrowed = configuredModels(configProviders);
     if (narrowed.length > 0) return narrowed;
 
     const providers = await this.request('/provider');
@@ -267,6 +240,5 @@ module.exports = {
   configuredModels,
   officeDirectory,
   officeConfigDirectory,
-  parseModelKey,
   readResponseBody,
 };

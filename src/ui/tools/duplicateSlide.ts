@@ -1,4 +1,5 @@
 import type { Tool } from "./types";
+import { loadShapeTexts } from "./powerpointText";
 
 export const duplicateSlide: Tool = {
   name: "duplicate_slide",
@@ -75,8 +76,11 @@ Examples:
         // The PowerPoint JS API v1.5+ supports slide manipulation
         
         // Since direct duplication isn't available, we'll use shape copying
-        const newSlide = slides.add();
+        slides.add();
         await context.sync();
+        slides.load("items");
+        await context.sync();
+        const newSlide = slides.items[slides.items.length - 1];
         
         // Load the new slide and source slide shapes
         newSlide.load("id");
@@ -86,16 +90,14 @@ Examples:
         // Get shapes from source
         for (const shape of sourceSlide.shapes.items) {
           shape.load(["type", "left", "top", "width", "height"]);
-          try {
-            shape.textFrame.textRange.load("text");
-          } catch {}
         }
         await context.sync();
+        const texts = await loadShapeTexts(context, sourceSlide.shapes.items);
         
         // Copy text shapes (basic duplication - full OOXML copy would be more complete)
-        for (const shape of sourceSlide.shapes.items) {
+        for (const [index, shape] of sourceSlide.shapes.items.entries()) {
           try {
-            const text = shape.textFrame?.textRange?.text;
+            const text = texts[index];
             if (text) {
               newSlide.shapes.addTextBox(text, {
                 left: shape.left,

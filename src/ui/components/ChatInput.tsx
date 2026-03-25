@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useRef, useEffect } from "react";
 import { Textarea, Button, Tooltip, makeStyles } from "@fluentui/react-components";
-import { Send24Regular, Dismiss24Regular } from "@fluentui/react-icons";
+import { Send24Regular, Dismiss24Regular, Stop24Regular } from "@fluentui/react-icons";
 
 export interface ImageAttachment {
   id: string;
@@ -13,8 +13,10 @@ interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  onStop?: () => void;
   onSent?: () => void;
   disabled?: boolean;
+  isRunning?: boolean;
   images?: ImageAttachment[];
   onImagesChange?: (images: ImageAttachment[]) => void;
 }
@@ -92,6 +94,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   value,
   onChange,
   onSend,
+  onStop,
+  isRunning = false,
   images = [],
   onImagesChange,
 }) => {
@@ -172,12 +176,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         placeholder="Type a message... (paste images with Ctrl+V)"
         rows={2}
       />
-      <Tooltip content="Send message" relationship="label">
+      <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
         <Button
-          appearance="primary"
-          icon={<Send24Regular />}
-          onClick={onSend}
-          disabled={!value.trim() && images.length === 0}
+          appearance={isRunning ? "secondary" : "primary"}
+          icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
+          onClick={isRunning ? onStop : onSend}
+          disabled={isRunning ? !onStop : (!value.trim() && images.length === 0)}
+          aria-label={isRunning ? "Stop response" : "Send message"}
           className={styles.sendButton}
         />
       </Tooltip>
