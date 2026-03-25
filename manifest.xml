@@ -4,13 +4,13 @@
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>12345678-1234-1234-1234-123456789012</Id>
-  <Version>1.0.0.1</Version>
+  <Version>1.0.0.2</Version>
   <ProviderName>Your Company</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OpenCode"/>
   <Description DefaultValue="OpenCode for Word, Excel, PowerPoint, and OneNote."/>
-  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260325"/>
-  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260325"/>
+  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260325b"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260325b"/>
   <SupportUrl DefaultValue="https://www.contoso.com/help"/>
   <AppDomains>
     <AppDomain>https://localhost:52390</AppDomain>
@@ -176,9 +176,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:52390/icon-16.png?v=20260325"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:52390/icon-32.png?v=20260325"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:52390/icon-80.png?v=20260325"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:52390/icon-16.png?v=20260325b"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:52390/icon-32.png?v=20260325b"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:52390/icon-80.png?v=20260325b"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>
