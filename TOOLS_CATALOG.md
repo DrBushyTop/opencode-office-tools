@@ -16,7 +16,7 @@ This document lists all available tools that OpenCode can use when working with 
 | `find_and_replace` | Search and replace text with options for case sensitivity and whole word matching. |
 | `insert_table` | Insert a formatted table at the cursor with header styling and grid/striped options. |
 | `apply_style_to_selection` | Apply formatting to selected text (bold, italic, underline, font size, colors, highlighting). |
-| `web_fetch` | Fetch content from a URL and convert to markdown. |
+| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## PowerPoint Tools
 
@@ -32,7 +32,7 @@ This document lists all available tools that OpenCode can use when working with 
 | `update_slide_shape` | Update the text content of an existing shape on a slide. |
 | `set_slide_notes` | Add or update speaker notes for a slide. |
 | `duplicate_slide` | Copy an existing slide to a new position in the presentation. |
-| `web_fetch` | Fetch content from a URL and convert to markdown. |
+| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## Excel Tools
 
@@ -48,7 +48,7 @@ This document lists all available tools that OpenCode can use when working with 
 | `insert_chart` | Create charts (column, bar, line, pie, area, scatter, doughnut) from a data range. |
 | `apply_cell_formatting` | Format cells with bold, colors, borders, number formats, and alignment. |
 | `create_named_range` | Define named ranges for easier reference in formulas and AI interactions. |
-| `web_fetch` | Fetch content from a URL and convert to markdown. |
+| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ---
 
@@ -61,6 +61,11 @@ Always begin by using the overview tool for your application:
 - Excel: `get_workbook_overview`
 
 This helps OpenCode understand your document structure before making targeted reads or edits.
+
+### Runtime Notes
+- Office tools are bundled inside the add-in's `.opencode/tools/` directory.
+- The local add-in server exposes those tools to OpenCode and executes them inside the active Office host.
+- Read-only inspection tools are auto-approved; mutating tools use the OpenCode permission flow.
 
 ### Surgical Edits vs Full Replacement
 - **Surgical**: Use `insert_content_at_selection`, `find_and_replace`, `update_slide_shape` for targeted changes
