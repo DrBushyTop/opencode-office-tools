@@ -8,6 +8,8 @@ A Microsoft Office add-in that brings OpenCode into Word, Excel, and PowerPoint.
 
 **📖 See [TOOLS_CATALOG.md](TOOLS_CATALOG.md) for available OpenCode tools.**
 
+The add-in bundles its own OpenCode tool configuration, so users do not need to create a separate `.opencode` setup to access the Office tools.
+
 The getting started guide walks you through running the add-in locally using the tray app. Standalone installers are in development and will be available once code signing is complete.
 
 ## Office Videos
@@ -31,7 +33,7 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 ├── src/
 │   ├── server.js          # Dev server (Vite + Express)
 │   ├── server-prod.js     # Production server (static files)
-│   ├── copilotProxy.js    # WebSocket proxy for Copilot SDK
+│   ├── server/            # OpenCode runtime and Office bridge adapters
 │   └── ui/                # React frontend
 ├── dist/                  # Built frontend assets
 ├── certs/                 # SSL certificates for localhost

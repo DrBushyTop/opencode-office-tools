@@ -29,7 +29,7 @@ fi
 pkill -f "$APP_NAME" 2>/dev/null || true
 
 # Also kill any old standalone server process (from previous versions)
-pkill -f "copilot-office-server" 2>/dev/null || true
+pkill -f "opencode-office-server" 2>/dev/null || true
 
 # Remove add-in registrations
 echo "Removing add-in registrations..."

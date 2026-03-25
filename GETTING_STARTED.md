@@ -2,6 +2,8 @@
 
 Run the OpenCode Office Add-in locally using the tray app—no installers required.
 
+The add-in injects its bundled Office tools into the OpenCode runtime automatically, so you do not need to create your own `.opencode` folder first.
+
 > **📖 See [TOOLS_CATALOG.md](TOOLS_CATALOG.md) for a complete list of available OpenCode tools for Word, PowerPoint, and Excel.**
 
 ## Prerequisites
@@ -44,6 +46,15 @@ npm run start:tray
 ```
 
 You should see the OpenCode icon appear in your system tray (Windows) or menu bar (macOS).
+
+For a direct development flow instead of the tray app, run:
+
+```bash
+npm run build
+npm run dev
+```
+
+That starts the local add-in server and points the spawned OpenCode runtime at the bundled `.opencode` config.
 
 ## Adding the Add-in in Office
 1. Confirm you see the OpenCode service running in your macOS or Windows tray.
