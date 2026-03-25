@@ -1,15 +1,45 @@
 import type { Tool } from "./types";
 import pptxgen from "pptxgenjs";
 
+export function normalizeAddSlideCode(input: string) {
+  return String(input || "")
+    .replace(/^\s*import\s+.+?from\s+["']pptxgenjs["'];?\s*$/gm, "")
+    .replace(/^\s*const\s+\w+\s*=\s*require\(["']pptxgenjs["']\);?\s*$/gm, "")
+    .replace(/^\s*(?:const|let|var)\s+pptx\s*=\s*new\s+\w+\s*\(\s*\)\s*;?\s*$/gm, "")
+    .replace(/\b(?:const|let|var)\s+slide\s*=\s*pptx\.addSlide\(\s*\)\s*;?/g, "")
+    .replace(/\b(?:const|let|var)\s+(\w+)\s*=\s*pptx\.addSlide\(\s*\)\s*;?/g, "const $1 = slide;")
+    .trim();
+}
+
+export function buildGeneratedSlide(code: string, slide: any, pptx: any) {
+  const ctx = {
+    slide,
+    pptx,
+    pptxgen,
+    ShapeType: pptx.ShapeType,
+    AlignH: pptx.AlignH,
+    AlignV: pptx.AlignV,
+  };
+
+  const run = new Function("ctx", `with (ctx) { ${normalizeAddSlideCode(code)} }`);
+  run(ctx);
+}
+
 export const addSlideFromCode: Tool = {
   name: "add_slide_from_code",
   description: `Add a slide to the PowerPoint presentation by providing PptxGenJS code.
 
-Your code should be a function body that receives a 'slide' object and calls methods on it to add content.
-The slide will be automatically created and inserted into the presentation.
+Your code can be either:
+- slide-only code that uses the provided 'slide' object, or
+- a fuller PptxGenJS snippet that references 'pptx', 'pptxgen', or 'pptx.ShapeType'.
 
-Function signature:
-  function(slide) { /* your code here */ }
+The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
+
+Available in scope:
+  - slide
+  - pptx
+  - pptxgen
+  - ShapeType
 
 PptxGenJS API Examples:
 
@@ -87,13 +117,12 @@ PptxGenJS API Examples:
       const pptx = new pptxgen();
       const slide = pptx.addSlide();
 
-      // Execute the provided code with slide in scope
-      try {
-        const buildSlide = new Function("slide", code);
-        buildSlide(slide);
-      } catch (codeError: any) {
-        return {
-          textResultForLlm: `Code execution error: ${codeError.message}\n\nStack: ${codeError.stack}`,
+        // Execute the provided code with slide/pptx in scope
+        try {
+          buildGeneratedSlide(code, slide, pptx);
+        } catch (codeError: any) {
+          return {
+            textResultForLlm: `Code execution error: ${codeError.message}\n\nStack: ${codeError.stack}`,
           resultType: "failure",
           error: codeError.message,
           toolTelemetry: {},

@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { remoteLog } from "../lib/remoteLog";
+import { loadShapeTexts } from "./powerpointText";
 
 const CHUNK_SIZE = 10; // Slides per batch in a single PowerPoint.run()
 
@@ -18,29 +19,18 @@ async function getSlideChunkContent(startIdx: number, endIdx: number, slideCount
     }
     await context.sync();
 
-    // Load text from all shapes
-    for (const slide of slideRefs) {
-      for (const shape of slide.shapes.items) {
-        try {
-          shape.textFrame.textRange.load("text");
-        } catch (e) {
-          remoteLog("getPresentationContent", `Failed to load textRange for shape in slide chunk starting at ${startIdx}`, e);
-        }
-      }
-    }
-    await context.sync();
-
     // Extract text
     const results: string[] = [];
     for (let i = 0; i < slideRefs.length; i++) {
       const slide = slideRefs[i];
       const slideIndex = startIdx + i;
       const texts: string[] = [];
+      const shapeTexts = await loadShapeTexts(context, slide.shapes.items);
       
-      for (const shape of slide.shapes.items) {
+      for (const text of shapeTexts) {
         try {
-          if (shape.textFrame?.textRange?.text) {
-            texts.push(shape.textFrame.textRange.text);
+          if (text) {
+            texts.push(text);
           }
         } catch (e) {
           remoteLog("getPresentationContent", `Failed to read text from shape on slide ${slideIndex + 1}`, e);

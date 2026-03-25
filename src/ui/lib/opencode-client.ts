@@ -52,7 +52,13 @@ export class OpencodeClient {
     return readJson<any[]>(`/api/opencode/session/${sessionId}/messages`);
   }
 
-  async *query(sessionId: string, input: PromptInput): AsyncGenerator<UiEvent, void, undefined> {
+  async abortSession(sessionId: string) {
+    return readJson<unknown>(`/api/opencode/session/${sessionId}/abort`, {
+      method: "POST",
+    });
+  }
+
+  async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal } = {}): AsyncGenerator<UiEvent, void, undefined> {
     const partTypes = new Map<string, string>();
     const queue: UiEvent[] = [];
     let done = false;
@@ -62,6 +68,11 @@ export class OpencodeClient {
     const eventSource = new EventSource(`/api/opencode/events?sessionId=${encodeURIComponent(sessionId)}`);
     const push = (event: UiEvent) => {
       queue.push(event);
+      wake?.();
+    };
+    const stop = () => {
+      done = true;
+      eventSource.close();
       wake?.();
     };
 
@@ -79,11 +90,14 @@ export class OpencodeClient {
     };
 
     eventSource.onerror = () => {
+      if (opts.signal?.aborted || done) return;
       if (!done) {
         push({ type: "session.error", data: { message: "OpenCode event stream disconnected" } });
         done = true;
       }
     };
+
+    opts.signal?.addEventListener("abort", stop, { once: true });
 
     trafficStats.bytesOut += JSON.stringify(input).length;
     const send = fetch(`/api/opencode/session/${sessionId}/message`, {
@@ -131,6 +145,7 @@ export class OpencodeClient {
         }
       }
     } finally {
+      opts.signal?.removeEventListener("abort", stop);
       eventSource.close();
     }
   }

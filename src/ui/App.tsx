@@ -117,6 +117,7 @@ export const App: React.FC = () => {
   const isDarkMode = useIsDarkMode();
   const sessionCreatedAt = useRef<string>("");
   const started = useRef(false);
+  const run = useRef<AbortController | null>(null);
 
   const fetchModels = async () => {
     try {
@@ -239,7 +240,7 @@ export const App: React.FC = () => {
   };
 
   const handleSend = async () => {
-    if ((!inputValue.trim() && images.length === 0) || !currentSessionId) return;
+    if (isTyping || (!inputValue.trim() && images.length === 0) || !currentSessionId) return;
 
     const userInput = inputValue;
     const userImages = [...images];
@@ -266,6 +267,8 @@ export const App: React.FC = () => {
     trafficStats.reset();
 
     try {
+      const ctl = new AbortController();
+      run.current = ctl;
       const uploads: Array<{ path: string; name: string; mime: string }> = [];
 
       for (const image of userImages) {
@@ -300,7 +303,7 @@ export const App: React.FC = () => {
         system: getSystemMessage(Office.context.host),
         parts,
         tools,
-      })) {
+      }, { signal: ctl.signal })) {
         count += 1;
         const data = event.data || {};
         const preview = event.type === "assistant.message_delta"
@@ -394,7 +397,7 @@ export const App: React.FC = () => {
         }
       }
 
-      if (count === 0) {
+      if (count === 0 && !ctl.signal.aborted) {
         setMessages((prev) => [...prev, {
           id: `debug-${Date.now()}`,
           text: "⚠️ No events received from the OpenCode runtime.",
@@ -411,7 +414,29 @@ export const App: React.FC = () => {
         timestamp: new Date(),
       }]);
     } finally {
+      run.current = null;
       setIsTyping(false);
+      setCurrentActivity("");
+    }
+  };
+
+  const handleStop = async () => {
+    if (!currentSessionId || !isTyping) return;
+    setCurrentActivity("Stopping...");
+
+    try {
+      await client.abortSession(currentSessionId);
+      run.current?.abort();
+      setStreamingText("");
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        text: `❌ Error stopping session: ${text}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      }]);
+      setCurrentActivity("");
     }
   };
 
@@ -462,6 +487,8 @@ export const App: React.FC = () => {
           value={inputValue}
           onChange={setInputValue}
           onSend={handleSend}
+          onStop={handleStop}
+          isRunning={isTyping}
           images={images}
           onImagesChange={setImages}
         />

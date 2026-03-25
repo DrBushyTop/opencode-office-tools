@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { remoteLog } from "../lib/remoteLog";
+import { loadShapeTexts } from "./powerpointText";
 
 const CHUNK_SIZE = 10;
 
@@ -16,27 +17,17 @@ async function getSlidePreviewChunk(startIdx: number, endIdx: number): Promise<s
     }
     await context.sync();
 
-    // Load text from first few shapes only for preview
-    for (const slide of slideRefs) {
-      for (const shape of slide.shapes.items.slice(0, 5)) {
-        try {
-          shape.textFrame.textRange.load("text");
-        } catch (e) {
-          remoteLog("getPresentationOverview", `Failed to load textRange for shape in slide chunk starting at ${startIdx}`, e);
-        }
-      }
-    }
-    await context.sync();
-
     const results: string[] = [];
     for (let i = 0; i < slideRefs.length; i++) {
       const slide = slideRefs[i];
       const slideIndex = startIdx + i;
       const texts: string[] = [];
+      const previewShapes = slide.shapes.items.slice(0, 5);
+      const shapeTexts = await loadShapeTexts(context, previewShapes);
       
-      for (const shape of slide.shapes.items.slice(0, 5)) {
+      for (const textValue of shapeTexts) {
         try {
-          const text = shape.textFrame?.textRange?.text?.trim();
+          const text = textValue.trim();
           if (text) {
             texts.push(text.length > 100 ? text.substring(0, 100) + "..." : text);
           }
