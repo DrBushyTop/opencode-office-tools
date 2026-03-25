@@ -21,6 +21,12 @@ export interface DebugEvent {
   timestamp: number;
 }
 
+function summarizeTaskTool(args: Record<string, unknown>) {
+  const subagentType = typeof args.subagent_type === "string" ? args.subagent_type : "subagent";
+  const description = typeof args.description === "string" ? args.description : "Working";
+  return `${subagentType}: ${description}`;
+}
+
 interface MessageListProps {
   messages: Message[];
   isTyping: boolean;
@@ -171,6 +177,10 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
   report_intent: {
     icon: "💭",
     format: (args) => args.intent as string || "Working",
+  },
+  task: {
+    icon: "🧠",
+    format: (args) => `Fresh eyes: ${summarizeTaskTool(args)}`,
   },
 };
 

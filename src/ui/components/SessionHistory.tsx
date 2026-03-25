@@ -7,6 +7,7 @@ import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/op
 interface SessionHistoryProps {
   host: OfficeHost;
   shared: boolean;
+  onSharedChange: (shared: boolean) => void;
   onSelectSession: (session: OpencodeSessionInfo) => void;
   onClose: () => void;
 }
@@ -28,6 +29,33 @@ const useStyles = makeStyles({
   headerTitle: {
     fontWeight: "600",
     fontSize: "14px",
+  },
+  filterRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    padding: "10px 12px",
+    borderBottom: "1px solid var(--colorNeutralStroke2)",
+    backgroundColor: "var(--colorNeutralBackground1)",
+  },
+  filterLabel: {
+    fontSize: "11px",
+    fontWeight: "600",
+    color: "var(--colorNeutralForeground3)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  filterGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  filterButton: {
+    minWidth: "76px",
+    padding: "0 10px",
+    fontSize: "12px",
+    borderRadius: "999px",
   },
   backButton: {
     minWidth: "32px",
@@ -61,7 +89,7 @@ const useStyles = makeStyles({
     transition: "all 0.15s ease",
     ":hover": {
       backgroundColor: "var(--colorNeutralBackground1Hover)",
-      borderColor: "var(--colorNeutralStroke1Hover)",
+      border: "1px solid var(--colorNeutralStroke1Hover)",
     },
   },
   sessionContent: {
@@ -116,6 +144,7 @@ function formatDate(dateString: string): string {
 export const SessionHistory: React.FC<SessionHistoryProps> = ({
   host,
   shared,
+  onSharedChange,
   onSelectSession,
   onClose,
 }) => {
@@ -145,7 +174,26 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
         />
         <Text className={styles.headerTitle}>{hostLabel} History</Text>
       </div>
-      
+      <div className={styles.filterRow}>
+        <Text className={styles.filterLabel}>Show</Text>
+        <div className={styles.filterGroup}>
+          <Button
+            appearance={shared ? "subtle" : "primary"}
+            className={styles.filterButton}
+            onClick={() => onSharedChange(false)}
+          >
+            This app
+          </Button>
+          <Button
+            appearance={shared ? "primary" : "subtle"}
+            className={styles.filterButton}
+            onClick={() => onSharedChange(true)}
+          >
+            All history
+          </Button>
+        </div>
+      </div>
+
       <div className={styles.list}>
         {sessions.length === 0 ? (
           <div className={styles.emptyState}>

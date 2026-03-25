@@ -51,6 +51,56 @@ function pickDefaultModel(models: { key: string }[]): ModelType {
   return models[0]?.key || FALLBACK_MODELS[0].key;
 }
 
+const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
+- Use get_presentation_overview first to understand the deck before editing
+- Use get_presentation_content to inspect slide text and get_slide_image when visual layout, spacing, or styling matters
+- Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
+- Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
+- For meaningful slide creation or major visual edits, treat visual QA as required, not optional
+- After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
+- Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content
+- If the reviewer finds issues, fix them and re-check the affected slides before declaring success
+- When launching the reviewer, clearly say it is a fresh-eyes pass so the user can see that subagent work is happening`;
+
+function getEnabledTools(host: OfficeHost) {
+  const tools = Object.fromEntries(
+    getToolNamesForHost(host).map((name) => [name, true]),
+  ) as Record<string, boolean>;
+
+  if (host === "powerpoint") {
+    tools.task = true;
+  }
+
+  return tools;
+}
+
+function describeToolActivity(toolName: string, toolArgs: Record<string, unknown>) {
+  if (toolName === "task") {
+    const subagentType = typeof toolArgs.subagent_type === "string" ? toolArgs.subagent_type : "subagent";
+    const description = typeof toolArgs.description === "string" ? toolArgs.description : "Working";
+    return `Launching ${subagentType} reviewer: ${description}`;
+  }
+
+  return `Calling ${toolName}...`;
+}
+
+function previewEvent(eventType: string, data: Record<string, unknown>) {
+  if (eventType === "assistant.message_delta") return String(data.deltaContent || "").slice(0, 80);
+  if (eventType === "assistant.message") return String(data.content || "").slice(0, 80);
+  if (eventType === "tool.execution_start") {
+    const toolName = String(data.toolName || "");
+    if (toolName === "task") {
+      const args = (data.arguments || {}) as Record<string, unknown>;
+      const subagentType = typeof args.subagent_type === "string" ? args.subagent_type : "subagent";
+      const description = typeof args.description === "string" ? args.description : "Working";
+      return `${subagentType}: ${description}`.slice(0, 100);
+    }
+    return toolName;
+  }
+  if (eventType === "session.error") return String(data.message || "").slice(0, 80);
+  return JSON.stringify(data).slice(0, 100);
+}
+
 function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostType]) {
   const hostName = host === Office.HostType.PowerPoint
     ? "PowerPoint"
@@ -64,10 +114,7 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
 
 Use the available ${hostName} tools to inspect or update the active document directly. Do not ask for file paths, exports, or saved files on disk.
 
-${host === Office.HostType.PowerPoint ? `For PowerPoint:
-- Use get_presentation_overview first to understand the deck
-- Use get_presentation_content to inspect slide text
-- Use get_slide_image when visual layout matters` : ""}
+${host === Office.HostType.PowerPoint ? POWERPOINT_SYSTEM_GUIDANCE : ""}
 
 ${host === Office.HostType.Word ? `For Word:
 - Use get_document_overview first to map the document structure
@@ -288,9 +335,7 @@ export const App: React.FC = () => {
 
       const model = availableModels.find((item) => item.key === selectedModel) || FALLBACK_MODELS[0];
       const parts = toPromptParts(userInput, uploads);
-      const tools = Object.fromEntries(
-        getToolNamesForHost(officeHost).map((name) => [name, true]),
-      );
+      const tools = getEnabledTools(officeHost);
 
       if (isFirstUserTurn && userInput.trim()) {
         updateSessionTitle(currentSessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
@@ -306,15 +351,7 @@ export const App: React.FC = () => {
       }, { signal: ctl.signal })) {
         count += 1;
         const data = event.data || {};
-        const preview = event.type === "assistant.message_delta"
-          ? String(data.deltaContent || "").slice(0, 80)
-          : event.type === "assistant.message"
-            ? String(data.content || "").slice(0, 80)
-            : event.type === "tool.execution_start"
-              ? String(data.toolName || "")
-              : event.type === "session.error"
-                ? String(data.message || "")
-                : JSON.stringify(data).slice(0, 100);
+        const preview = previewEvent(event.type, data);
 
         setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
 
@@ -342,7 +379,7 @@ export const App: React.FC = () => {
         if (event.type === "tool.execution_start") {
           const toolName = String(data.toolName || "tool");
           const toolArgs = (data.arguments || {}) as Record<string, unknown>;
-          setCurrentActivity(`Calling ${toolName}...`);
+          setCurrentActivity(describeToolActivity(toolName, toolArgs));
           setMessages((prev) => [...prev, {
             id: String(event.id || crypto.randomUUID()),
             text: JSON.stringify(toolArgs, null, 2),
@@ -446,6 +483,7 @@ export const App: React.FC = () => {
         <SessionHistory
           host={officeHost}
           shared={sharedHistory}
+          onSharedChange={setSharedHistory}
           onSelectSession={handleRestoreSession}
           onClose={() => setShowHistory(false)}
         />
@@ -467,8 +505,6 @@ export const App: React.FC = () => {
           models={availableModels}
           debugEnabled={debugEnabled}
           onDebugChange={setDebugEnabled}
-          sharedHistory={sharedHistory}
-          onSharedHistoryChange={setSharedHistory}
           subtitle={runtimeMode ? `OpenCode ${runtimeMode} • ${getToolNamesForHost(officeHost).length} Office tools` : undefined}
         />
 
