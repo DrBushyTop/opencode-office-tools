@@ -124,12 +124,12 @@ export const App: React.FC = () => {
       setRuntimeMode(status.mode);
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
-      if (!selectedModel) {
+      if (!selectedModel || !models.some((model) => model.key === selectedModel)) {
         setSelectedModel(pickDefaultModel(models));
       }
     } catch {
       setAvailableModels(FALLBACK_MODELS);
-      if (!selectedModel) {
+      if (!selectedModel || !FALLBACK_MODELS.some((model) => model.key === selectedModel)) {
         setSelectedModel(pickDefaultModel(FALLBACK_MODELS));
       }
     }
