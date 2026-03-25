@@ -1,4 +1,4 @@
-import type { Tool } from "@github/copilot-sdk";
+import type { Tool } from "./types";
 
 export const setSelectedRange: Tool = {
   name: "set_selected_range",

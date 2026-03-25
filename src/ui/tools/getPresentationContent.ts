@@ -1,4 +1,4 @@
-import type { Tool } from "@github/copilot-sdk";
+import type { Tool } from "./types";
 import { remoteLog } from "../lib/remoteLog";
 
 const CHUNK_SIZE = 10; // Slides per batch in a single PowerPoint.run()

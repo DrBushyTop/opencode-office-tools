@@ -1,4 +1,4 @@
-import type { Tool } from "@github/copilot-sdk";
+import type { Tool } from "./types";
 
 export const setPresentationContent: Tool = {
   name: "set_presentation_content",
