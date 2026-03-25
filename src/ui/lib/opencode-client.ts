@@ -67,9 +67,14 @@ export class OpencodeClient {
 
     eventSource.onmessage = (message) => {
       trafficStats.bytesIn += message.data.length;
-      const event = JSON.parse(message.data);
-      for (const normalized of normalizeOpencodeEvent(event, partTypes)) {
-        push(normalized);
+      try {
+        const event = JSON.parse(message.data);
+        for (const normalized of normalizeOpencodeEvent(event, partTypes)) {
+          push(normalized);
+        }
+      } catch {
+        push({ type: "session.error", data: { message: "Received malformed event data from OpenCode" } });
+        done = true;
       }
     };
 

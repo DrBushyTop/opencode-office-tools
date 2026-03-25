@@ -26,6 +26,77 @@ function configuredBaseUrl() {
   return value ? trimSlash(value) : '';
 }
 
+function parseModelKey(value) {
+  const [providerID, ...rest] = String(value || '').split('/');
+  const modelID = rest.join('/');
+  if (!providerID || !modelID) return null;
+  return { providerID, modelID };
+}
+
+function toModelInfo(provider, model) {
+  const value = `${provider.id}/${model.id}`;
+  return {
+    key: value,
+    label: `${provider.name || provider.id} / ${model.name || model.id}`,
+    providerID: provider.id,
+    modelID: model.id,
+  };
+}
+
+function configuredModels(configProviders, config) {
+  const providerItems = Array.isArray(configProviders?.providers) ? configProviders.providers : [];
+  const defaults = configProviders?.default && typeof configProviders.default === 'object'
+    ? Object.values(configProviders.default)
+    : [];
+  const configured = new Set([config?.model, ...defaults].filter(Boolean));
+
+  if (configured.size === 0) return [];
+
+  const items = [];
+  const seen = new Set();
+
+  for (const key of configured) {
+    const parsed = parseModelKey(key);
+    if (!parsed) continue;
+    const provider = providerItems.find((item) => item.id === parsed.providerID);
+    const model = provider?.models?.[parsed.modelID];
+    const modelInfo = provider && model
+      ? toModelInfo(provider, model)
+      : {
+          key,
+          label: key,
+          providerID: parsed.providerID,
+          modelID: parsed.modelID,
+        };
+
+    if (seen.has(modelInfo.key)) continue;
+    seen.add(modelInfo.key);
+    items.push(modelInfo);
+  }
+
+  return items;
+}
+
+async function readResponseBody(response) {
+  if (response.status === 204 || response.status === 205 || response.status === 304) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (!text) return null;
+
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return JSON.parse(text);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 async function sdk() {
   return import('@opencode-ai/sdk');
 }
@@ -148,22 +219,23 @@ class OpencodeRuntime {
       return response;
     }
 
-    return response.json();
+    return readResponseBody(response);
   }
 
   async listModels() {
+    const [configProviders, config] = await Promise.all([
+      this.request('/config/providers'),
+      this.request('/config').catch(() => null),
+    ]);
+    const narrowed = configuredModels(configProviders, config);
+    if (narrowed.length > 0) return narrowed;
+
     const providers = await this.request('/provider');
     const items = [];
 
     for (const provider of providers.all || []) {
       for (const model of Object.values(provider.models || {})) {
-        const value = `${provider.id}/${model.id}`;
-        items.push({
-          key: value,
-          label: `${provider.name || provider.id} / ${model.name || model.id}`,
-          providerID: provider.id,
-          modelID: model.id,
-        });
+        items.push(toModelInfo(provider, model));
       }
     }
 
@@ -192,6 +264,9 @@ class OpencodeRuntime {
 
 module.exports = {
   OpencodeRuntime,
+  configuredModels,
   officeDirectory,
   officeConfigDirectory,
+  parseModelKey,
+  readResponseBody,
 };
