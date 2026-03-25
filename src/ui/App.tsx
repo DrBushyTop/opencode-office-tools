@@ -69,8 +69,10 @@ ${host === Office.HostType.PowerPoint ? `For PowerPoint:
 - Use get_slide_image when visual layout matters` : ""}
 
 ${host === Office.HostType.Word ? `For Word:
+- Use get_document_overview first to map the document structure
 - Use get_document_content to read the document
-- Use Word tools against the active document instead of asking the user to paste content` : ""}
+- Use get_document_section or selection tools for targeted edits
+- Use mutation tools directly against the active document instead of asking the user to paste content` : ""}
 
 ${host === Office.HostType.Excel ? `For Excel:
 - Use get_workbook_info to understand workbook structure
@@ -252,9 +254,9 @@ export const App: React.FC = () => {
 
       const model = availableModels.find((item) => item.key === selectedModel) || FALLBACK_MODELS[0];
       const parts = toPromptParts(userInput, uploads);
-      const tools = {
-        get_document_content: officeHost === "word",
-      };
+      const tools = Object.fromEntries(
+        getToolNamesForHost(officeHost).map((name) => [name, true]),
+      );
       let count = 0;
 
       for await (const event of client.query(currentSessionId, {

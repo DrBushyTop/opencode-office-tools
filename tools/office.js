@@ -16,10 +16,49 @@ async function execute(host, toolName, args) {
   return JSON.stringify(result.result, null, 2);
 }
 
-exports.get_document_content = {
-  description: 'Read the current Word document.',
-  args: {},
-  async execute(args) {
-    return execute('word', 'get_document_content', args);
-  },
-};
+function word(name, description, args) {
+  return {
+    description,
+    args,
+    async execute(input) {
+      return execute('word', name, input);
+    },
+  };
+}
+
+exports.get_document_overview = word('get_document_overview', 'Get a structural overview of the active Word document.', {});
+exports.get_document_content = word('get_document_content', 'Read the current Word document.', {});
+exports.get_document_section = word('get_document_section', 'Read a specific Word document section by heading.', {
+  headingText: { type: 'string', description: 'Heading text to search for.' },
+  includeSubsections: { type: 'boolean', description: 'Include nested subsections.' },
+});
+exports.set_document_content = word('set_document_content', 'Replace the current Word document with new HTML content.', {
+  html: { type: 'string', description: 'HTML to write into the document.' },
+});
+exports.get_selection = word('get_selection', 'Read the current Word selection as OOXML.', {});
+exports.get_selection_text = word('get_selection_text', 'Read the current Word selection as plain text.', {});
+exports.insert_content_at_selection = word('insert_content_at_selection', 'Insert HTML content at the current Word selection.', {
+  html: { type: 'string', description: 'HTML to insert.' },
+  location: { type: 'string', description: 'Where to insert relative to the current selection.' },
+});
+exports.find_and_replace = word('find_and_replace', 'Find and replace text throughout the active Word document.', {
+  find: { type: 'string', description: 'Text to find.' },
+  replace: { type: 'string', description: 'Replacement text.' },
+  matchCase: { type: 'boolean', description: 'Match case exactly.' },
+  matchWholeWord: { type: 'boolean', description: 'Only match whole words.' },
+});
+exports.insert_table = word('insert_table', 'Insert a table at the current Word selection.', {
+  data: { type: 'array', description: 'Two-dimensional array of table rows.' },
+  hasHeader: { type: 'boolean', description: 'Treat the first row as a header row.' },
+  style: { type: 'string', description: 'Table style.' },
+});
+exports.apply_style_to_selection = word('apply_style_to_selection', 'Apply formatting styles to the current Word selection.', {
+  bold: { type: 'boolean' },
+  italic: { type: 'boolean' },
+  underline: { type: 'boolean' },
+  strikethrough: { type: 'boolean' },
+  fontSize: { type: 'number' },
+  fontName: { type: 'string' },
+  fontColor: { type: 'string' },
+  highlightColor: { type: 'string' },
+});
