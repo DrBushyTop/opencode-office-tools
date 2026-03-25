@@ -115,6 +115,8 @@ async function generateIcons() {
     // Color icons (not Template) for full color appearance
     const trayIcon16 = path.join(assetsDir, 'tray-icon.png');
     const trayIcon32 = path.join(assetsDir, 'tray-icon@2x.png');
+    const trayTemplate16 = path.join(assetsDir, 'tray-iconTemplate.png');
+    const trayTemplate32 = path.join(assetsDir, 'tray-iconTemplate@2x.png');
     
     await sharp(inputFile)
       .resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -127,6 +129,20 @@ async function generateIcons() {
       .png()
       .toFile(trayIcon32);
     console.log(`  ✓ tray-icon@2x.png`);
+
+    await sharp(inputFile)
+      .resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .grayscale()
+      .threshold()
+      .toFile(trayTemplate16);
+    console.log(`  ✓ tray-iconTemplate.png`);
+
+    await sharp(inputFile)
+      .resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .grayscale()
+      .threshold()
+      .toFile(trayTemplate32);
+    console.log(`  ✓ tray-iconTemplate@2x.png`);
   } catch (err) {
     console.log(`  ⚠ Could not generate tray icons: ${err.message}`);
   }
