@@ -7,122 +7,39 @@ export interface OfficeToolDefinition {
   hosts: OfficeToolHost[];
 }
 
+function tool(name: string, description: string, parameters: Record<string, unknown>, hosts: OfficeToolHost[]): OfficeToolDefinition {
+  return { name, description, parameters, hosts };
+}
+
 export const officeToolDefinitions: Record<string, OfficeToolDefinition> = {
-  get_document_overview: {
-    name: "get_document_overview",
-    description: "Get a structural overview of the active Word document.",
-    parameters: { type: "object", properties: {} },
-    hosts: ["word"],
-  },
-  get_document_content: {
-    name: "get_document_content",
-    description: "Read the current Word document.",
-    parameters: { type: "object", properties: {} },
-    hosts: ["word"],
-  },
-  get_document_section: {
-    name: "get_document_section",
-    description: "Read a specific Word document section by heading.",
-    parameters: {
-      type: "object",
-      properties: {
-        headingText: { type: "string", description: "Heading text to search for." },
-        includeSubsections: { type: "boolean", description: "Include nested subsections." },
-      },
-      required: ["headingText"],
-    },
-    hosts: ["word"],
-  },
-  set_document_content: {
-    name: "set_document_content",
-    description: "Replace the current Word document with new HTML content.",
-    parameters: {
-      type: "object",
-      properties: {
-        html: { type: "string", description: "HTML to write into the document." },
-      },
-      required: ["html"],
-    },
-    hosts: ["word"],
-  },
-  get_selection: {
-    name: "get_selection",
-    description: "Read the current Word selection as OOXML.",
-    parameters: { type: "object", properties: {} },
-    hosts: ["word"],
-  },
-  get_selection_text: {
-    name: "get_selection_text",
-    description: "Read the current Word selection as plain text.",
-    parameters: { type: "object", properties: {} },
-    hosts: ["word"],
-  },
-  insert_content_at_selection: {
-    name: "insert_content_at_selection",
-    description: "Insert HTML content at the current Word selection.",
-    parameters: {
-      type: "object",
-      properties: {
-        html: { type: "string", description: "HTML to insert." },
-        location: {
-          type: "string",
-          enum: ["replace", "before", "after", "start", "end"],
-          description: "Where to insert relative to the current selection.",
-        },
-      },
-      required: ["html"],
-    },
-    hosts: ["word"],
-  },
-  find_and_replace: {
-    name: "find_and_replace",
-    description: "Find and replace text throughout the active Word document.",
-    parameters: {
-      type: "object",
-      properties: {
-        find: { type: "string", description: "Text to find." },
-        replace: { type: "string", description: "Replacement text." },
-        matchCase: { type: "boolean", description: "Match case exactly." },
-        matchWholeWord: { type: "boolean", description: "Only match whole words." },
-      },
-      required: ["find", "replace"],
-    },
-    hosts: ["word"],
-  },
-  insert_table: {
-    name: "insert_table",
-    description: "Insert a table at the current Word selection.",
-    parameters: {
-      type: "object",
-      properties: {
-        data: {
-          type: "array",
-          items: { type: "array", items: { type: "string" } },
-          description: "Two-dimensional array of table cell values.",
-        },
-        hasHeader: { type: "boolean", description: "Treat the first row as a header row." },
-        style: { type: "string", enum: ["grid", "striped", "plain"], description: "Table style." },
-      },
-      required: ["data"],
-    },
-    hosts: ["word"],
-  },
-  apply_style_to_selection: {
-    name: "apply_style_to_selection",
-    description: "Apply formatting styles to the current Word selection.",
-    parameters: {
-      type: "object",
-      properties: {
-        bold: { type: "boolean" },
-        italic: { type: "boolean" },
-        underline: { type: "boolean" },
-        strikethrough: { type: "boolean" },
-        fontSize: { type: "number" },
-        fontName: { type: "string" },
-        fontColor: { type: "string" },
-        highlightColor: { type: "string" },
-      },
-    },
-    hosts: ["word"],
-  },
+  get_document_overview: tool("get_document_overview", "Get a structural overview of the active Word document.", { type: "object", properties: {} }, ["word"]),
+  get_document_content: tool("get_document_content", "Read the current Word document.", { type: "object", properties: {} }, ["word"]),
+  get_document_section: tool("get_document_section", "Read a specific Word document section by heading.", { type: "object", properties: { headingText: { type: "string" }, includeSubsections: { type: "boolean" } }, required: ["headingText"] }, ["word"]),
+  set_document_content: tool("set_document_content", "Replace the current Word document with new HTML content.", { type: "object", properties: { html: { type: "string" } }, required: ["html"] }, ["word"]),
+  get_selection: tool("get_selection", "Read the current Word selection as OOXML.", { type: "object", properties: {} }, ["word"]),
+  get_selection_text: tool("get_selection_text", "Read the current Word selection as plain text.", { type: "object", properties: {} }, ["word"]),
+  insert_content_at_selection: tool("insert_content_at_selection", "Insert HTML content at the current Word selection.", { type: "object", properties: { html: { type: "string" }, location: { type: "string", enum: ["replace", "before", "after", "start", "end"] } }, required: ["html"] }, ["word"]),
+  find_and_replace: tool("find_and_replace", "Find and replace text throughout the active Word document.", { type: "object", properties: { find: { type: "string" }, replace: { type: "string" }, matchCase: { type: "boolean" }, matchWholeWord: { type: "boolean" } }, required: ["find", "replace"] }, ["word"]),
+  insert_table: tool("insert_table", "Insert a table at the current Word selection.", { type: "object", properties: { data: { type: "array" }, hasHeader: { type: "boolean" }, style: { type: "string", enum: ["grid", "striped", "plain"] } }, required: ["data"] }, ["word"]),
+  apply_style_to_selection: tool("apply_style_to_selection", "Apply formatting styles to the current Word selection.", { type: "object", properties: { bold: { type: "boolean" }, italic: { type: "boolean" }, underline: { type: "boolean" }, strikethrough: { type: "boolean" }, fontSize: { type: "number" }, fontName: { type: "string" }, fontColor: { type: "string" }, highlightColor: { type: "string" } } }, ["word"]),
+  get_workbook_overview: tool("get_workbook_overview", "Get a structural overview of the active Excel workbook.", { type: "object", properties: {} }, ["excel"]),
+  get_workbook_info: tool("get_workbook_info", "Get workbook metadata including worksheet names and the active sheet.", { type: "object", properties: {} }, ["excel"]),
+  get_workbook_content: tool("get_workbook_content", "Read content from an Excel worksheet or range.", { type: "object", properties: { sheetName: { type: "string" }, range: { type: "string" } } }, ["excel"]),
+  set_workbook_content: tool("set_workbook_content", "Write tabular data to an Excel worksheet range.", { type: "object", properties: { sheetName: { type: "string" }, startCell: { type: "string" }, data: { type: "array" } }, required: ["startCell", "data"] }, ["excel"]),
+  get_selected_range: tool("get_selected_range", "Read the currently selected Excel range.", { type: "object", properties: {} }, ["excel"]),
+  set_selected_range: tool("set_selected_range", "Write values or formulas to the currently selected Excel range.", { type: "object", properties: { data: { type: "array" }, useFormulas: { type: "boolean" } }, required: ["data"] }, ["excel"]),
+  find_and_replace_cells: tool("find_and_replace_cells", "Find and replace text in Excel cells.", { type: "object", properties: { find: { type: "string" }, replace: { type: "string" }, sheetName: { type: "string" }, matchCase: { type: "boolean" }, matchEntireCell: { type: "boolean" } }, required: ["find", "replace"] }, ["excel"]),
+  insert_chart: tool("insert_chart", "Create a chart from data in Excel.", { type: "object", properties: { dataRange: { type: "string" }, chartType: { type: "string", enum: ["column", "bar", "line", "pie", "area", "scatter", "doughnut"] }, title: { type: "string" }, sheetName: { type: "string" } }, required: ["dataRange"] }, ["excel"]),
+  apply_cell_formatting: tool("apply_cell_formatting", "Apply formatting to cells in Excel.", { type: "object", properties: { range: { type: "string" }, sheetName: { type: "string" }, bold: { type: "boolean" }, italic: { type: "boolean" }, underline: { type: "boolean" }, fontSize: { type: "number" }, fontColor: { type: "string" }, backgroundColor: { type: "string" }, numberFormat: { type: "string" }, horizontalAlignment: { type: "string", enum: ["left", "center", "right"] }, borderStyle: { type: "string", enum: ["thin", "medium", "thick", "none"] }, borderColor: { type: "string" } }, required: ["range"] }, ["excel"]),
+  create_named_range: tool("create_named_range", "Create or update a named range in Excel.", { type: "object", properties: { name: { type: "string" }, range: { type: "string" }, comment: { type: "string" } }, required: ["name", "range"] }, ["excel"]),
+  get_presentation_overview: tool("get_presentation_overview", "Get an overview of the PowerPoint deck.", { type: "object", properties: {} }, ["powerpoint"]),
+  get_presentation_content: tool("get_presentation_content", "Read text content from one or more PowerPoint slides.", { type: "object", properties: { slideIndex: { type: "number" }, startIndex: { type: "number" }, endIndex: { type: "number" } } }, ["powerpoint"]),
+  get_slide_image: tool("get_slide_image", "Capture a slide image from PowerPoint.", { type: "object", properties: { slideIndex: { type: "number" }, width: { type: "number" } }, required: ["slideIndex"] }, ["powerpoint"]),
+  get_slide_notes: tool("get_slide_notes", "Read speaker notes from PowerPoint slides.", { type: "object", properties: { slideIndex: { type: "number" } } }, ["powerpoint"]),
+  set_presentation_content: tool("set_presentation_content", "Add text content to a PowerPoint slide.", { type: "object", properties: { slideIndex: { type: "number" }, text: { type: "string" } }, required: ["slideIndex", "text"] }, ["powerpoint"]),
+  add_slide_from_code: tool("add_slide_from_code", "Add or replace a PowerPoint slide from PptxGenJS code.", { type: "object", properties: { code: { type: "string" }, replaceSlideIndex: { type: "number" } }, required: ["code"] }, ["powerpoint"]),
+  clear_slide: tool("clear_slide", "Remove all shapes from a PowerPoint slide.", { type: "object", properties: { slideIndex: { type: "number" } }, required: ["slideIndex"] }, ["powerpoint"]),
+  update_slide_shape: tool("update_slide_shape", "Update the text content of a PowerPoint shape.", { type: "object", properties: { slideIndex: { type: "number" }, shapeIndex: { type: "number" }, text: { type: "string" } }, required: ["slideIndex", "shapeIndex", "text"] }, ["powerpoint"]),
+  set_slide_notes: tool("set_slide_notes", "Add or update PowerPoint speaker notes.", { type: "object", properties: { slideIndex: { type: "number" }, notes: { type: "string" } }, required: ["slideIndex", "notes"] }, ["powerpoint"]),
+  duplicate_slide: tool("duplicate_slide", "Duplicate a PowerPoint slide.", { type: "object", properties: { sourceIndex: { type: "number" }, targetIndex: { type: "number" } }, required: ["sourceIndex"] }, ["powerpoint"]),
 };
