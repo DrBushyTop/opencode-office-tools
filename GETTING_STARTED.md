@@ -25,6 +25,13 @@ cd /path/to/opencode-officeplugins
 npm install
 ```
 
+Optional but useful checks:
+
+```bash
+npm test
+npm run build
+```
+
 ### 2. Register the Add-in
 
 This trusts the SSL certificate and registers the manifest with Office.
@@ -55,6 +62,16 @@ npm run dev
 ```
 
 That starts the local add-in server and points the spawned OpenCode runtime at the bundled `.opencode` config.
+
+If you already have an OpenCode runtime you want the add-in to reuse, set one of these before starting the app:
+
+```bash
+export OPENCODE_OFFICE_RUNTIME_URL=http://127.0.0.1:4096
+# or
+export OPENCODE_RUNTIME_URL=http://127.0.0.1:4096
+```
+
+If neither variable is set, the add-in spawns its own local OpenCode runtime automatically.
 
 ## Adding the Add-in in Office
 1. Confirm you see the OpenCode service running in your macOS or Windows tray.
@@ -89,7 +106,7 @@ https://github.com/user-attachments/assets/5bb771d3-0bf6-4b7b-8e6c-757a085b3131
 ```bash
 npm run dev
 ```
-This starts the development server on port 52390 with hot reload.
+This starts the development server on port 52390 with hot reload and a local Office bridge on port 52391.
 
 ## Uninstalling
 

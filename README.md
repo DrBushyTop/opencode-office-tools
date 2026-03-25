@@ -2,6 +2,8 @@
 
 A Microsoft Office add-in that brings OpenCode into Word, Excel, and PowerPoint.
 
+The add-in starts or attaches to an OpenCode runtime locally, injects the bundled Office tool set from `.opencode/`, and routes tool execution back into the active Office task pane.
+
 ## Getting Started
 
 **👉 See [GETTING_STARTED.md](GETTING_STARTED.md) for setup instructions.**
@@ -35,6 +37,7 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 │   ├── server-prod.js     # Production server (static files)
 │   ├── server/            # OpenCode runtime and Office bridge adapters
 │   └── ui/                # React frontend
+├── .opencode/             # Bundled OpenCode tools and config used by the add-in
 ├── dist/                  # Built frontend assets
 ├── certs/                 # SSL certificates for localhost
 ├── manifest.xml           # Office add-in manifest
@@ -53,6 +56,7 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 | `npm run start` | Run production server standalone |
 | `npm run start:tray` | Run Electron tray app locally |
 | `npm run build` | Build frontend for production |
+| `npm test` | Run focused Vitest coverage for history, permissions, and tool exposure |
 | `npm run build:installer` | Build installer for current platform |
 | `npm run build:installer:mac` | Build macOS .dmg installer |
 | `npm run build:installer:win` | Build Windows .exe installer |
@@ -71,6 +75,10 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 2. Look for the OpenCode icon in the system tray (Windows) or menu bar (macOS)
 3. Restart the Office application
 4. Clear Office cache and try again
+
+### Runtime mode
+- The add-in prefers an attached OpenCode runtime when `OPENCODE_OFFICE_RUNTIME_URL` or `OPENCODE_RUNTIME_URL` is configured and reachable.
+- Otherwise it spawns a local OpenCode runtime using the bundled `.opencode` config.
 
 ### SSL Certificate errors
 1. Re-run the register script or installer
