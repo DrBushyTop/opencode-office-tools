@@ -43,3 +43,9 @@ export const officeToolDefinitions: Record<string, OfficeToolDefinition> = {
   set_slide_notes: tool("set_slide_notes", "Add or update PowerPoint speaker notes.", { type: "object", properties: { slideIndex: { type: "number" }, notes: { type: "string" } }, required: ["slideIndex", "notes"] }, ["powerpoint"]),
   duplicate_slide: tool("duplicate_slide", "Duplicate a PowerPoint slide.", { type: "object", properties: { sourceIndex: { type: "number" }, targetIndex: { type: "number" } }, required: ["sourceIndex"] }, ["powerpoint"]),
 };
+
+export function getOfficeToolNames(host: OfficeToolHost) {
+  return Object.values(officeToolDefinitions)
+    .filter((item) => item.hosts.includes(host))
+    .map((item) => item.name);
+}

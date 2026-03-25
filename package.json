@@ -13,7 +13,8 @@
     "build:installer:win": "npm run clean:extraneous && npm run build && electron-builder --win",
     "build:installer:mac": "npm run clean:extraneous && npm run build && electron-builder --mac",
     "clean:extraneous": "node scripts/clean-extraneous.js",
-    "package:tray": "node scripts/package-tray.js"
+    "package:tray": "node scripts/package-tray.js",
+    "test": "vitest run"
   },
   "pkg": {
     "assets": [],
@@ -108,6 +109,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vite-plugin-html": "^3.2.2",
+    "vitest": "^4.1.1",
     "webpack": "^5.103.0",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.2"
@@ -115,6 +117,7 @@
   "dependencies": {
     "@fluentui/react-components": "^9.72.7",
     "@fluentui/react-icons": "^2.0.315",
+    "@opencode-ai/sdk": "^1.3.2",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "pptxgenjs": "^4.0.1",

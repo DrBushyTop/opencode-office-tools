@@ -40,6 +40,11 @@ function images(parts: any[] = []) {
     .map((part) => ({ dataUrl: part.url || "", name: part.filename || "image" }));
 }
 
+export const sessionHistoryInternals = {
+  text,
+  images,
+};
+
 export function mapMessages(items: any[]): Message[] {
   return items.flatMap((item) => {
     if (item.info?.role === "user") {
