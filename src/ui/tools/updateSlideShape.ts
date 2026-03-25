@@ -1,4 +1,4 @@
-import type { Tool } from "@github/copilot-sdk";
+import type { Tool } from "./types";
 
 export const updateSlideShape: Tool = {
   name: "update_slide_shape",
