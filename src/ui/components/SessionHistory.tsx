@@ -1,12 +1,13 @@
 import * as React from "react";
 import { makeStyles, Button, Text } from "@fluentui/react-components";
 import { Delete24Regular, ArrowLeft24Regular } from "@fluentui/react-icons";
-import type { SavedSession, OfficeHost } from "../sessionStorage";
-import { getSavedSessions, deleteSession } from "../sessionStorage";
+import type { OfficeHost } from "../sessionStorage";
+import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/opencode-session-history";
 
 interface SessionHistoryProps {
   host: OfficeHost;
-  onSelectSession: (session: SavedSession) => void;
+  shared: boolean;
+  onSelectSession: (session: OpencodeSessionInfo) => void;
   onClose: () => void;
 }
 
@@ -114,20 +115,20 @@ function formatDate(dateString: string): string {
 
 export const SessionHistory: React.FC<SessionHistoryProps> = ({
   host,
+  shared,
   onSelectSession,
   onClose,
 }) => {
   const styles = useStyles();
-  const [sessions, setSessions] = React.useState<SavedSession[]>([]);
+  const [sessions, setSessions] = React.useState<OpencodeSessionInfo[]>([]);
 
   React.useEffect(() => {
-    setSessions(getSavedSessions(host));
-  }, [host]);
+    listSessions(host, shared).then(setSessions).catch(() => setSessions([]));
+  }, [host, shared]);
 
   const handleDelete = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
-    deleteSession(host, sessionId);
-    setSessions(getSavedSessions(host));
+    deleteSession(sessionId).then(() => listSessions(host, shared).then(setSessions));
   };
 
   const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : "Excel";
@@ -161,9 +162,9 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
               <div className={styles.sessionContent}>
                 <div className={styles.sessionTitle}>{session.title}</div>
                 <div className={styles.sessionMeta}>
-                  <span>{formatDate(session.updatedAt)}</span>
+                  <span>{formatDate(new Date(session.time.updated).toISOString())}</span>
                   <span>•</span>
-                  <span>{session.messages.filter(m => m.sender === "user").length} messages</span>
+                  <span>{session.directory.split(/[\\/]/).pop() || session.directory}</span>
                 </div>
               </div>
               <Button

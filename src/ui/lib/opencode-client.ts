@@ -40,11 +40,11 @@ export class OpencodeClient {
     return data.models;
   }
 
-  async createSession() {
+  async createSession(input: { title?: string } = {}) {
     return readJson<{ id: string; title: string }>("/api/opencode/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(input),
     });
   }
 

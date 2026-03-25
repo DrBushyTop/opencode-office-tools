@@ -1,11 +1,11 @@
 import * as React from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
-import type { PermissionRequest, PermissionResult } from "../lib/websocket-client";
+import type { OfficePermissionRequest } from "../../shared/office-permissions";
 
 export type PermissionDecision = "allow" | "deny" | "always";
 
 interface PermissionDialogProps {
-  request: PermissionRequest;
+  request: OfficePermissionRequest;
   cwd: string | null;
   onDecision: (decision: PermissionDecision) => void;
 }
@@ -93,25 +93,25 @@ const useStyles = makeStyles({
   },
 });
 
-function getDetail(request: PermissionRequest): string {
-  if (request.kind === "shell") return request.fullCommandText || "";
-  if (request.kind === "write") return request.diff || request.fileName || "";
-  if (request.kind === "read") return request.path || "";
-  if (request.kind === "mcp") {
-    return `${request.serverName || ""}/${request.toolName || ""}\n${
-      typeof request.args === "string" ? request.args : JSON.stringify(request.args, null, 2)
-    }`;
-  }
-  return "";
+function getDetail(request: OfficePermissionRequest): string {
+  return JSON.stringify({
+    permission: request.permission,
+    tool: request.metadata.tool || request.patterns[0],
+    input: request.metadata.input,
+    patterns: request.patterns,
+  }, null, 2);
 }
 
 export const PermissionDialog: React.FC<PermissionDialogProps> = ({
   request,
-  cwd,
   onDecision,
 }) => {
   const styles = useStyles();
-  const meta = KIND_META[request.kind] || KIND_META.read;
+  const meta = request.permission === "doom_loop"
+    ? { icon: "🛑", label: "Repeated Tool Call", color: "#d13438" }
+    : String(request.metadata.tool || request.patterns[0] || "").startsWith("get_")
+      ? KIND_META.read
+      : KIND_META.write;
   const detail = getDetail(request);
 
   return (
@@ -124,9 +124,11 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
           </span>
         </div>
 
-        {request.intention && (
-          <div className={styles.intention}>{request.intention}</div>
-        )}
+        <div className={styles.intention}>
+          {request.permission === "doom_loop"
+            ? "OpenCode wants confirmation before repeating the same tool call again."
+            : `OpenCode wants permission to use ${String(request.metadata.tool || request.patterns[0] || "this tool")}.`}
+        </div>
 
         {detail && (
           <div className={styles.details}>

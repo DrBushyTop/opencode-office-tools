@@ -12,6 +12,8 @@ interface HeaderBarProps {
   models: { key: string; label: string }[];
   debugEnabled: boolean;
   onDebugChange: (v: boolean) => void;
+  sharedHistory: boolean;
+  onSharedHistoryChange: (v: boolean) => void;
   subtitle?: string;
 }
 
@@ -93,6 +95,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   models,
   debugEnabled,
   onDebugChange,
+  sharedHistory,
+  onSharedHistoryChange,
   subtitle,
 }) => {
   const styles = useStyles();
@@ -129,6 +133,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             />
           </div>
         )}
+        <div className={styles.debugRow}>
+          <Switch
+            checked={sharedHistory}
+            onChange={(_, data) => onSharedHistoryChange(data.checked)}
+            label="Shared history"
+            style={{ fontSize: "11px" }}
+          />
+        </div>
         {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
       </div>
       <div className={styles.buttonGroup}>
