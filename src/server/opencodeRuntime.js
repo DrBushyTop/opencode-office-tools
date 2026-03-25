@@ -1,4 +1,3 @@
-const { spawn } = require('child_process');
 const path = require('path');
 const net = require('net');
 
@@ -27,9 +26,8 @@ function configuredBaseUrl() {
   return value ? trimSlash(value) : '';
 }
 
-function readJson(stream) {
-  if (!stream) return;
-  stream.setEncoding('utf8');
+async function sdk() {
+  return import('@opencode-ai/sdk');
 }
 
 function isReachablePort(port) {
@@ -108,67 +106,24 @@ class OpencodeRuntime {
     const port = process.env.OPENCODE_OFFICE_PORT
       ? Number(process.env.OPENCODE_OFFICE_PORT)
       : await getFreePort(DEFAULT_PORT);
-    const baseUrl = `http://${DEFAULT_HOST}:${port}`;
+    const dir = officeConfigDirectory();
+    const env = process.env.OPENCODE_CONFIG_DIR;
+    process.env.OPENCODE_CONFIG_DIR = dir;
 
-    const child = spawn('opencode', [`serve`, `--hostname=${DEFAULT_HOST}`, `--port=${port}`], {
-      env: {
-        ...process.env,
-        NODE_TLS_REJECT_UNAUTHORIZED: '0',
-        OPENCODE_CONFIG_DIR: officeConfigDirectory(),
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    readJson(child.stdout);
-    readJson(child.stderr);
-
-    let output = '';
-    child.stdout.on('data', (chunk) => {
-      output += chunk;
-      const text = chunk.toString().trim();
-      if (text) console.log(`[opencode] ${text}`);
-    });
-    child.stderr.on('data', (chunk) => {
-      output += chunk;
-      const text = chunk.toString().trim();
-      if (text) console.error(`[opencode] ${text}`);
-    });
-
-    const ready = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timed out waiting for OpenCode runtime to start'));
-      }, 15000);
-
-      const stop = () => clearTimeout(timeout);
-      const fail = (error) => {
-        stop();
-        reject(error instanceof Error ? error : new Error(String(error)));
-      };
-
-      child.once('error', fail);
-      child.once('exit', (code) => {
-        fail(new Error(`OpenCode runtime exited with code ${code}${output ? `\n${output}` : ''}`));
+    try {
+      const mod = await sdk();
+      const server = await mod.createOpencodeServer({
+        hostname: DEFAULT_HOST,
+        port,
+        timeout: 15000,
       });
-
-      const check = async () => {
-        try {
-          await this.request('/provider', { baseUrl });
-          stop();
-          resolve({ mode: 'spawned', baseUrl, child });
-        } catch {
-          setTimeout(check, 250);
-        }
-      };
-
-      check();
-    });
-
-    const shutdown = () => {
-      if (!child.killed) child.kill('SIGTERM');
-    };
-    this.cleanup = shutdown;
-
-    return ready;
+      const baseUrl = server.url.replace(/\/+$/, '');
+      this.cleanup = () => server.close();
+      return { mode: 'spawned', baseUrl, server };
+    } finally {
+      if (env) process.env.OPENCODE_CONFIG_DIR = env;
+      else delete process.env.OPENCODE_CONFIG_DIR;
+    }
   }
 
   close() {

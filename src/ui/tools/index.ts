@@ -34,7 +34,7 @@ import { findAndReplaceCells } from "./findAndReplaceCells";
 import { insertChart } from "./insertChart";
 import { applyCellFormatting } from "./applyCellFormatting";
 import { createNamedRange } from "./createNamedRange";
-import { officeToolDefinitions } from "../../shared/office-tool-definitions";
+import { getOfficeToolNames } from "../../shared/office-tool-definitions";
 
 export const wordTools = [
   getDocumentOverview,
@@ -117,7 +117,5 @@ export function getOfficeToolExecutor(host: typeof Office.HostType[keyof typeof 
 }
 
 export function getToolNamesForHost(host: "word" | "powerpoint" | "excel") {
-  return Object.values(officeToolDefinitions)
-    .filter((tool) => tool.hosts.includes(host))
-    .map((tool) => tool.name);
+  return getOfficeToolNames(host);
 }

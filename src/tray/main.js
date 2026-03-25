@@ -43,8 +43,10 @@ function getIconPath() {
 
 async function startServer() {
   try {
-    // Set environment for the server to find its assets
-    process.env.OPENCODE_OFFICE_BASE_PATH = getResourcesPath();
+    const root = getResourcesPath();
+    process.env.OPENCODE_OFFICE_BASE_PATH = root;
+    process.env.OPENCODE_OFFICE_DIRECTORY = root;
+    process.env.OPENCODE_OFFICE_CONFIG_DIR = path.join(root, '.opencode');
     
     // Clear the module cache to allow re-requiring after stop
     const serverModulePath = require.resolve('../server-prod.js');
@@ -65,23 +67,11 @@ async function startServer() {
 
 async function stopServer() {
   if (server) {
-    return new Promise((resolve) => {
-      // Close WebSocket connections first
-      if (server.closeWebSockets) {
-        server.closeWebSockets();
-      }
-      
-      // Force close all connections
-      server.closeAllConnections();
-      
-      server.close(() => {
-        server = null;
-        serverRunning = false;
-        console.log('Server stopped');
-        updateTrayMenu();
-        resolve();
-      });
-    });
+    await server.close?.();
+    server = null;
+    serverRunning = false;
+    console.log('Server stopped');
+    updateTrayMenu();
   }
 }
 
@@ -168,8 +158,5 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', () => {
-  // Cleanup if needed
-  if (server && server.close) {
-    server.close();
-  }
+  server?.close?.();
 });
