@@ -52,8 +52,24 @@ async function createServer() {
   bridgeServer.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`Office bridge available at http://127.0.0.1:${BRIDGE_PORT}/api`);
   });
+
+  const close = () => {
+    runtime.close();
+    httpsServer.close();
+    bridgeServer.close();
+  };
+
+  process.once('SIGINT', () => {
+    close();
+    process.exit(0);
+  });
+  process.once('SIGTERM', () => {
+    close();
+    process.exit(0);
+  });
+
+  return { close };
 }
 
 createServer().catch(console.error);
-
 

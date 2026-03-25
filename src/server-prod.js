@@ -74,7 +74,22 @@ async function createServer() {
     console.log(`Office bridge available at http://127.0.0.1:${BRIDGE_PORT}/api`);
   });
 
-  return httpsServer;
+  const close = () => {
+    runtime.close();
+    httpsServer.close();
+    bridgeServer.close();
+  };
+
+  process.once('SIGINT', () => {
+    close();
+    process.exit(0);
+  });
+  process.once('SIGTERM', () => {
+    close();
+    process.exit(0);
+  });
+
+  return { httpsServer, close };
 }
 
 // Export for use by tray app
