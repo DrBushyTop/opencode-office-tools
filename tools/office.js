@@ -1,10 +1,12 @@
+const { z } = require('zod');
+
 const OFFICE_BRIDGE_URL = process.env.OPENCODE_OFFICE_BRIDGE_URL || 'http://127.0.0.1:52391/api/office-tools/execute';
 
-async function execute(host, toolName, args) {
+async function execute(host, tool, args) {
   const response = await fetch(OFFICE_BRIDGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ host, toolName, args }),
+    body: JSON.stringify({ host, toolName: tool, args }),
   });
 
   if (!response.ok) {
@@ -29,36 +31,36 @@ function word(name, description, args) {
 exports.get_document_overview = word('get_document_overview', 'Get a structural overview of the active Word document.', {});
 exports.get_document_content = word('get_document_content', 'Read the current Word document.', {});
 exports.get_document_section = word('get_document_section', 'Read a specific Word document section by heading.', {
-  headingText: { type: 'string', description: 'Heading text to search for.' },
-  includeSubsections: { type: 'boolean', description: 'Include nested subsections.' },
+  headingText: z.string().describe('Heading text to search for.'),
+  includeSubsections: z.boolean().optional().describe('Include nested subsections.'),
 });
 exports.set_document_content = word('set_document_content', 'Replace the current Word document with new HTML content.', {
-  html: { type: 'string', description: 'HTML to write into the document.' },
+  html: z.string().describe('HTML to write into the document.'),
 });
 exports.get_selection = word('get_selection', 'Read the current Word selection as OOXML.', {});
 exports.get_selection_text = word('get_selection_text', 'Read the current Word selection as plain text.', {});
 exports.insert_content_at_selection = word('insert_content_at_selection', 'Insert HTML content at the current Word selection.', {
-  html: { type: 'string', description: 'HTML to insert.' },
-  location: { type: 'string', description: 'Where to insert relative to the current selection.' },
+  html: z.string().describe('HTML to insert.'),
+  location: z.enum(['replace', 'before', 'after', 'start', 'end']).optional().describe('Where to insert relative to the current selection.'),
 });
 exports.find_and_replace = word('find_and_replace', 'Find and replace text throughout the active Word document.', {
-  find: { type: 'string', description: 'Text to find.' },
-  replace: { type: 'string', description: 'Replacement text.' },
-  matchCase: { type: 'boolean', description: 'Match case exactly.' },
-  matchWholeWord: { type: 'boolean', description: 'Only match whole words.' },
+  find: z.string().describe('Text to find.'),
+  replace: z.string().describe('Replacement text.'),
+  matchCase: z.boolean().optional().describe('Match case exactly.'),
+  matchWholeWord: z.boolean().optional().describe('Only match whole words.'),
 });
 exports.insert_table = word('insert_table', 'Insert a table at the current Word selection.', {
-  data: { type: 'array', description: 'Two-dimensional array of table rows.' },
-  hasHeader: { type: 'boolean', description: 'Treat the first row as a header row.' },
-  style: { type: 'string', description: 'Table style.' },
+  data: z.array(z.array(z.string())).describe('Two-dimensional array of table cell values.'),
+  hasHeader: z.boolean().optional().describe('Treat the first row as a header row.'),
+  style: z.enum(['grid', 'striped', 'plain']).optional().describe('Table style.'),
 });
 exports.apply_style_to_selection = word('apply_style_to_selection', 'Apply formatting styles to the current Word selection.', {
-  bold: { type: 'boolean' },
-  italic: { type: 'boolean' },
-  underline: { type: 'boolean' },
-  strikethrough: { type: 'boolean' },
-  fontSize: { type: 'number' },
-  fontName: { type: 'string' },
-  fontColor: { type: 'string' },
-  highlightColor: { type: 'string' },
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  strikethrough: z.boolean().optional(),
+  fontSize: z.number().optional(),
+  fontName: z.string().optional(),
+  fontColor: z.string().optional(),
+  highlightColor: z.string().optional(),
 });

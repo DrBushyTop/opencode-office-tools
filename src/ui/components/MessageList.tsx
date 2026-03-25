@@ -69,9 +69,41 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "📄",
     format: () => "Reading document",
   },
+  get_document_overview: {
+    icon: "🧭",
+    format: () => "Mapping document structure",
+  },
+  get_document_section: {
+    icon: "📑",
+    format: (args) => `Reading section ${JSON.stringify(args.headingText || "")}`,
+  },
+  get_selection: {
+    icon: "✂️",
+    format: () => "Reading selection markup",
+  },
+  get_selection_text: {
+    icon: "✂️",
+    format: () => "Reading selected text",
+  },
   set_document_content: {
     icon: "✏️",
     format: () => "Updating document",
+  },
+  insert_content_at_selection: {
+    icon: "➕",
+    format: (args) => `Inserting content at ${String(args.location || "replace")}`,
+  },
+  find_and_replace: {
+    icon: "🔁",
+    format: (args) => `Replacing ${JSON.stringify(args.find || "")}`,
+  },
+  insert_table: {
+    icon: "▦",
+    format: () => "Inserting table",
+  },
+  apply_style_to_selection: {
+    icon: "🎨",
+    format: () => "Styling selection",
   },
   get_workbook_info: {
     icon: "📊",

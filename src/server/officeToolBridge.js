@@ -21,6 +21,12 @@ class OfficeToolBridge {
     this.executors.set(host, Date.now());
   }
 
+  hosts() {
+    return Array.from(this.executors.entries())
+      .filter(([, seen]) => Date.now() - seen < 15000)
+      .map(([host]) => host);
+  }
+
   async execute(host, toolName, args = {}) {
     if (!this.hasExecutor(host)) {
       throw new Error(`No active ${host} Office executor is available`);

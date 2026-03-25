@@ -49,6 +49,7 @@ class OpencodeRuntime {
   constructor() {
     this.runtime = null;
     this.starting = null;
+    this.cleanup = null;
   }
 
   directory() {
@@ -156,13 +157,16 @@ class OpencodeRuntime {
     });
 
     const shutdown = () => {
-      if (!child.killed) child.kill();
+      if (!child.killed) child.kill('SIGTERM');
     };
-    process.once('exit', shutdown);
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    this.cleanup = shutdown;
 
     return ready;
+  }
+
+  close() {
+    this.cleanup?.();
+    this.cleanup = null;
   }
 
   async request(url, options = {}) {

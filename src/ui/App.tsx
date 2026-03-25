@@ -161,7 +161,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const startNewSession = async (modelKey: ModelType, restored?: SavedSession) => {
+  const startNewSession = async (_modelKey: ModelType, restored?: SavedSession) => {
     setError("");
     setShowHistory(false);
     setStreamingText("");
@@ -316,6 +316,17 @@ export const App: React.FC = () => {
         }
 
         if (event.type === "tool.execution_complete") {
+          if (data.error) {
+            const text = String(data.error);
+            setCurrentActivity("");
+            setMessages((prev) => [...prev, {
+              id: `tool-error-${Date.now()}`,
+              text: `Tool failed: ${text}`,
+              sender: "assistant",
+              timestamp: new Date(),
+            }]);
+            continue;
+          }
           setCurrentActivity("Processing result...");
           continue;
         }
