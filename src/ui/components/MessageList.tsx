@@ -4,6 +4,7 @@ import { makeStyles } from "@fluentui/react-components";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { trafficStats } from "../lib/opencode-events";
+import { getOfficeToolUi } from "../../shared/office-tool-registry";
 
 export interface Message {
   id: string;
@@ -38,141 +39,7 @@ interface MessageListProps {
   hostLabel?: string;
 }
 
-// Tool display configuration
 const toolConfig: Record<string, { icon: string; format: (args: Record<string, unknown>) => string }> = {
-  get_slide_image: {
-    icon: "📸",
-    format: (args) => `Capturing slide ${(args.slideIndex as number) + 1}`,
-  },
-  get_presentation_overview: {
-    icon: "📊",
-    format: () => "Getting presentation overview",
-  },
-  get_presentation_content: {
-    icon: "📄",
-    format: (args) => {
-      if (args.slideIndex !== undefined) return `Reading slide ${(args.slideIndex as number) + 1}`;
-      if (args.startIndex !== undefined && args.endIndex !== undefined) 
-        return `Reading slides ${(args.startIndex as number) + 1}–${(args.endIndex as number) + 1}`;
-      return "Reading all slides";
-    },
-  },
-  set_presentation_content: {
-    icon: "✏️",
-    format: (args) => `Adding content to slide ${(args.slideIndex as number) + 1}`,
-  },
-  clear_slide: {
-    icon: "🗑️",
-    format: (args) => `Clearing slide ${(args.slideIndex as number) + 1}`,
-  },
-  add_slide_from_code: {
-    icon: "➕",
-    format: () => "Creating new slide",
-  },
-  update_slide_shape: {
-    icon: "✏️",
-    format: (args) => `Updating shape on slide ${(args.slideIndex as number) + 1}`,
-  },
-  get_document_content: {
-    icon: "📄",
-    format: () => "Reading document",
-  },
-  get_document_part: {
-    icon: "🧩",
-    format: (args) => `Reading ${String(args.address || "document part")}`,
-  },
-  get_document_overview: {
-    icon: "🧭",
-    format: () => "Mapping document structure",
-  },
-  get_document_section: {
-    icon: "📑",
-    format: (args) => `Reading section ${JSON.stringify(args.headingText || "")}`,
-  },
-  get_selection: {
-    icon: "✂️",
-    format: () => "Reading selection markup",
-  },
-  get_selection_text: {
-    icon: "✂️",
-    format: () => "Reading selected text",
-  },
-  set_document_content: {
-    icon: "✏️",
-    format: () => "Updating document",
-  },
-  set_document_part: {
-    icon: "🧩",
-    format: (args) => `Updating ${String(args.address || "document part")}`,
-  },
-  insert_content_at_selection: {
-    icon: "➕",
-    format: (args) => `Inserting content at ${String(args.location || "replace")}`,
-  },
-  find_and_replace: {
-    icon: "🔁",
-    format: (args) => `Replacing ${JSON.stringify(args.find || "")}`,
-  },
-  insert_table: {
-    icon: "▦",
-    format: () => "Inserting table",
-  },
-  apply_style_to_selection: {
-    icon: "🎨",
-    format: () => "Styling selection",
-  },
-  get_workbook_info: {
-    icon: "📊",
-    format: () => "Getting workbook structure",
-  },
-  get_workbook_overview: {
-    icon: "🧭",
-    format: () => "Mapping workbook structure",
-  },
-  get_workbook_content: {
-    icon: "📄",
-    format: (args) => args.sheetName ? `Reading "${args.sheetName}"` : "Reading worksheet",
-  },
-  set_workbook_content: {
-    icon: "✏️",
-    format: (args) => args.sheetName ? `Updating "${args.sheetName}"` : "Updating worksheet",
-  },
-  get_selected_range: {
-    icon: "✂️",
-    format: () => "Reading selected range",
-  },
-  set_selected_range: {
-    icon: "✏️",
-    format: () => "Updating selected range",
-  },
-  find_and_replace_cells: {
-    icon: "🔁",
-    format: (args) => `Replacing ${JSON.stringify(args.find || "")}`,
-  },
-  insert_chart: {
-    icon: "📈",
-    format: () => "Creating chart",
-  },
-  apply_cell_formatting: {
-    icon: "🎨",
-    format: () => "Formatting cells",
-  },
-  create_named_range: {
-    icon: "🏷️",
-    format: (args) => `Naming range ${JSON.stringify(args.name || "")}`,
-  },
-  get_slide_notes: {
-    icon: "📝",
-    format: () => "Reading slide notes",
-  },
-  set_slide_notes: {
-    icon: "📝",
-    format: () => "Updating slide notes",
-  },
-  duplicate_slide: {
-    icon: "📑",
-    format: () => "Duplicating slide",
-  },
   web_fetch: {
     icon: "🌐",
     format: (args) => {
@@ -195,7 +62,7 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
 };
 
 function formatToolCall(toolName: string, args: Record<string, unknown>): { icon: string; description: string } {
-  const config = toolConfig[toolName];
+  const config = toolConfig[toolName] || getOfficeToolUi(toolName);
   if (config) {
     return { icon: config.icon, description: config.format(args) };
   }

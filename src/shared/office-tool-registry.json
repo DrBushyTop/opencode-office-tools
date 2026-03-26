@@ -1,0 +1,444 @@
+{
+  "get_document_overview": {
+    "hosts": ["word"],
+    "description": "Get a structural overview of the active Word document.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "🧭", "activity": { "type": "static", "text": "Mapping document structure" } }
+  },
+  "get_document_content": {
+    "hosts": ["word"],
+    "description": "Read the current Word document.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "📄", "activity": { "type": "static", "text": "Reading document" } }
+  },
+  "get_document_part": {
+    "hosts": ["word"],
+    "description": "Read a specific Word document part using an address.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "address": { "type": "string", "description": "Document part address such as headers_footers, section[1], section[1].header.primary, or table_of_contents." },
+        "format": { "type": "string", "enum": ["summary", "text", "html"], "description": "Preferred response format." }
+      },
+      "required": ["address"]
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "address", "prefix": "Reading " } }
+  },
+  "get_document_section": {
+    "hosts": ["word"],
+    "description": "Read a specific Word document section by heading.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "headingText": { "type": "string", "description": "Heading text to search for." },
+        "includeSubsections": { "type": "boolean", "description": "Include nested subsections." }
+      },
+      "required": ["headingText"]
+    },
+    "ui": { "icon": "📑", "activity": { "type": "json_value", "field": "headingText", "prefix": "Reading section " } }
+  },
+  "set_document_content": {
+    "hosts": ["word"],
+    "description": "Replace the current Word document with new HTML content.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "html": { "type": "string", "description": "Full HTML to replace the document body." }
+      },
+      "required": ["html"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "static", "text": "Updating document" } }
+  },
+  "set_document_part": {
+    "hosts": ["word"],
+    "description": "Update a specific Word document part using an address.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "address": { "type": "string", "description": "Document part address such as section[1].header.primary, section[*], or table_of_contents." },
+        "operation": { "type": "string", "enum": ["replace", "append", "clear", "insert", "configure"], "description": "Operation to perform." },
+        "html": { "type": "string", "description": "HTML content to write when updating a body-like part." },
+        "differentFirstPage": { "type": "boolean", "description": "Use different first-page headers and footers for a section target." },
+        "oddAndEvenPages": { "type": "boolean", "description": "Use different odd and even page headers and footers for a section target." },
+        "headerDistance": { "type": "number", "description": "Header distance in points for a section target." },
+        "footerDistance": { "type": "number", "description": "Footer distance in points for a section target." },
+        "location": { "type": "string", "enum": ["replace", "before", "after", "start", "end"], "description": "Placement for TOC insertion." },
+        "upperHeadingLevel": { "type": "number", "description": "Starting heading level for TOC insertion." },
+        "lowerHeadingLevel": { "type": "number", "description": "Ending heading level for TOC insertion." },
+        "includePageNumbers": { "type": "boolean", "description": "Include page numbers in TOC insertion." },
+        "rightAlignPageNumbers": { "type": "boolean", "description": "Right-align page numbers in TOC insertion." },
+        "useHyperlinksOnWeb": { "type": "boolean", "description": "Use hyperlinks for TOC entries on web publishing." }
+      },
+      "required": ["address"]
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "address", "prefix": "Updating " } }
+  },
+  "get_selection": {
+    "hosts": ["word"],
+    "description": "Read the current Word selection as OOXML.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selection markup" } }
+  },
+  "get_selection_text": {
+    "hosts": ["word"],
+    "description": "Read the current Word selection as plain text.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selected text" } }
+  },
+  "insert_content_at_selection": {
+    "hosts": ["word"],
+    "description": "Insert HTML content at the current Word selection.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "html": { "type": "string", "description": "HTML content to insert." },
+        "location": { "type": "string", "enum": ["replace", "before", "after", "start", "end"], "description": "Where to insert relative to the current selection." }
+      },
+      "required": ["html"]
+    },
+    "ui": { "icon": "➕", "activity": { "type": "field_or_default", "field": "location", "prefix": "Inserting content at ", "default": "replace" } }
+  },
+  "find_and_replace": {
+    "hosts": ["word"],
+    "description": "Find and replace text throughout the active Word document.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "find": { "type": "string", "description": "Text to find." },
+        "replace": { "type": "string", "description": "Replacement text." },
+        "matchCase": { "type": "boolean", "description": "Match case exactly." },
+        "matchWholeWord": { "type": "boolean", "description": "Match whole words only." }
+      },
+      "required": ["find", "replace"]
+    },
+    "ui": { "icon": "🔁", "activity": { "type": "json_value", "field": "find", "prefix": "Replacing " } }
+  },
+  "insert_table": {
+    "hosts": ["word"],
+    "description": "Insert a table at the current Word selection.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Two-dimensional array of table cell values."
+        },
+        "hasHeader": { "type": "boolean", "description": "Treat the first row as a header row." },
+        "style": { "type": "string", "enum": ["grid", "striped", "plain"], "description": "Table style." }
+      },
+      "required": ["data"]
+    },
+    "ui": { "icon": "▦", "activity": { "type": "static", "text": "Inserting table" } }
+  },
+  "apply_style_to_selection": {
+    "hosts": ["word"],
+    "description": "Apply formatting styles to the current Word selection.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "boolean" },
+        "strikethrough": { "type": "boolean" },
+        "fontSize": { "type": "number" },
+        "fontName": { "type": "string" },
+        "fontColor": { "type": "string" },
+        "highlightColor": { "type": "string" }
+      }
+    },
+    "ui": { "icon": "🎨", "activity": { "type": "static", "text": "Styling selection" } }
+  },
+  "get_workbook_overview": {
+    "hosts": ["excel"],
+    "description": "Get a structural overview of the active Excel workbook.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "🧭", "activity": { "type": "static", "text": "Mapping workbook structure" } }
+  },
+  "get_workbook_info": {
+    "hosts": ["excel"],
+    "description": "Get workbook metadata including worksheet names and the active sheet.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "📊", "activity": { "type": "static", "text": "Getting workbook structure" } }
+  },
+  "get_workbook_content": {
+    "hosts": ["excel"],
+    "description": "Read content from an Excel worksheet or range.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sheetName": { "type": "string", "description": "Worksheet name to read. Defaults to the active sheet." },
+        "range": { "type": "string", "description": "Optional cell range such as A1:D10." }
+      }
+    },
+    "ui": { "icon": "📄", "activity": { "type": "sheet_name_or_default", "field": "sheetName", "prefix": "Reading ", "default": "Reading worksheet" } }
+  },
+  "set_workbook_content": {
+    "hosts": ["excel"],
+    "description": "Write tabular data to an Excel worksheet range.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sheetName": { "type": "string", "description": "Worksheet name to write. Defaults to the active sheet." },
+        "startCell": { "type": "string", "description": "Starting cell such as A1." },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
+          },
+          "description": "Two-dimensional array of cell values."
+        }
+      },
+      "required": ["startCell", "data"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "sheet_name_or_default", "field": "sheetName", "prefix": "Updating ", "default": "Updating worksheet" } }
+  },
+  "get_selected_range": {
+    "hosts": ["excel"],
+    "description": "Read the currently selected Excel range.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selected range" } }
+  },
+  "set_selected_range": {
+    "hosts": ["excel"],
+    "description": "Write values or formulas to the currently selected Excel range.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
+          },
+          "description": "Two-dimensional array of values to write."
+        },
+        "useFormulas": { "type": "boolean", "description": "Treat strings starting with = as formulas." }
+      },
+      "required": ["data"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "static", "text": "Updating selected range" } }
+  },
+  "find_and_replace_cells": {
+    "hosts": ["excel"],
+    "description": "Find and replace text in Excel cells.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "find": { "type": "string", "description": "Text to find." },
+        "replace": { "type": "string", "description": "Replacement text." },
+        "sheetName": { "type": "string", "description": "Optional worksheet name." },
+        "matchCase": { "type": "boolean", "description": "Match case exactly." },
+        "matchEntireCell": { "type": "boolean", "description": "Match the entire cell value." }
+      },
+      "required": ["find", "replace"]
+    },
+    "ui": { "icon": "🔁", "activity": { "type": "json_value", "field": "find", "prefix": "Replacing " } }
+  },
+  "insert_chart": {
+    "hosts": ["excel"],
+    "description": "Create a chart from data in Excel.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "dataRange": { "type": "string", "description": "Data range for the chart." },
+        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie", "area", "scatter", "doughnut"], "description": "Chart type." },
+        "title": { "type": "string", "description": "Optional chart title." },
+        "sheetName": { "type": "string", "description": "Worksheet name to use." }
+      },
+      "required": ["dataRange"]
+    },
+    "ui": { "icon": "📈", "activity": { "type": "static", "text": "Creating chart" } }
+  },
+  "apply_cell_formatting": {
+    "hosts": ["excel"],
+    "description": "Apply formatting to cells in Excel.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "range": { "type": "string", "description": "Cell range to format." },
+        "sheetName": { "type": "string", "description": "Worksheet name. Defaults to the active sheet." },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "boolean" },
+        "fontSize": { "type": "number" },
+        "fontColor": { "type": "string" },
+        "backgroundColor": { "type": "string" },
+        "numberFormat": { "type": "string" },
+        "horizontalAlignment": { "type": "string", "enum": ["left", "center", "right"] },
+        "borderStyle": { "type": "string", "enum": ["thin", "medium", "thick", "none"] },
+        "borderColor": { "type": "string" }
+      },
+      "required": ["range"]
+    },
+    "ui": { "icon": "🎨", "activity": { "type": "static", "text": "Formatting cells" } }
+  },
+  "create_named_range": {
+    "hosts": ["excel"],
+    "description": "Create or update a named range in Excel.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Range name." },
+        "range": { "type": "string", "description": "Cell range." },
+        "comment": { "type": "string", "description": "Optional description." }
+      },
+      "required": ["name", "range"]
+    },
+    "ui": { "icon": "🏷️", "activity": { "type": "json_value", "field": "name", "prefix": "Naming range " } }
+  },
+  "get_presentation_overview": {
+    "hosts": ["powerpoint"],
+    "description": "Get an overview of the PowerPoint deck.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "📊", "activity": { "type": "static", "text": "Getting presentation overview" } }
+  },
+  "get_presentation_content": {
+    "hosts": ["powerpoint"],
+    "description": "Read text content from one or more PowerPoint slides.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "Single 0-based slide index to read." },
+        "startIndex": { "type": "number", "description": "Start of a slide range." },
+        "endIndex": { "type": "number", "description": "End of a slide range, inclusive." }
+      }
+    },
+    "ui": { "icon": "📄", "activity": { "type": "presentation_content_range" } }
+  },
+  "get_slide_image": {
+    "hosts": ["powerpoint"],
+    "description": "Capture a slide image from PowerPoint.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index to capture." },
+        "width": { "type": "number", "description": "Optional image width." }
+      },
+      "required": ["slideIndex"]
+    },
+    "ui": { "icon": "📸", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Capturing slide ", "suffix": "" } }
+  },
+  "get_slide_notes": {
+    "hosts": ["powerpoint"],
+    "description": "Read speaker notes from PowerPoint slides.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "Optional 0-based slide index." }
+      }
+    },
+    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Reading slide notes" } }
+  },
+  "set_presentation_content": {
+    "hosts": ["powerpoint"],
+    "description": "Add text content to a PowerPoint slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "text": { "type": "string", "description": "Text to add." }
+      },
+      "required": ["slideIndex", "text"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Adding content to slide ", "suffix": "" } }
+  },
+  "add_slide_from_code": {
+    "hosts": ["powerpoint"],
+    "description": "Add or replace a PowerPoint slide from PptxGenJS code.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "PptxGenJS slide-building code." },
+        "replaceSlideIndex": { "type": "number", "description": "Optional slide index to replace." }
+      },
+      "required": ["code"]
+    },
+    "ui": { "icon": "➕", "activity": { "type": "static", "text": "Creating new slide" } }
+  },
+  "clear_slide": {
+    "hosts": ["powerpoint"],
+    "description": "Remove all shapes from a PowerPoint slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index to clear." }
+      },
+      "required": ["slideIndex"]
+    },
+    "ui": { "icon": "🗑️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Clearing slide ", "suffix": "" } }
+  },
+  "update_slide_shape": {
+    "hosts": ["powerpoint"],
+    "description": "Update the text content of a PowerPoint shape.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "shapeIndex": { "type": "number", "description": "0-based shape index." },
+        "text": { "type": "string", "description": "Replacement text." }
+      },
+      "required": ["slideIndex", "shapeIndex", "text"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating shape on slide ", "suffix": "" } }
+  },
+  "set_slide_notes": {
+    "hosts": ["powerpoint"],
+    "description": "Add or update PowerPoint speaker notes.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "notes": { "type": "string", "description": "Speaker notes text." }
+      },
+      "required": ["slideIndex", "notes"]
+    },
+    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Updating slide notes" } }
+  },
+  "duplicate_slide": {
+    "hosts": ["powerpoint"],
+    "description": "Duplicate a PowerPoint slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sourceIndex": { "type": "number", "description": "0-based slide index to duplicate." },
+        "targetIndex": { "type": "number", "description": "Optional 0-based insertion index." }
+      },
+      "required": ["sourceIndex"]
+    },
+    "ui": { "icon": "📑", "activity": { "type": "static", "text": "Duplicating slide" } }
+  }
+}

@@ -38,6 +38,43 @@ import { applyCellFormatting } from "./applyCellFormatting";
 import { createNamedRange } from "./createNamedRange";
 import { getOfficeToolNames } from "../../shared/office-tool-definitions";
 
+const officeToolHandlers = {
+  [getDocumentOverview.name]: getDocumentOverview,
+  [getDocumentContent.name]: getDocumentContent,
+  [getDocumentPart.name]: getDocumentPart,
+  [getDocumentSection.name]: getDocumentSection,
+  [setDocumentContent.name]: setDocumentContent,
+  [setDocumentPart.name]: setDocumentPart,
+  [getSelection.name]: getSelection,
+  [getSelectionText.name]: getSelectionText,
+  [insertContentAtSelection.name]: insertContentAtSelection,
+  [findAndReplace.name]: findAndReplace,
+  [insertTable.name]: insertTable,
+  [applyStyleToSelection.name]: applyStyleToSelection,
+  [getWorkbookOverview.name]: getWorkbookOverview,
+  [getWorkbookInfo.name]: getWorkbookInfo,
+  [getWorkbookContent.name]: getWorkbookContent,
+  [setWorkbookContent.name]: setWorkbookContent,
+  [getSelectedRange.name]: getSelectedRange,
+  [setSelectedRange.name]: setSelectedRange,
+  [findAndReplaceCells.name]: findAndReplaceCells,
+  [insertChart.name]: insertChart,
+  [applyCellFormatting.name]: applyCellFormatting,
+  [createNamedRange.name]: createNamedRange,
+  [getPresentationOverview.name]: getPresentationOverview,
+  [getPresentationContent.name]: getPresentationContent,
+  [getSlideImage.name]: getSlideImage,
+  [getSlideNotes.name]: getSlideNotes,
+  [setPresentationContent.name]: setPresentationContent,
+  [addSlideFromCode.name]: addSlideFromCode,
+  [clearSlide.name]: clearSlide,
+  [updateSlideShape.name]: updateSlideShape,
+  [setSlideNotes.name]: setSlideNotes,
+  [duplicateSlide.name]: duplicateSlide,
+};
+
+export const allOfficeTools = Object.values(officeToolHandlers);
+
 export const wordTools = [
   getDocumentOverview,
   getDocumentContent,
@@ -80,16 +117,23 @@ export const excelTools = [
 ];
 
 export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office.HostType]) {
-  switch (host) {
-    case Office.HostType.Word:
-      return wordTools;
-    case Office.HostType.PowerPoint:
-      return powerpointTools;
-    case Office.HostType.Excel:
-      return excelTools;
-    default:
-      return [];
-  }
+  const registryHost = host === Office.HostType.Word
+    ? "word"
+    : host === Office.HostType.PowerPoint
+      ? "powerpoint"
+      : host === Office.HostType.Excel
+        ? "excel"
+        : null;
+
+  if (!registryHost) return [];
+
+  return getOfficeToolNames(registryHost).map((name) => {
+    const tool = officeToolHandlers[name as keyof typeof officeToolHandlers];
+    if (!tool) {
+      throw new Error(`Missing Office tool handler for '${name}'`);
+    }
+    return tool;
+  });
 }
 
 export function getOfficeToolExecutor(host: typeof Office.HostType[keyof typeof Office.HostType]) {
