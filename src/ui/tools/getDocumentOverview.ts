@@ -1,15 +1,18 @@
 import type { Tool } from "./types";
+import { isWordDesktopRequirementSetSupported, toolFailure } from "./wordShared";
 
 export const getDocumentOverview: Tool = {
   name: "get_document_overview",
   description: `Get a structural overview of the Word document. Use this first to understand the document before reading or editing specific sections.
 
-Returns:
-- Total word count and paragraph count
-- Heading structure (H1, H2, H3 hierarchy with text)
-- Table count
-- List count (bulleted and numbered)
-- Content control count
+ Returns:
+ - Total word count and paragraph count
+ - Section count
+ - Heading structure (H1, H2, H3 hierarchy with text)
+ - Table count
+ - Native table of contents count when supported
+ - List count (bulleted and numbered)
+ - Content control count
 
 This is faster than reading the entire document and helps you understand what to target for edits.`,
   parameters: {
@@ -20,9 +23,16 @@ This is faster than reading the entire document and helps you understand what to
     try {
       return await Word.run(async (context) => {
         const body = context.document.body;
+        const sections = context.document.sections;
+        const canReadTocs = isWordDesktopRequirementSetSupported("1.4");
+        const tablesOfContents = canReadTocs ? context.document.tablesOfContents : null;
         
         // Load basic stats
         body.load("text");
+        sections.load("items");
+        if (tablesOfContents) {
+          tablesOfContents.load("items");
+        }
         
         // Get all paragraphs with their styles
         const paragraphs = body.paragraphs;
@@ -80,7 +90,11 @@ This is faster than reading the entire document and helps you understand what to
         output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
         output += `Words: ${wordCount.toLocaleString()}\n`;
         output += `Paragraphs: ${paragraphCount}\n`;
+        output += `Sections: ${sections.items.length}\n`;
         output += `Tables: ${tableCount}\n`;
+        if (tablesOfContents) {
+          output += `Tables of contents: ${tablesOfContents.items.length}\n`;
+        }
         output += `List items: ${listCount}\n`;
         if (contentControlCount > 0) {
           output += `Content controls: ${contentControlCount}\n`;
@@ -96,8 +110,8 @@ This is faster than reading the entire document and helps you understand what to
         
         return output;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

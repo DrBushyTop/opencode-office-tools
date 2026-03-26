@@ -22,6 +22,9 @@ import { findAndReplace } from "./findAndReplace";
 import { getDocumentSection } from "./getDocumentSection";
 import { insertTable } from "./insertTable";
 import { applyStyleToSelection } from "./applyStyleToSelection";
+import { getDocumentHeadersFooters } from "./getDocumentHeadersFooters";
+import { setSectionHeaderFooter } from "./setSectionHeaderFooter";
+import { insertTableOfContents } from "./insertTableOfContents";
 
 // New PowerPoint tools
 import { getSlideNotes } from "./getSlideNotes";
@@ -39,13 +42,16 @@ import { getOfficeToolNames } from "../../shared/office-tool-definitions";
 export const wordTools = [
   getDocumentOverview,
   getDocumentContent,
+  getDocumentHeadersFooters,
   getDocumentSection,
   setDocumentContent,
+  setSectionHeaderFooter,
   getSelection,
   getSelectionText,
   insertContentAtSelection,
   findAndReplace,
   insertTable,
+  insertTableOfContents,
   applyStyleToSelection,
 ];
 

@@ -24,7 +24,8 @@ export interface DebugEvent {
 function summarizeTaskTool(args: Record<string, unknown>) {
   const subagentType = typeof args.subagent_type === "string" ? args.subagent_type : "subagent";
   const description = typeof args.description === "string" ? args.description : "Working";
-  return `${subagentType}: ${description}`;
+  const prefix = /fresh[ -]?eyes|verif|review|qa/i.test(description) ? "Verification" : "Subagent";
+  return `${prefix}: ${subagentType}: ${description}`;
 }
 
 interface MessageListProps {
@@ -76,6 +77,10 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "📄",
     format: () => "Reading document",
   },
+  get_document_headers_footers: {
+    icon: "🪧",
+    format: () => "Inspecting headers and footers",
+  },
   get_document_overview: {
     icon: "🧭",
     format: () => "Mapping document structure",
@@ -96,6 +101,10 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "✏️",
     format: () => "Updating document",
   },
+  set_section_header_footer: {
+    icon: "🪧",
+    format: (args) => `Updating ${String(args.type || "primary")} ${String(args.target || "header")}`,
+  },
   insert_content_at_selection: {
     icon: "➕",
     format: (args) => `Inserting content at ${String(args.location || "replace")}`,
@@ -107,6 +116,10 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
   insert_table: {
     icon: "▦",
     format: () => "Inserting table",
+  },
+  insert_table_of_contents: {
+    icon: "≣",
+    format: () => "Inserting table of contents",
   },
   apply_style_to_selection: {
     icon: "🎨",
@@ -181,7 +194,7 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
   },
   task: {
     icon: "🧠",
-    format: (args) => `Fresh eyes: ${summarizeTaskTool(args)}`,
+    format: (args) => summarizeTaskTool(args),
   },
 };
 
