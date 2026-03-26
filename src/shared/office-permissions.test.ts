@@ -25,8 +25,8 @@ describe("office permissions", () => {
       id: "2b",
       sessionID: "s",
       permission: "tool",
-      patterns: ["get_document_headers_footers"],
-      metadata: { tool: "get_document_headers_footers" },
+      patterns: ["get_document_part"],
+      metadata: { tool: "get_document_part" },
       always: [],
     })).toBe(true);
   });
@@ -45,8 +45,8 @@ describe("office permissions", () => {
       id: "4",
       sessionID: "s",
       permission: "tool",
-      patterns: ["set_section_header_footer"],
-      metadata: { tool: "set_section_header_footer" },
+      patterns: ["set_document_part"],
+      metadata: { tool: "set_document_part" },
       always: [],
     })).toBe(false);
   });

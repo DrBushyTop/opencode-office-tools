@@ -117,7 +117,9 @@ const VERIFICATION_SYSTEM_GUIDANCE = `Verification:
 - After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
 - Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
 - Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
+- Re-read the exact mutated surface during verification: the same Word address, Excel range/sheet, or PowerPoint slides you changed
 - If Task approval is denied or the tool is unavailable, do a manual readback verification with the host tools and explicitly say fresh-eyes review could not run
+- For read-only requests, skip the verification pass unless you had to infer or reconstruct missing structure
 - If the verifier finds problems, fix them and run the verification pass again on the affected areas`;
 
 function getEnabledTools(host: OfficeHost) {
@@ -179,8 +181,8 @@ ${host === Office.HostType.Word ? `For Word:
 - Use get_document_content to read the document
 - Use get_document_section or selection tools for targeted edits
 - Use mutation tools directly against the active document instead of asking the user to paste content
-- Use get_document_headers_footers and set_section_header_footer for section boilerplate instead of rebuilding the whole document body
-- Use insert_table_of_contents when the document needs a native Word TOC` : ""}
+- Use get_document_part and set_document_part for section headers, footers, section setup, and native table of contents work
+- Prefer addresses like section[1].header.primary, section[*], headers_footers, and table_of_contents` : ""}
 
 ${host === Office.HostType.Excel ? `For Excel:
 - Use get_workbook_info to understand workbook structure

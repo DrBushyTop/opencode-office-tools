@@ -8,8 +8,10 @@ This document lists all available tools that OpenCode can use when working with 
 |------|-------------|
 | `get_document_overview` | Get a structural overview of the document including word count, heading hierarchy, table count, and list count. Use this first to understand the document structure. |
 | `get_document_content` | Get the full HTML content of the Word document. |
+| `get_document_part` | Read generic Word document parts by address, including `headers_footers`, `section[1]`, `section[1].header.primary`, and `table_of_contents`. |
 | `get_document_section` | Read content of a specific section by heading name. More efficient than reading the entire document. |
 | `set_document_content` | Replace the entire document body with new HTML content. |
+| `set_document_part` | Update generic Word document parts by address for header/footer content, section page setup, and native table of contents insertion. |
 | `get_selection` | Get the currently selected content as OOXML. |
 | `get_selection_text` | Get the currently selected text as plain readable text. |
 | `insert_content_at_selection` | Insert HTML content at the cursor position (before, after, or replace selection). |
@@ -70,6 +72,13 @@ This helps OpenCode understand your document structure before making targeted re
 ### Surgical Edits vs Full Replacement
 - **Surgical**: Use `insert_content_at_selection`, `find_and_replace`, `update_slide_shape` for targeted changes
 - **Full replacement**: Use `set_document_content`, `add_slide_from_code` when rebuilding content
+
+### Word: Generic Part Addressing
+When working with advanced Word structure, prefer document-part addresses:
+- `headers_footers` for a cross-section summary
+- `section[1]` or `section[*]` for section-level page setup
+- `section[1].header.primary` or `section[2].footer.firstPage` for boilerplate areas
+- `table_of_contents` for native TOC insertion or inspection
 
 ### PowerPoint: Code-Based Slide Creation
 The `add_slide_from_code` tool is the most powerful way to create slides. It accepts JavaScript code using the PptxGenJS API:
