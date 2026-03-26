@@ -113,14 +113,19 @@ const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
 - If the reviewer finds issues, fix them and re-check the affected slides before declaring success
 - When launching the reviewer, clearly say it is a fresh-eyes pass so the user can see that subagent work is happening`;
 
+const VERIFICATION_SYSTEM_GUIDANCE = `Verification:
+- After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
+- Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
+- Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
+- If Task approval is denied or the tool is unavailable, do a manual readback verification with the host tools and explicitly say fresh-eyes review could not run
+- If the verifier finds problems, fix them and run the verification pass again on the affected areas`;
+
 function getEnabledTools(host: OfficeHost) {
   const tools = Object.fromEntries(
     getToolNamesForHost(host).map((name) => [name, true]),
   ) as Record<string, boolean>;
 
-  if (host === "powerpoint") {
-    tools.task = true;
-  }
+  tools.task = true;
 
   return tools;
 }
@@ -129,7 +134,7 @@ function describeToolActivity(toolName: string, toolArgs: Record<string, unknown
   if (toolName === "task") {
     const subagentType = typeof toolArgs.subagent_type === "string" ? toolArgs.subagent_type : "subagent";
     const description = typeof toolArgs.description === "string" ? toolArgs.description : "Working";
-    return `Launching ${subagentType} reviewer: ${description}`;
+    return `Launching ${subagentType}: ${description}`;
   }
 
   return `Calling ${toolName}...`;
@@ -167,15 +172,20 @@ Use the available ${hostName} tools to inspect or update the active document dir
 
 ${host === Office.HostType.PowerPoint ? POWERPOINT_SYSTEM_GUIDANCE : ""}
 
+${VERIFICATION_SYSTEM_GUIDANCE}
+
 ${host === Office.HostType.Word ? `For Word:
 - Use get_document_overview first to map the document structure
 - Use get_document_content to read the document
 - Use get_document_section or selection tools for targeted edits
-- Use mutation tools directly against the active document instead of asking the user to paste content` : ""}
+- Use mutation tools directly against the active document instead of asking the user to paste content
+- Use get_document_headers_footers and set_section_header_footer for section boilerplate instead of rebuilding the whole document body
+- Use insert_table_of_contents when the document needs a native Word TOC` : ""}
 
 ${host === Office.HostType.Excel ? `For Excel:
 - Use get_workbook_info to understand workbook structure
-- Use get_workbook_content to inspect sheet data before making changes` : ""}
+- Use get_workbook_content to inspect sheet data before making changes
+- After mutations, use a verification pass to re-read the affected ranges, formulas, charts, or named ranges` : ""}
 
 Always operate on the open document through tools.`;
 }
@@ -334,8 +344,9 @@ export const App: React.FC = () => {
 
   const handleModelChange = (model: ModelType) => {
     setSelectedModel(model);
-    setCurrentSessionId("");
-    void startNewSession(model);
+    if (!currentSessionId) {
+      void startNewSession(model);
+    }
   };
 
   const handleSend = async () => {

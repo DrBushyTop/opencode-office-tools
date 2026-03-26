@@ -20,6 +20,15 @@ describe("office permissions", () => {
       metadata: { tool: "get_presentation_overview" },
       always: [],
     })).toBe(true);
+
+    expect(canAutoApprove({
+      id: "2b",
+      sessionID: "s",
+      permission: "tool",
+      patterns: ["get_document_headers_footers"],
+      metadata: { tool: "get_document_headers_footers" },
+      always: [],
+    })).toBe(true);
   });
 
   it("keeps mutating tools interactive", () => {
@@ -29,6 +38,15 @@ describe("office permissions", () => {
       permission: "tool",
       patterns: ["set_document_content"],
       metadata: { tool: "set_document_content" },
+      always: [],
+    })).toBe(false);
+
+    expect(canAutoApprove({
+      id: "4",
+      sessionID: "s",
+      permission: "tool",
+      patterns: ["set_section_header_footer"],
+      metadata: { tool: "set_section_header_footer" },
       always: [],
     })).toBe(false);
   });

@@ -4,6 +4,7 @@ import { getOfficeToolNames } from "./office-tool-definitions";
 describe("office tool definitions", () => {
   it("filters tool names by host", () => {
     expect(getOfficeToolNames("word")).toContain("get_document_content");
+    expect(getOfficeToolNames("word")).toContain("insert_table_of_contents");
     expect(getOfficeToolNames("word")).not.toContain("insert_chart");
     expect(getOfficeToolNames("excel")).toContain("insert_chart");
     expect(getOfficeToolNames("excel")).not.toContain("duplicate_slide");
