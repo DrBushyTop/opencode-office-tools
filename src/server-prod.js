@@ -7,6 +7,7 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { createApiRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
@@ -34,6 +35,9 @@ async function createServer() {
   const app = express();
   const runtime = new OpencodeRuntime();
   const bridge = new OfficeToolBridge();
+  const bridgeTokenPath = path.join(os.tmpdir(), `opencode-office-bridge-token-${os.userInfo().username}`);
+  process.env.OPENCODE_OFFICE_BRIDGE_TOKEN = bridge.bridgeToken;
+  fs.writeFileSync(bridgeTokenPath, bridge.bridgeToken, 'utf8');
   const apiRouter = createApiRouter(runtime, bridge);
   app.use('/api', apiRouter);
 
@@ -78,6 +82,7 @@ async function createServer() {
     runtime.close();
     httpsServer.close();
     bridgeServer.close();
+    if (fs.existsSync(bridgeTokenPath)) fs.unlinkSync(bridgeTokenPath);
   };
 
   process.once('SIGINT', () => {
