@@ -7,14 +7,15 @@
     "dev": "node src/server.js",
     "start": "node src/server-prod.js",
     "start:tray": "npm install --silent && npm run build && electron .",
-    "build": "vite build",
+    "build": "npm run generate:office-tools && vite build",
     "build:icons": "node scripts/generate-icons.js",
+    "generate:office-tools": "node scripts/generate-office-tools.js",
     "build:installer": "npm run clean:extraneous && npm run build && electron-builder",
     "build:installer:win": "npm run clean:extraneous && npm run build && electron-builder --win",
     "build:installer:mac": "npm run clean:extraneous && npm run build && electron-builder --mac",
     "clean:extraneous": "node scripts/clean-extraneous.js",
     "package:tray": "node scripts/package-tray.js",
-    "test": "vitest run"
+    "test": "npm run generate:office-tools && vitest run"
   },
   "pkg": {
     "assets": [],

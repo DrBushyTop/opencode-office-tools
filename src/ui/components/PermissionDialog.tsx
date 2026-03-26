@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
 import type { OfficePermissionRequest } from "../../shared/office-permissions";
+import { isReadOnlyOfficeTool } from "../../shared/office-tool-registry";
 
 export type PermissionDecision = "allow" | "deny" | "always";
 
@@ -107,9 +108,10 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
   onDecision,
 }) => {
   const styles = useStyles();
+  const requestedTool = String(request.metadata.tool || request.patterns[0] || "");
   const meta = request.permission === "doom_loop"
     ? { icon: "🛑", label: "Repeated Tool Call", color: "#d13438" }
-    : String(request.metadata.tool || request.patterns[0] || "").startsWith("get_")
+    : isReadOnlyOfficeTool(requestedTool)
       ? KIND_META.read
       : KIND_META.write;
   const detail = getDetail(request);
