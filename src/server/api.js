@@ -39,6 +39,14 @@ function bridgeAccessToken(req) {
   return String(req.get('x-office-bridge-token') || '');
 }
 
+function sendExecuteResponse(res, bridge, body, token) {
+  return (async () => {
+    const args = body && Object.prototype.hasOwnProperty.call(body, 'args') ? body.args : {};
+    validateOfficeToolCall(body.host, body.toolName, args);
+    res.json(await bridge.execute(body.host, body.toolName, args, token));
+  })();
+}
+
 function createApiRouter(runtime, bridge) {
   const apiRouter = express.Router();
   apiRouter.use(express.json({ limit: '50mb' }));
@@ -371,9 +379,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/office-tools/execute', async (req, res) => {
     try {
-      const args = req.body && Object.prototype.hasOwnProperty.call(req.body, 'args') ? req.body.args : {};
-      validateOfficeToolCall(req.body.host, req.body.toolName, args);
-      res.json(await bridge.execute(req.body.host, req.body.toolName, args, bridgeAccessToken(req)));
+      await sendExecuteResponse(res, bridge, req.body, bridgeAccessToken(req));
     } catch (error) {
       const message = String(error.message || error);
       const status = /Invalid Office bridge token/.test(message)
@@ -388,7 +394,29 @@ function createApiRouter(runtime, bridge) {
   return apiRouter;
 }
 
+function createBridgeRouter(bridge) {
+  const bridgeRouter = express.Router();
+  bridgeRouter.use(express.json({ limit: '5mb' }));
+
+  bridgeRouter.post('/office-tools/execute', async (req, res) => {
+    try {
+      await sendExecuteResponse(res, bridge, req.body, bridgeAccessToken(req));
+    } catch (error) {
+      const message = String(error.message || error);
+      const status = /Invalid Office bridge token/.test(message)
+        ? 401
+        : /Unknown Office tool|not available for host|Missing required|Unexpected args\.|Invalid args/.test(message)
+          ? 400
+          : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  return bridgeRouter;
+}
+
 module.exports = {
   createApiRouter,
+  createBridgeRouter,
   MODEL_FALLBACK,
 };

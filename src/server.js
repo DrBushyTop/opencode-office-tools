@@ -4,20 +4,25 @@ const http = require('http');
 const { createServer: createViteServer } = require('vite');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
-const { createApiRouter } = require('./server/api');
+const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
+const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
 
 async function createServer() {
+  const PORT = 52390;
+  const BRIDGE_PORT = 52391;
   const app = express();
+  const bridgeApp = express();
   const runtime = new OpencodeRuntime();
   const bridge = new OfficeToolBridge();
-  const bridgeTokenPath = path.join(os.tmpdir(), `opencode-office-bridge-token-${os.userInfo().username}`);
+  const bridgeTokenFile = bridgeTokenPath(BRIDGE_PORT);
+  fs.mkdirSync(bridgeTokenDirectory(), { recursive: true, mode: 0o700 });
   process.env.OPENCODE_OFFICE_BRIDGE_TOKEN = bridge.bridgeToken;
-  fs.writeFileSync(bridgeTokenPath, bridge.bridgeToken, 'utf8');
+  fs.writeFileSync(bridgeTokenFile, bridge.bridgeToken, { encoding: 'utf8', mode: 0o600 });
   const apiRouter = createApiRouter(runtime, bridge);
   app.use('/api', apiRouter);
+  bridgeApp.use('/api', createBridgeRouter(bridge));
 
   // ========== Vite Dev Server (Frontend) ==========
   
@@ -30,10 +35,8 @@ async function createServer() {
     key: fs.readFileSync(keyPath),
   };
   
-  const PORT = 52390;
-  const BRIDGE_PORT = 52391;
   const httpsServer = https.createServer(httpsConfig, app);
-  const bridgeServer = http.createServer(app);
+  const bridgeServer = http.createServer(bridgeApp);
   
   const vite = await createViteServer({
     server: { 
@@ -61,7 +64,7 @@ async function createServer() {
     runtime.close();
     httpsServer.close();
     bridgeServer.close();
-    if (fs.existsSync(bridgeTokenPath)) fs.unlinkSync(bridgeTokenPath);
+    if (fs.existsSync(bridgeTokenFile)) fs.unlinkSync(bridgeTokenFile);
   };
 
   process.once('SIGINT', () => {
