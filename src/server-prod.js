@@ -7,10 +7,10 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
-const { createApiRouter } = require('./server/api');
+const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
+const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
 
 // Determine if we're running from pkg bundle
 const isPkg = typeof process.pkg !== 'undefined';
@@ -32,14 +32,19 @@ function getBasePath() {
 const BASE_PATH = getBasePath();
 
 async function createServer() {
+  const PORT = process.env.PORT || 52390;
+  const BRIDGE_PORT = process.env.BRIDGE_PORT || 52391;
   const app = express();
+  const bridgeApp = express();
   const runtime = new OpencodeRuntime();
   const bridge = new OfficeToolBridge();
-  const bridgeTokenPath = path.join(os.tmpdir(), `opencode-office-bridge-token-${os.userInfo().username}`);
+  const bridgeTokenFile = bridgeTokenPath(BRIDGE_PORT);
+  fs.mkdirSync(bridgeTokenDirectory(), { recursive: true, mode: 0o700 });
   process.env.OPENCODE_OFFICE_BRIDGE_TOKEN = bridge.bridgeToken;
-  fs.writeFileSync(bridgeTokenPath, bridge.bridgeToken, 'utf8');
+  fs.writeFileSync(bridgeTokenFile, bridge.bridgeToken, { encoding: 'utf8', mode: 0o600 });
   const apiRouter = createApiRouter(runtime, bridge);
   app.use('/api', apiRouter);
+  bridgeApp.use('/api', createBridgeRouter(bridge));
 
   // ========== Static File Serving ==========
   const distPath = path.join(BASE_PATH, 'dist');
@@ -66,10 +71,8 @@ async function createServer() {
     key: fs.readFileSync(keyPath),
   };
   
-  const PORT = process.env.PORT || 52390;
-  const BRIDGE_PORT = process.env.BRIDGE_PORT || 52391;
   const httpsServer = https.createServer(httpsConfig, app);
-  const bridgeServer = http.createServer(app);
+  const bridgeServer = http.createServer(bridgeApp);
 
   httpsServer.listen(PORT, () => {
     console.log(`OpenCode Office Add-in Server running on https://localhost:${PORT}`);
@@ -82,7 +85,7 @@ async function createServer() {
     runtime.close();
     httpsServer.close();
     bridgeServer.close();
-    if (fs.existsSync(bridgeTokenPath)) fs.unlinkSync(bridgeTokenPath);
+    if (fs.existsSync(bridgeTokenFile)) fs.unlinkSync(bridgeTokenFile);
   };
 
   process.once('SIGINT', () => {
