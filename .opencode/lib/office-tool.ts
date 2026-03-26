@@ -1,11 +1,31 @@
 import { tool } from "@opencode-ai/plugin"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
 const url = process.env.OPENCODE_OFFICE_BRIDGE_URL || "http://127.0.0.1:52391/api/office-tools/execute"
 
+function resolveBridgeToken() {
+  if (process.env.OPENCODE_OFFICE_BRIDGE_TOKEN) {
+    return process.env.OPENCODE_OFFICE_BRIDGE_TOKEN
+  }
+
+  const tokenPath = path.join(os.tmpdir(), `opencode-office-bridge-token-${os.userInfo().username}`)
+  if (fs.existsSync(tokenPath)) {
+    return fs.readFileSync(tokenPath, "utf8").trim()
+  }
+
+  return ""
+}
+
 export async function execute(host: string, name: string, args: Record<string, unknown>) {
+  const bridgeToken = resolveBridgeToken()
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(bridgeToken ? { "x-office-bridge-token": bridgeToken } : {}),
+    },
     body: JSON.stringify({ host, toolName: name, args }),
   })
 

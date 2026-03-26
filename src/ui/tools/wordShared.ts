@@ -9,16 +9,22 @@ export type DocumentPartAddress =
   | { kind: "tableOfContents" }
   | { kind: "section"; section: SectionSelector; target?: HeaderFooterTarget; type?: HeaderFooterTypeName };
 
-export const headerFooterTypeMap: Record<HeaderFooterTypeName, Word.HeaderFooterType> = {
-  primary: Word.HeaderFooterType.primary,
-  firstPage: Word.HeaderFooterType.firstPage,
-  evenPages: Word.HeaderFooterType.evenPages,
-};
+function getHeaderFooterType(type: HeaderFooterTypeName): Word.HeaderFooterType {
+  switch (type) {
+    case "firstPage":
+      return Word.HeaderFooterType.firstPage;
+    case "evenPages":
+      return Word.HeaderFooterType.evenPages;
+    case "primary":
+    default:
+      return Word.HeaderFooterType.primary;
+  }
+}
 
 export function getHeaderFooterBody(section: Word.Section, target: HeaderFooterTarget, type: HeaderFooterTypeName) {
   return target === "header"
-    ? section.getHeader(headerFooterTypeMap[type])
-    : section.getFooter(headerFooterTypeMap[type]);
+    ? section.getHeader(getHeaderFooterType(type))
+    : section.getFooter(getHeaderFooterType(type));
 }
 
 export function isWordDesktopRequirementSetSupported(version: string) {

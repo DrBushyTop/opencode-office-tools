@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { validateOfficeToolCall } = require('./officeToolValidation');
 
 const MODEL_FALLBACK = [
   {
@@ -20,6 +21,22 @@ function hostPrefix(host) {
 
 function sessionEventSessionId(event) {
   return event?.properties?.sessionID || event?.properties?.info?.sessionID || event?.properties?.part?.sessionID || null;
+}
+
+function isSecureRequest(req) {
+  return Boolean(req.secure || req.socket?.encrypted || req.get('x-forwarded-proto') === 'https');
+}
+
+function bridgeSessionToken(req) {
+  return String(req.get('x-office-bridge-session') || '');
+}
+
+function bridgeExecutorId(req) {
+  return String(req.get('x-office-executor-id') || req.query.executorId || req.body?.executorId || '');
+}
+
+function bridgeAccessToken(req) {
+  return String(req.get('x-office-bridge-token') || '');
 }
 
 function createApiRouter(runtime, bridge) {
@@ -309,38 +326,62 @@ function createApiRouter(runtime, bridge) {
   });
 
   apiRouter.post('/office-tools/register', (req, res) => {
-    bridge.register(req.body.host);
-    res.json({ ok: true });
+    try {
+      const sessionToken = bridgeSessionToken(req);
+      const host = String(req.body.host || '');
+      res.json(bridge.register(host, sessionToken));
+    } catch (error) {
+      const message = String(error.message || error);
+      res.status(/already registered/.test(message) ? 409 : 401).json({ error: message });
+    }
   });
 
-  apiRouter.delete('/office-tools/register/:host', (req, res) => {
-    bridge.unregister(req.params.host);
-    res.json({ ok: true });
+  apiRouter.delete('/office-tools/register/:executorId', (req, res) => {
+    try {
+      bridge.unregister(req.params.executorId, bridgeSessionToken(req));
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(401).json({ error: error.message });
+    }
+  });
+
+  apiRouter.get('/office-tools/session', (req, res) => {
+    if (!isSecureRequest(req)) {
+      return res.status(403).json({ error: 'Office bridge sessions must be requested over HTTPS' });
+    }
+    res.json({ sessionToken: bridge.issueClientSession() });
   });
 
   apiRouter.get('/office-tools/poll', (req, res) => {
-    const host = String(req.query.host || '');
     try {
-      res.json({ request: bridge.poll(host) });
+      res.json({ request: bridge.poll(bridgeExecutorId(req), bridgeSessionToken(req)) });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      res.status(401).json({ error: error.message });
     }
   });
 
   apiRouter.post('/office-tools/respond/:id', (req, res) => {
     try {
-      bridge.respond(req.params.id, req.body || {});
+      bridge.respond(req.params.id, bridgeExecutorId(req), bridgeSessionToken(req), req.body || {});
       res.json({ ok: true });
     } catch (error) {
-      res.status(404).json({ error: error.message });
+      res.status(401).json({ error: error.message });
     }
   });
 
   apiRouter.post('/office-tools/execute', async (req, res) => {
     try {
-      res.json(await bridge.execute(req.body.host, req.body.toolName, req.body.args));
+      const args = req.body && Object.prototype.hasOwnProperty.call(req.body, 'args') ? req.body.args : {};
+      validateOfficeToolCall(req.body.host, req.body.toolName, args);
+      res.json(await bridge.execute(req.body.host, req.body.toolName, args, bridgeAccessToken(req)));
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      const message = String(error.message || error);
+      const status = /Invalid Office bridge token/.test(message)
+        ? 401
+        : /Unknown Office tool|not available for host|Missing required|Unexpected args\.|Invalid args/.test(message)
+          ? 400
+          : 500;
+      res.status(status).json({ error: message });
     }
   });
 

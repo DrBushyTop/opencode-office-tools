@@ -7,37 +7,82 @@ export interface OfficeToolExecutor {
 export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExecutor) {
   let stopped = false;
   let timer = 0;
+  let sessionToken = "";
+  let executorId = "";
+
+  const headers = () => ({
+    "Content-Type": "application/json",
+    "x-office-bridge-session": sessionToken,
+    "x-office-executor-id": executorId,
+  });
+
+  const ensureSession = async () => {
+    if (sessionToken) return;
+    const response = await fetch("/api/office-tools/session");
+    if (!response.ok) {
+      throw new Error(`Failed to create Office bridge session: ${response.statusText}`);
+    }
+    const data = await response.json();
+    sessionToken = String(data.sessionToken || "");
+    if (!sessionToken) {
+      throw new Error("Office bridge session token missing");
+    }
+  };
+
+  const ensureExecutor = async () => {
+    if (executorId) return;
+    await ensureSession();
+    const response = await fetch("/api/office-tools/register", {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ host }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to register Office executor: ${response.statusText}`);
+    }
+    const data = await response.json();
+    executorId = String(data.executorId || "");
+    if (!executorId) {
+      throw new Error("Office executor id missing");
+    }
+  };
+
+  const ensureOk = async (response: Response) => {
+    if (response.ok) return response;
+    throw new Error(await response.text() || response.statusText);
+  };
 
   const tick = async () => {
     if (stopped) return;
 
     try {
-      await fetch("/api/office-tools/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ host }),
-      });
+      await ensureExecutor();
 
-      const response = await fetch(`/api/office-tools/poll?host=${encodeURIComponent(host)}`);
+      const response = await ensureOk(await fetch(`/api/office-tools/poll?executorId=${encodeURIComponent(executorId)}`, {
+        headers: headers(),
+      }));
       const data = await response.json();
 
       if (data.request) {
         try {
           const result = await executor.execute(data.request.toolName, data.request.args || {});
-          await fetch(`/api/office-tools/respond/${data.request.id}`, {
+          await ensureOk(await fetch(`/api/office-tools/respond/${data.request.id}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: headers(),
             body: JSON.stringify({ result }),
-          });
+          }));
         } catch (error) {
-          await fetch(`/api/office-tools/respond/${data.request.id}`, {
+          await ensureOk(await fetch(`/api/office-tools/respond/${data.request.id}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: headers(),
             body: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-          });
+          }));
         }
       }
-    } catch {}
+    } catch {
+      executorId = "";
+      sessionToken = "";
+    }
 
     timer = window.setTimeout(tick, 750);
   };
@@ -48,7 +93,12 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
     stop: async () => {
       stopped = true;
       window.clearTimeout(timer);
-      await fetch(`/api/office-tools/register/${host}`, { method: "DELETE" }).catch(() => undefined);
+      if (executorId && sessionToken) {
+        await fetch(`/api/office-tools/register/${executorId}`, {
+          method: "DELETE",
+          headers: headers(),
+        }).catch(() => undefined);
+      }
     },
   };
 }
