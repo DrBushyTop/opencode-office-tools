@@ -10,7 +10,7 @@ export interface OfficePermissionRequest {
 const readOnly = new Set([
   "get_document_overview",
   "get_document_content",
-  "get_document_headers_footers",
+  "get_document_part",
   "get_document_section",
   "get_selection",
   "get_selection_text",

@@ -77,9 +77,9 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "📄",
     format: () => "Reading document",
   },
-  get_document_headers_footers: {
-    icon: "🪧",
-    format: () => "Inspecting headers and footers",
+  get_document_part: {
+    icon: "🧩",
+    format: (args) => `Reading ${String(args.address || "document part")}`,
   },
   get_document_overview: {
     icon: "🧭",
@@ -101,9 +101,9 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
     icon: "✏️",
     format: () => "Updating document",
   },
-  set_section_header_footer: {
-    icon: "🪧",
-    format: (args) => `Updating ${String(args.type || "primary")} ${String(args.target || "header")}`,
+  set_document_part: {
+    icon: "🧩",
+    format: (args) => `Updating ${String(args.address || "document part")}`,
   },
   insert_content_at_selection: {
     icon: "➕",
@@ -116,10 +116,6 @@ const toolConfig: Record<string, { icon: string; format: (args: Record<string, u
   insert_table: {
     icon: "▦",
     format: () => "Inserting table",
-  },
-  insert_table_of_contents: {
-    icon: "≣",
-    format: () => "Inserting table of contents",
   },
   apply_style_to_selection: {
     icon: "🎨",
