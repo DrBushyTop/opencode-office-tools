@@ -9,6 +9,7 @@ const hostHelpers = {
   word: { fn: "word", importPath: "../lib/office-word" },
   excel: { fn: "excel", importPath: "../lib/office-excel" },
   powerpoint: { fn: "powerpoint", importPath: "../lib/office-powerpoint" },
+  onenote: { fn: "onenote", importPath: "../lib/office-onenote" },
 }
 
 function indent(text, spaces) {

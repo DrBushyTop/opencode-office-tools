@@ -4,6 +4,10 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function isBlankString(value) {
+  return typeof value === 'string' && value.trim() === ''
+}
+
 function validateSchema(value, schema, path = 'args') {
   if (!schema) return
 
@@ -108,6 +112,26 @@ function validateOfficeToolCall(host, toolName, args) {
     if ((operation === 'replace' || operation === 'insert') && normalizedArgs.content === undefined) {
       throw new Error('Missing required args.content for replace or insert operations')
     }
+  }
+
+  if (toolName === 'navigate_to_page') {
+    const hasPageId = typeof normalizedArgs.pageId === 'string' && normalizedArgs.pageId.trim() !== ''
+    const hasClientUrl = typeof normalizedArgs.clientUrl === 'string' && normalizedArgs.clientUrl.trim() !== ''
+    if (hasPageId === hasClientUrl) {
+      throw new Error('Provide exactly one of args.pageId or args.clientUrl')
+    }
+  }
+
+  if (toolName === 'set_note_selection' && isBlankString(normalizedArgs.content)) {
+    throw new Error('Invalid args.content: cannot be empty')
+  }
+
+  if (toolName === 'set_page_title' && isBlankString(normalizedArgs.title)) {
+    throw new Error('Invalid args.title: cannot be empty')
+  }
+
+  if (toolName === 'append_page_content' && isBlankString(normalizedArgs.html)) {
+    throw new Error('Invalid args.html: cannot be empty')
   }
 
   return entry

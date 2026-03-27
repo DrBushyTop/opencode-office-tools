@@ -160,7 +160,7 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
     deleteSession(sessionId).then(() => listSessions(host, shared).then(setSessions));
   };
 
-  const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : "Excel";
+  const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : host === "excel" ? "Excel" : "OneNote";
 
   return (
     <div className={styles.container}>
