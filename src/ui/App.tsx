@@ -111,6 +111,7 @@ const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
 - Use get_presentation_structure for master/layout/theme/footer-placeholder discovery and get_slide_shapes for precise shape targeting before editing
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - When native PowerPoint APIs miss a feature such as speaker notes, prefer supported Open XML slide round-trips only if the tool explicitly implements them
+- For animations and transitions, inspect shape ids first and remember that Open XML fallback tools replace the slide and may change slide identity
 - For meaningful slide creation or major visual edits, treat visual QA as required, not optional
 - After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
 - Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content
