@@ -83,6 +83,9 @@ export const manageSlide: Tool = {
 
         switch (action) {
           case "create": {
+            if (!isPowerPointRequirementSetSupported("1.3")) {
+              return toolFailure("Creating slides requires PowerPointApi 1.3.");
+            }
             if (targetIndex !== undefined && targetIndex > slideCount) {
               return toolFailure(`Invalid targetIndex ${targetIndex}. Must be 0-${slideCount}.`);
             }
@@ -192,6 +195,9 @@ export const manageSlide: Tool = {
           }
 
           case "clear": {
+            if (!isPowerPointRequirementSetSupported("1.3")) {
+              return toolFailure("Clearing slide shapes requires PowerPointApi 1.3.");
+            }
             if (slideIndex === undefined) {
               return toolFailure("slideIndex is required for clear.");
             }

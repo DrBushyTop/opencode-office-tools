@@ -10,7 +10,7 @@ export const findAndReplace: Tool = {
 Parameters:
 - find: The text to search for
 - replace: The text to replace it with
-- address: Optional scope such as selection, bookmark[Name], content_control[id=12], or table[1]
+- address: Optional scope such as selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3]
 - matchCase: If true, search is case-sensitive (default: false)
 - matchWholeWord: If true, only match whole words, not partial matches (default: false)
 
@@ -33,7 +33,7 @@ Examples:
       },
       address: {
         type: "string",
-        description: "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1].",
+        description: "Optional scope address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3].",
       },
       matchCase: {
         type: "boolean",
@@ -56,13 +56,13 @@ Examples:
     };
     const { address } = args as { address?: string };
     
-    if (!find || find.length === 0) {
+    if (!find.trim()) {
       return toolFailure("Search text cannot be empty.");
     }
 
     const parsed = address ? parseDocumentRangeAddress(address) : null;
     if (address && !parsed) {
-      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], or table[1].");
+      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3].");
     }
     
     try {

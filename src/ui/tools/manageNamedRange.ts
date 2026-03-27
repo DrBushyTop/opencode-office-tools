@@ -1,9 +1,23 @@
 import type { Tool } from "./types";
-import { qualifyNamedRangeReference, toolFailure } from "./excelShared";
+import { isExcelRequirementSetSupported, qualifyNamedRangeReference, toolFailure } from "./excelShared";
+
+const workbookScopedNamePattern = /^[A-Za-z_\\][A-Za-z0-9_.\\]*$/;
+const a1ReferenceLikePattern = /^\$?[A-Za-z]{1,3}\$?\d+$/;
+const r1c1ReferenceLikePattern = /^R(\[?-?\d+\]?|\d+)C(\[?-?\d+\]?|\d+)$/i;
+
+export function isValidWorkbookNamedRangeName(value: string) {
+  return workbookScopedNamePattern.test(value)
+    && !a1ReferenceLikePattern.test(value)
+    && !r1c1ReferenceLikePattern.test(value);
+}
+
+function invalidNameMessage(fieldName: "name" | "newName") {
+  return `Invalid ${fieldName}. Workbook-scoped named ranges must start with a letter, underscore, or backslash; can contain letters, numbers, periods, underscores, or backslashes; and cannot look like cell references.`;
+}
 
 export const manageNamedRange: Tool = {
   name: "manage_named_range",
-  description: "Create, update, rename, set visibility, or delete Excel named ranges.",
+  description: "Create, update, rename, set visibility, or delete workbook-scoped Excel named ranges.",
   parameters: {
     type: "object",
     properties: {
@@ -14,7 +28,7 @@ export const manageNamedRange: Tool = {
       },
       name: {
         type: "string",
-        description: "Existing or new named range name depending on the action.",
+        description: "Existing or new workbook-scoped named range name depending on the action.",
       },
       newName: {
         type: "string",
@@ -22,7 +36,7 @@ export const manageNamedRange: Tool = {
       },
       reference: {
         type: "string",
-        description: "Cell or formula reference such as A1:D10, Sheet1!B2, or =SUM(A:A).",
+        description: "Cell or formula reference for a workbook-scoped named range, such as A1:D10, Sheet1!B2, or =SUM(A:A).",
       },
       comment: {
         type: "string",
@@ -45,11 +59,19 @@ export const manageNamedRange: Tool = {
       visible?: boolean;
     };
 
-    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
-      return toolFailure("Invalid name. Must start with a letter and contain only letters, numbers, and underscores.");
+    if (!isValidWorkbookNamedRangeName(name)) {
+      return toolFailure(invalidNameMessage("name"));
     }
-    if (newName && !/^[A-Za-z][A-Za-z0-9_]*$/.test(newName)) {
-      return toolFailure("Invalid newName. Must start with a letter and contain only letters, numbers, and underscores.");
+    if (newName && !isValidWorkbookNamedRangeName(newName)) {
+      return toolFailure(invalidNameMessage("newName"));
+    }
+
+    if ((action === "create" || action === "rename" || comment !== undefined || action === "delete") && !isExcelRequirementSetSupported("1.4")) {
+      return toolFailure("This named range action requires ExcelApi 1.4.");
+    }
+
+    if ((action === "rename" || (action === "update" && reference !== undefined)) && !isExcelRequirementSetSupported("1.7")) {
+      return toolFailure("This named range action requires ExcelApi 1.7.");
     }
 
     try {
@@ -66,12 +88,24 @@ export const manageNamedRange: Tool = {
           return `Created named range ${namedItem.name} pointing to ${namedItem.value}${visible !== undefined ? ` (visible=${namedItem.visible})` : ""}.`;
         }
 
-        const namedItem = names.getItemOrNullObject(name);
-        namedItem.load(["isNullObject", "name", "value", "visible", "formula", "comment"]);
-        await context.sync();
+        const namedItem = names.getItem(name);
+        const propertiesToLoad = ["name"];
 
-        if ((namedItem as Excel.NamedItem & { isNullObject?: boolean }).isNullObject) {
-          return toolFailure(`Named range ${name} was not found.`);
+        if (action === "rename") {
+          propertiesToLoad.push("formula");
+          if (comment === undefined) propertiesToLoad.push("comment");
+          if (visible === undefined) propertiesToLoad.push("visible");
+        }
+
+        try {
+          namedItem.load(propertiesToLoad);
+          await context.sync();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/ItemNotFound|does not exist|cannot find/i.test(message)) {
+            return toolFailure(`Named range ${name} was not found.`);
+          }
+          throw error;
         }
 
         switch (action) {

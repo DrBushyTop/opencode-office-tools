@@ -124,7 +124,7 @@
         "address": { "type": "string", "description": "Target address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3]." },
         "operation": { "type": "string", "enum": ["replace", "insert", "clear"], "description": "Operation to perform." },
         "format": { "type": "string", "enum": ["html", "text", "ooxml"], "description": "Content format for replace or insert operations." },
-        "content": { "type": "string", "description": "Content to write for replace or insert operations." },
+        "content": { "type": "string", "description": "Content to write for replace or insert operations. Required unless operation is clear." },
         "location": { "type": "string", "enum": ["replace", "before", "after", "start", "end"], "description": "Insertion location for insert operations." }
       },
       "required": ["address"]
@@ -139,7 +139,7 @@
       "type": "object",
       "properties": {
         "find": { "type": "string", "description": "Text to find." },
-        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1]." },
+        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3]." },
         "matchCase": { "type": "boolean", "description": "Match case exactly." },
         "matchWholeWord": { "type": "boolean", "description": "Match whole words only." },
         "maxResults": { "type": "number", "description": "Maximum number of preview matches to return." }
@@ -185,7 +185,7 @@
       "properties": {
         "find": { "type": "string", "description": "Text to find." },
         "replace": { "type": "string", "description": "Replacement text." },
-        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1]." },
+        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3]." },
         "matchCase": { "type": "boolean", "description": "Match case exactly." },
         "matchWholeWord": { "type": "boolean", "description": "Match whole words only." }
       },
@@ -397,15 +397,15 @@
   },
   "manage_named_range": {
     "hosts": ["excel"],
-    "description": "Create, update, rename, set visibility, or delete Excel named ranges.",
+    "description": "Create, update, rename, set visibility, or delete workbook-scoped Excel named ranges.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
         "action": { "type": "string", "enum": ["create", "update", "rename", "setVisibility", "delete"], "description": "Named range operation to perform." },
-        "name": { "type": "string", "description": "Existing or new named range name depending on the action." },
+        "name": { "type": "string", "description": "Existing or new workbook-scoped named range name depending on the action." },
         "newName": { "type": "string", "description": "New named range name for rename." },
-        "reference": { "type": "string", "description": "Cell or formula reference such as A1:D10, Sheet1!B2, or =SUM(A:A)." },
+        "reference": { "type": "string", "description": "Cell or formula reference for a workbook-scoped named range, such as A1:D10, Sheet1!B2, or =SUM(A:A)." },
         "comment": { "type": "string", "description": "Optional description to set when creating or updating." },
         "visible": { "type": "boolean", "description": "Whether the named range is visible for setVisibility or update." }
       },
@@ -439,7 +439,7 @@
         "sortOrientation": { "type": "string", "enum": ["Rows", "Columns"], "description": "Whether to sort rows or columns." },
         "sortMethod": { "type": "string", "enum": ["PinYin", "StrokeCount"], "description": "Chinese character ordering method for sort." },
         "filterOperation": { "type": "string", "enum": ["apply", "clearAll", "remove", "reapply"], "description": "Filter lifecycle operation. Default is apply." },
-        "columnIndex": { "type": "number", "description": "Zero-based column offset within the range for filter apply." },
+        "columnIndex": { "type": "number", "description": "Zero-based column offset within the range for filter apply. Required when applying criteria." },
         "filterOn": { "type": "string", "enum": ["BottomItems", "BottomPercent", "CellColor", "Dynamic", "FontColor", "Values", "TopItems", "TopPercent", "Icon", "Custom"], "description": "How to filter the column when filterOperation is apply." },
         "criterion1": { "type": "string", "description": "Primary filter criterion, such as >50 or =North." },
         "criterion2": { "type": "string", "description": "Secondary filter criterion for custom filters." },
@@ -676,7 +676,7 @@
         "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide." },
         "placeholderType": { "type": "string", "description": "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
         "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create." },
-        "geometricShapeType": { "type": "string", "description": "Geometric shape type for create, such as Rectangle, Ellipse, Chevron, or RightArrow." },
+        "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
         "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight." },
         "text": { "type": "string", "description": "Text content to set or create." },
         "name": { "type": "string" },

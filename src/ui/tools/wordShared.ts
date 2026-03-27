@@ -23,7 +23,7 @@ export type DocumentRangeAddress =
 
 export type ResolvedWordTarget =
   | { kind: "body"; label: string; target: Word.Body }
-  | { kind: "range"; label: string; target: Word.Range }
+  | { kind: "range"; label: string; target: Word.Range; clearBehavior?: "delete" | "reject" }
   | { kind: "contentControl"; label: string; target: Word.ContentControl };
 
 function getHeaderFooterType(type: HeaderFooterTypeName): Word.HeaderFooterType {
@@ -61,11 +61,6 @@ export function summarizePlainText(text: string, limit = 80) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return "(empty)";
   return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
-}
-
-export function extractDocumentElementFromOoxml(ooxml: string) {
-  const match = ooxml.match(/<w:document[^>]*>[\s\S]*<\/w:document>/);
-  return match ? match[0] : ooxml;
 }
 
 export function resolveInsertLocation(location: DocumentWriteLocation): Word.InsertLocation {
@@ -184,8 +179,8 @@ export async function resolveDocumentRangeTarget(
     case "selection":
       return { kind: "range", label: "selection", target: context.document.getSelection() };
     case "bookmark": {
-      if (!isWordDesktopRequirementSetSupported("1.4")) {
-        throw new Error("Bookmark targets require WordApiDesktop 1.4.");
+      if (!isWordRequirementSetSupported("1.4")) {
+        throw new Error("Bookmark targets require WordApi 1.4.");
       }
 
       const range = context.document.getBookmarkRangeOrNullObject(address.name);
@@ -201,6 +196,10 @@ export async function resolveDocumentRangeTarget(
     case "contentControl":
       return resolveContentControlTarget(context, address);
     case "table": {
+      if (!isWordRequirementSetSupported("1.3")) {
+        throw new Error("Table targets require WordApi 1.3.");
+      }
+
       const tables = context.document.body.tables;
       tables.load("items");
       await context.sync();
@@ -230,6 +229,7 @@ export async function resolveDocumentRangeTarget(
         kind: "range",
         label: `table[${address.tableIndex}]`,
         target: table.getRange(Word.RangeLocation.whole),
+        clearBehavior: "reject",
       };
     }
     default:
@@ -251,7 +251,7 @@ export async function readResolvedWordTarget(
   if (format === "ooxml") {
     const ooxml = resolved.target.getOoxml();
     await context.sync();
-    return extractDocumentElementFromOoxml(ooxml.value || "") || "(empty)";
+    return ooxml.value || "(empty)";
   }
 
   resolved.target.load("text");
@@ -319,6 +319,9 @@ export function writeResolvedWordTarget(
 ) {
   if (operation === "clear") {
     if (resolved.kind === "range") {
+      if (resolved.clearBehavior === "reject") {
+        throw new Error(`Clearing ${resolved.label} is not supported because it would remove the entire table. Target a cell such as ${resolved.label}.cell[1,1] or use replace instead.`);
+      }
       resolved.target.delete();
     } else {
       resolved.target.clear();

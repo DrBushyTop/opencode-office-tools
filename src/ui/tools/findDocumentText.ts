@@ -20,7 +20,7 @@ Optionally scope the search to a generic address such as selection, bookmark[Nam
       },
       address: {
         type: "string",
-        description: "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1].",
+        description: "Optional scope address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3].",
       },
       matchCase: {
         type: "boolean",
@@ -62,7 +62,7 @@ Optionally scope the search to a generic address such as selection, bookmark[Nam
 
     const parsed = address ? parseDocumentRangeAddress(address) : null;
     if (address && !parsed) {
-      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], or table[1].");
+      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3].");
     }
 
     try {

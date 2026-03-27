@@ -16,11 +16,11 @@ This document lists all available tools that OpenCode can use when working with 
 | `get_selection_text` | Get the currently selected text as plain readable text. |
 | `get_selection_html` | Get the currently selected content as HTML. |
 | `get_document_range` | Read a generic Word target by address such as `selection`, `bookmark[Name]`, `content_control[id=12]`, `table[1]`, or `table[1].cell[2,3]`. |
-| `set_document_range` | Update a generic Word target by address with HTML, text, or OOXML using replace/insert/clear. |
-| `find_document_text` | Locate text without mutating the document, optionally scoped to a generic Word target address. |
+| `set_document_range` | Update a generic Word target by address with HTML, text, or OOXML using replace/insert/clear. Clearing `table[n]` is rejected because it would delete the entire table. |
+| `find_document_text` | Locate text without mutating the document, optionally scoped to a generic Word target address such as `selection`, `table[1]`, or `table[1].cell[2,3]`. |
 | `get_document_targets` | Inspect tables, content controls, and bookmarks so later range operations can target them precisely. |
 | `insert_content_at_selection` | Insert HTML content at the cursor position (before, after, or replace selection). |
-| `find_and_replace` | Search and replace text with options for case sensitivity, whole word matching, and optional generic target scoping. |
+| `find_and_replace` | Search and replace text with options for case sensitivity, whole word matching, and optional generic target scoping including `table[1].cell[2,3]`. |
 | `insert_table` | Insert a formatted table at the cursor with header styling and grid/striped options. |
 | `apply_style_to_selection` | Apply formatting to selected text (bold, italic, underline, font size, colors, highlighting). |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
@@ -58,8 +58,8 @@ This document lists all available tools that OpenCode can use when working with 
 | `find_and_replace_cells` | Search and replace text in cells with Excel's native replace behavior (ExcelApi 1.9+), preserving formulas better than value-only rewrites. |
 | `manage_chart` | Create or update charts, including source data, title, type, placement, resizing, activation, and deletion. |
 | `apply_cell_formatting` | Format cells with fonts, fills, borders, number formats, horizontal/vertical alignment, wrapping, merging, and row/column sizing. |
-| `manage_named_range` | Create, update, rename, hide/show, or delete named ranges. |
-| `manage_range` | Perform generic range operations like clear, insert, delete, copy, fill, sort, and filter. |
+| `manage_named_range` | Create, update, rename, hide/show, or delete workbook-scoped named ranges. |
+| `manage_range` | Perform generic range operations like clear, insert, delete, copy, fill, sort, and filter; provide `columnIndex` when applying filter criteria. |
 | `manage_worksheet` | Create, rename, delete, move, change visibility, freeze/unfreeze, activate, protect, or unprotect worksheets. |
 | `manage_table` | Create or update Excel tables, including style, totals, resizing, row appends/inserts, filter reset, conversion back to ranges, and deletion. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
@@ -97,8 +97,8 @@ When working with body content, prefer a small set of generic target primitives:
 - `selection` for the current selection
 - `bookmark[Name]` for bookmark-oriented reads and writes
 - `content_control[id=12]` or `content_control[index=1]` for content-control targeting
-- `table[1]` for an entire table range
-- `table[1].cell[2,3]` for a specific table cell body
+- `table[1]` for an entire table range (requires WordApi 1.3; read, replace, or insert; clear is rejected to avoid deleting the full table)
+- `table[1].cell[2,3]` for a specific table cell body (requires WordApi 1.3)
 
 Suggested pattern:
 1. Use `get_document_targets` to discover tables, content controls, and bookmarks
