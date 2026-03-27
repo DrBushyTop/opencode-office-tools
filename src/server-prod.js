@@ -11,6 +11,7 @@ const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
 const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
+const { logInfo, logError } = require('./server/devLogger');
 
 // Determine if we're running from pkg bundle
 const isPkg = typeof process.pkg !== 'undefined';
@@ -63,6 +64,7 @@ async function createServer() {
     console.error('SSL certificates not found!');
     console.error('Expected:', certPath);
     console.error('Expected:', keyPath);
+    logError('server', 'SSL certificates not found', { certPath, keyPath });
     process.exit(1);
   }
   
@@ -76,9 +78,11 @@ async function createServer() {
 
   httpsServer.listen(PORT, () => {
     console.log(`OpenCode Office Add-in Server running on https://localhost:${PORT}`);
+    logInfo('server', 'HTTPS server started', { port: PORT, basePath: BASE_PATH });
   });
   bridgeServer.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`Office bridge available at http://127.0.0.1:${BRIDGE_PORT}/api`);
+    logInfo('server', 'Bridge server started', { port: BRIDGE_PORT });
   });
 
   const close = () => {
@@ -89,10 +93,12 @@ async function createServer() {
   };
 
   process.once('SIGINT', () => {
+    logInfo('server', 'Received SIGINT');
     close();
     process.exit(0);
   });
   process.once('SIGTERM', () => {
+    logInfo('server', 'Received SIGTERM');
     close();
     process.exit(0);
   });
@@ -105,5 +111,8 @@ module.exports = { createServer };
 
 // Run directly if not required as a module
 if (require.main === module) {
-  createServer().catch(console.error);
+  createServer().catch((error) => {
+    console.error(error);
+    logError('server', 'Failed to create server', error);
+  });
 }

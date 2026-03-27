@@ -2,8 +2,9 @@
  * Electron System Tray App for OpenCode Office Add-in
  * Runs the server in the background with a tray icon
  */
-const { app, Tray, Menu, nativeImage } = require('electron');
+const { app, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
+const { logInfo, logError, getLogFilePath } = require('../server/devLogger');
 
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
@@ -20,6 +21,7 @@ if (process.platform === 'darwin') {
 let tray = null;
 let server = null;
 let serverRunning = false;
+let logFilePath = null;
 
 // Get the resources path (works both in dev and when packaged)
 function getResourcesPath() {
@@ -41,6 +43,19 @@ function getIconPath() {
   }
 }
 
+function resolveLogFilePath() {
+  if (!app.isPackaged) {
+    return path.join(getResourcesPath(), '.opencode', 'debug.log');
+  }
+  return path.join(app.getPath('userData'), 'logs', 'debug.log');
+}
+
+function configureLogging() {
+  logFilePath = resolveLogFilePath();
+  process.env.OPENCODE_OFFICE_LOG_FILE = logFilePath;
+  logInfo('tray', 'Debug logging enabled', { logFilePath });
+}
+
 async function startServer() {
   try {
     const root = getResourcesPath();
@@ -57,9 +72,11 @@ async function startServer() {
     server = await createServer();
     serverRunning = true;
     console.log('Server started successfully');
+    logInfo('tray', 'Server started successfully');
     updateTrayMenu();
   } catch (error) {
     console.error('Failed to start server:', error);
+    logError('tray', 'Failed to start server', error);
     serverRunning = false;
     updateTrayMenu();
   }
@@ -71,6 +88,7 @@ async function stopServer() {
     server = null;
     serverRunning = false;
     console.log('Server stopped');
+    logInfo('tray', 'Server stopped');
     updateTrayMenu();
   }
 }
@@ -103,6 +121,12 @@ function updateTrayMenu() {
       label: toggleLabel,
       click: () => toggleServer()
     },
+    {
+      label: 'Open Debug Log',
+      click: () => {
+        if (logFilePath) shell.showItemInFolder(logFilePath);
+      }
+    },
     { type: 'separator' },
     {
       label: 'Quit',
@@ -129,6 +153,7 @@ function createTray() {
     }
   } catch (error) {
     console.error('Failed to load tray icon:', error);
+    logError('tray', 'Failed to load tray icon', error);
     // Create a simple fallback icon
     icon = nativeImage.createEmpty();
   }
@@ -148,6 +173,13 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
+  configureLogging();
+  process.on('uncaughtException', (error) => {
+    logError('tray', 'Uncaught exception', error);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logError('tray', 'Unhandled rejection', reason);
+  });
   createTray();
   await startServer();
 });
@@ -158,5 +190,6 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', () => {
+  logInfo('tray', 'Application quitting', { logFilePath: process.env.OPENCODE_OFFICE_LOG_FILE || getLogFilePath() });
   server?.close?.();
 });
