@@ -26,8 +26,6 @@ import { getDocumentPart } from "./getDocumentPart";
 import { setDocumentPart } from "./setDocumentPart";
 
 // New PowerPoint tools
-import { getSlideNotes } from "./getSlideNotes";
-import { setSlideNotes } from "./setSlideNotes";
 import { duplicateSlide } from "./duplicateSlide";
 import { getPresentationStructure } from "./getPresentationStructure";
 import { getSlideShapes } from "./getSlideShapes";
@@ -75,7 +73,6 @@ const officeToolHandlers = {
   [getPresentationContent.name]: getPresentationContent,
   [getSlideImage.name]: getSlideImage,
   [getSlideShapes.name]: getSlideShapes,
-  [getSlideNotes.name]: getSlideNotes,
   [setPresentationContent.name]: setPresentationContent,
   [addSlideFromCode.name]: addSlideFromCode,
   [clearSlide.name]: clearSlide,
@@ -83,7 +80,6 @@ const officeToolHandlers = {
   [setSlideShapeProperties.name]: setSlideShapeProperties,
   [deleteSlide.name]: deleteSlide,
   [moveSlide.name]: moveSlide,
-  [setSlideNotes.name]: setSlideNotes,
   [duplicateSlide.name]: duplicateSlide,
 };
 
@@ -110,7 +106,6 @@ export const powerpointTools = [
   getPresentationContent,
   getSlideImage,
   getSlideShapes,
-  getSlideNotes,
   setPresentationContent,
   addSlideFromCode,
   clearSlide,
@@ -118,7 +113,6 @@ export const powerpointTools = [
   setSlideShapeProperties,
   deleteSlide,
   moveSlide,
-  setSlideNotes,
   duplicateSlide,
 ];
 
