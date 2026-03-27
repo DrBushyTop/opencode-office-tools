@@ -42,7 +42,7 @@ Use this for generic content edits. Keep set_document_part for section headers, 
       },
       content: {
         type: "string",
-        description: "Content to write for replace or insert operations.",
+        description: "Content to write for replace or insert operations. Required unless operation is clear.",
       },
       location: {
         type: "string",

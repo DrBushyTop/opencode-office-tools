@@ -3,12 +3,46 @@ import { getWorksheet, isExcelRequirementSetSupported, splitSheetQualifiedRange,
 
 type RangeAction = "clear" | "insert" | "delete" | "copy" | "fill" | "sort" | "filter";
 
+type FilterOperation = "apply" | "clearAll" | "remove" | "reapply";
+
+type FilterArgs = {
+  filterOn?: Excel.FilterOn | "BottomItems" | "BottomPercent" | "CellColor" | "Dynamic" | "FontColor" | "Values" | "TopItems" | "TopPercent" | "Icon" | "Custom";
+  criterion1?: string;
+  criterion2?: string;
+  filterValues?: string[];
+  dynamicCriteria?: Excel.DynamicFilterCriteria;
+  filterColor?: string;
+};
+
 function normalizeRangeTarget(range: string, sheetName?: string) {
   const qualified = splitSheetQualifiedRange(range);
   return {
     sheetName: qualified?.sheetName || sheetName,
     rangeAddress: qualified?.rangeAddress || range,
   };
+}
+
+export function hasFilterCriteria({ filterOn, criterion1, criterion2, filterValues, dynamicCriteria, filterColor }: FilterArgs) {
+  return Boolean(
+    filterOn
+    || criterion1
+    || criterion2
+    || filterValues?.length
+    || dynamicCriteria
+    || filterColor,
+  );
+}
+
+export function normalizeRangeAddressForComparison(address: string) {
+  return address.replace(/\$/g, "").replace(/\s+/g, "").toUpperCase();
+}
+
+function filterRangeMismatchMessage(operation: Exclude<FilterOperation, "apply">, requestedAddress: string, actualAddress: string | null) {
+  if (!actualAddress) {
+    return `Cannot ${operation} filters for ${requestedAddress} because the worksheet has no active AutoFilter on that range.`;
+  }
+
+  return `Cannot ${operation} filters for ${requestedAddress} because the worksheet AutoFilter is currently scoped to ${actualAddress}.`;
 }
 
 export const manageRange: Tool = {
@@ -189,7 +223,7 @@ export const manageRange: Tool = {
       matchCase?: boolean;
       sortOrientation?: "Rows" | "Columns";
       sortMethod?: "PinYin" | "StrokeCount";
-      filterOperation?: "apply" | "clearAll" | "remove" | "reapply";
+      filterOperation?: FilterOperation;
       columnIndex?: number;
       filterOn?: Excel.FilterOn | "BottomItems" | "BottomPercent" | "CellColor" | "Dynamic" | "FontColor" | "Values" | "TopItems" | "TopPercent" | "Icon" | "Custom";
       criterion1?: string;
@@ -202,6 +236,17 @@ export const manageRange: Tool = {
 
     if ((sortKey !== undefined || columnIndex !== undefined) && (!Number.isInteger(sortKey ?? columnIndex) || (sortKey ?? columnIndex)! < 0)) {
       return toolFailure("sortKey and columnIndex must be non-negative integers when provided.");
+    }
+
+    if (action === "filter" && filterOperation === "apply" && hasFilterCriteria({
+      filterOn,
+      criterion1,
+      criterion2,
+      filterValues,
+      dynamicCriteria,
+      filterColor,
+    }) && columnIndex === undefined) {
+      return toolFailure("columnIndex is required when applying filter criteria.");
     }
 
     try {
@@ -267,17 +312,36 @@ export const manageRange: Tool = {
 
             switch (filterOperation) {
               case "clearAll":
-                worksheet.autoFilter.clearCriteria();
-                await context.sync();
-                return `Cleared filter criteria for ${targetRange.address}.`;
               case "remove":
-                worksheet.autoFilter.remove();
+              case "reapply": {
+                const activeFilterRange = worksheet.autoFilter.getRangeOrNullObject();
+                activeFilterRange.load(["isNullObject", "address"]);
                 await context.sync();
-                return `Removed filters for ${targetRange.address}.`;
-              case "reapply":
+
+                const actualFilterAddress = (activeFilterRange as Excel.Range & { isNullObject?: boolean }).isNullObject
+                  ? null
+                  : activeFilterRange.address;
+
+                if (!actualFilterAddress || normalizeRangeAddressForComparison(actualFilterAddress) !== normalizeRangeAddressForComparison(targetRange.address)) {
+                  return toolFailure(filterRangeMismatchMessage(filterOperation, targetRange.address, actualFilterAddress));
+                }
+
+                if (filterOperation === "clearAll") {
+                  worksheet.autoFilter.clearCriteria();
+                  await context.sync();
+                  return `Cleared filter criteria for ${actualFilterAddress}.`;
+                }
+
+                if (filterOperation === "remove") {
+                  worksheet.autoFilter.remove();
+                  await context.sync();
+                  return `Removed filters for ${actualFilterAddress}.`;
+                }
+
                 worksheet.autoFilter.reapply();
                 await context.sync();
-                return `Reapplied filters for ${targetRange.address}.`;
+                return `Reapplied filters for ${actualFilterAddress}.`;
+              }
               case "apply": {
                 const effectiveFilterOn = filterOn
                   || (filterValues?.length ? "Values" : undefined)

@@ -65,7 +65,28 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 function normalizeColor(value: string) {
-  return value.startsWith("#") ? value : `#${value}`;
+  const trimmed = value.trim();
+  return /^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)
+    ? `#${trimmed}`
+    : trimmed;
+}
+
+function validateNonNegativeDimensions(args: Pick<ManageSlideShapesArgs, "width" | "height">) {
+  return [
+    validateRange("width", args.width, { min: 0 }),
+    validateRange("height", args.height, { min: 0 }),
+  ].find(Boolean) ?? null;
+}
+
+function validateGeometricShapeType(value: string) {
+  const supportedValues = Object.values(PowerPoint.GeometricShapeType) as string[];
+
+  if (supportedValues.includes(value)) {
+    return null;
+  }
+
+  const examples = supportedValues.slice(0, 8).join(", ");
+  return `geometricShapeType must be a valid PowerPoint.GeometricShapeType value, such as ${examples}.`;
 }
 
 function validateRange(name: string, value: unknown, { min, max }: { min?: number; max?: number } = {}) {
@@ -257,7 +278,7 @@ export const manageSlideShapes: Tool = {
       shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide." },
       placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
       shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create." },
-      geometricShapeType: { type: "string", description: "Geometric shape type for create, such as Rectangle, Ellipse, Chevron, or RightArrow." },
+      geometricShapeType: { type: "string", description: "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
       connectorType: { type: "string", enum: ["Straight", "Elbow", "Curve"], description: "Optional connector type for line creation. Default Straight." },
       text: { type: "string", description: "Text content to set or create." },
       name: { type: "string" },
@@ -315,8 +336,8 @@ export const manageSlideShapes: Tool = {
     }
 
     const validationError = [
-      validateRange("width", update.width, { min: 0 }),
-      validateRange("height", update.height, { min: 0 }),
+      validateRange("width", update.width),
+      validateRange("height", update.height),
       validateRange("fillTransparency", update.fillTransparency, { min: 0, max: 1 }),
       validateRange("lineWeight", update.lineWeight, { min: 0 }),
       validateRange("lineTransparency", update.lineTransparency, { min: 0, max: 1 }),
@@ -331,6 +352,13 @@ export const manageSlideShapes: Tool = {
       return toolFailure(validationError);
     }
 
+    if (update.action === "create" && !isPowerPointRequirementSetSupported("1.4")) {
+      return toolFailure("Creating shapes requires PowerPointApi 1.4.");
+    }
+    if ((update.action === "update" || update.action === "delete") && !isPowerPointRequirementSetSupported("1.3")) {
+      return toolFailure("Updating or deleting shapes requires PowerPointApi 1.3.");
+    }
+
     if (update.action === "create") {
       if (!update.shapeType) {
         return toolFailure("shapeType is required for create.");
@@ -338,8 +366,20 @@ export const manageSlideShapes: Tool = {
       if (update.shapeType === "geometricShape" && !update.geometricShapeType) {
         return toolFailure("geometricShapeType is required when creating a geometric shape.");
       }
+      if (update.shapeType === "geometricShape" && update.geometricShapeType) {
+        const geometricShapeTypeError = validateGeometricShapeType(update.geometricShapeType);
+        if (geometricShapeTypeError) {
+          return toolFailure(geometricShapeTypeError);
+        }
+      }
       if (update.shapeType === "line" && requiresTextAccess(update)) {
         return toolFailure("Line shapes do not support text or text formatting.");
+      }
+      if (update.shapeType !== "line") {
+        const dimensionError = validateNonNegativeDimensions(update);
+        if (dimensionError) {
+          return toolFailure(dimensionError);
+        }
       }
     } else if (!hasTarget(update)) {
       return toolFailure("Provide shapeId, shapeIndex, or placeholderType.");
@@ -393,6 +433,18 @@ export const manageSlideShapes: Tool = {
           resolved.delete();
           await context.sync();
           return `Deleted shape on slide ${update.slideIndex + 1}.`;
+        }
+
+        if (update.width !== undefined || update.height !== undefined) {
+          resolved.load("type");
+          await context.sync();
+
+          if (resolved.type !== PowerPoint.ShapeType.line) {
+            const dimensionError = validateNonNegativeDimensions(update);
+            if (dimensionError) {
+              return toolFailure(dimensionError);
+            }
+          }
         }
 
         const mutationError = await applyShapeMutation(context, resolved, update);

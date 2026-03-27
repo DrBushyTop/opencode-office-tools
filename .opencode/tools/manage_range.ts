@@ -21,7 +21,7 @@ export default excel("manage_range", "Perform generic Excel range operations suc
   sortOrientation: tool.schema.enum(["Rows", "Columns"]).optional().describe("Whether to sort rows or columns."),
   sortMethod: tool.schema.enum(["PinYin", "StrokeCount"]).optional().describe("Chinese character ordering method for sort."),
   filterOperation: tool.schema.enum(["apply", "clearAll", "remove", "reapply"]).optional().describe("Filter lifecycle operation. Default is apply."),
-  columnIndex: tool.schema.number().optional().describe("Zero-based column offset within the range for filter apply."),
+  columnIndex: tool.schema.number().optional().describe("Zero-based column offset within the range for filter apply. Required when applying criteria."),
   filterOn: tool.schema.enum(["BottomItems", "BottomPercent", "CellColor", "Dynamic", "FontColor", "Values", "TopItems", "TopPercent", "Icon", "Custom"]).optional().describe("How to filter the column when filterOperation is apply."),
   criterion1: tool.schema.string().optional().describe("Primary filter criterion, such as >50 or =North."),
   criterion2: tool.schema.string().optional().describe("Secondary filter criterion for custom filters."),

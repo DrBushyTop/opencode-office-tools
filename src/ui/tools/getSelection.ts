@@ -1,9 +1,9 @@
 import type { Tool } from "./types";
-import { extractDocumentElementFromOoxml, toolFailure } from "./wordShared";
+import { toolFailure } from "./wordShared";
 
 export const getSelection: Tool = {
   name: "get_selection",
-  description: "Get the currently selected OOXML content (w:document element only).",
+  description: "Read the current Word selection as OOXML.",
   parameters: {
     type: "object",
     properties: {},
@@ -15,7 +15,7 @@ export const getSelection: Tool = {
         const ooxml = selection.getOoxml();
         await context.sync();
 
-        return extractDocumentElementFromOoxml(ooxml.value || "") || "(no selection)";
+        return ooxml.value || "(no selection)";
       });
     } catch (error: unknown) {
       return toolFailure(error);

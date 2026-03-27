@@ -83,7 +83,33 @@ function validateOfficeToolCall(host, toolName, args) {
   if (!entry.hosts.includes(host)) {
     throw new Error(`Tool '${toolName}' is not available for host '${host}'`)
   }
-  validateSchema(args === undefined ? {} : args, entry.parameters, 'args')
+  const normalizedArgs = args === undefined ? {} : args
+  validateSchema(normalizedArgs, entry.parameters, 'args')
+
+  if (toolName === 'manage_range'
+    && normalizedArgs.action === 'filter'
+    && (normalizedArgs.filterOperation === undefined || normalizedArgs.filterOperation === 'apply')) {
+    const hasCriteria = Boolean(
+      normalizedArgs.filterOn
+      || normalizedArgs.criterion1
+      || normalizedArgs.criterion2
+      || (Array.isArray(normalizedArgs.filterValues) && normalizedArgs.filterValues.length)
+      || normalizedArgs.dynamicCriteria
+      || normalizedArgs.filterColor,
+    )
+
+    if (hasCriteria && normalizedArgs.columnIndex === undefined) {
+      throw new Error('Missing required args.columnIndex when applying filter criteria')
+    }
+  }
+
+  if (toolName === 'set_document_range') {
+    const operation = normalizedArgs.operation === undefined ? 'replace' : normalizedArgs.operation
+    if ((operation === 'replace' || operation === 'insert') && normalizedArgs.content === undefined) {
+      throw new Error('Missing required args.content for replace or insert operations')
+    }
+  }
+
   return entry
 }
 

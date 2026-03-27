@@ -23,11 +23,34 @@ export function cellToString(value: unknown) {
 }
 
 export function splitSheetQualifiedRange(input: string) {
-  const bangIndex = input.lastIndexOf("!");
+  let bangIndex = -1;
+  let inQuotedSheetName = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+
+    if (character === "'") {
+      if (inQuotedSheetName && input[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+
+      inQuotedSheetName = !inQuotedSheetName;
+      continue;
+    }
+
+    if (character === "!" && !inQuotedSheetName) {
+      bangIndex = index;
+      break;
+    }
+  }
+
   if (bangIndex === -1) return null;
 
-  const rawSheet = input.slice(0, bangIndex);
-  const rangeAddress = input.slice(bangIndex + 1);
+  const rawSheet = input.slice(0, bangIndex).trim();
+  const rangeAddress = input.slice(bangIndex + 1).trim();
+  if (!rawSheet || !rangeAddress) return null;
+
   const normalizedSheet = rawSheet.startsWith("'") && rawSheet.endsWith("'")
     ? rawSheet.slice(1, -1).replace(/''/g, "'")
     : rawSheet;

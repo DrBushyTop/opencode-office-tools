@@ -22,6 +22,8 @@ describe("office tool registry", () => {
     const registryFiles = Object.keys(officeToolRegistry).map((name) => `${name}.ts`).sort();
     const getDocumentPartWrapper = fs.readFileSync(path.join(toolsDir, "get_document_part.ts"), "utf8");
     const manageRangeWrapper = fs.readFileSync(path.join(toolsDir, "manage_range.ts"), "utf8");
+    const manageSlideWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide.ts"), "utf8");
+    const manageSlideShapesWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide_shapes.ts"), "utf8");
 
     expect(wrapperFiles).toEqual(registryFiles);
     expect(getDocumentPartWrapper).toContain('export default word("get_document_part"');
@@ -32,7 +34,15 @@ describe("office tool registry", () => {
     expect(wrapperFiles).toContain("get_document_targets.ts");
     expect(manageRangeWrapper).toContain('export default excel("manage_range"');
     expect(manageRangeWrapper).toContain('tool.schema.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"])');
+    expect(manageSlideWrapper).toContain('export default powerpoint("manage_slide"');
+    expect(manageSlideWrapper).toContain('tool.schema.enum(["create", "duplicate", "delete", "move", "clear"])');
+    expect(manageSlideShapesWrapper).toContain('export default powerpoint("manage_slide_shapes"');
+    expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["create", "update", "delete"])');
+    expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["textBox", "geometricShape", "line"])');
+    expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["Straight", "Elbow", "Curve"])');
     expect(getOfficeToolNames("word")).toContain("get_document_part");
     expect(getOfficeToolNames("word")).toContain("get_document_range");
+    expect(getOfficeToolNames("powerpoint")).toContain("manage_slide");
+    expect(getOfficeToolNames("powerpoint")).toContain("manage_slide_shapes");
   });
 });
