@@ -110,7 +110,7 @@ const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
 - Use get_presentation_structure for master/layout/theme/footer-placeholder discovery and get_slide_shapes for precise shape targeting before editing
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
-- Do not claim to read or write speaker notes through this add-in; PowerPoint Office.js does not expose supported notes APIs here
+- When native PowerPoint APIs miss a feature such as speaker notes, prefer supported Open XML slide round-trips only if the tool explicitly implements them
 - For meaningful slide creation or major visual edits, treat visual QA as required, not optional
 - After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
 - Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content

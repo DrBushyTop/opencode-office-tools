@@ -435,6 +435,18 @@
     },
     "ui": { "icon": "📸", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Capturing slide ", "suffix": "" } }
   },
+  "get_slide_notes": {
+    "hosts": ["powerpoint"],
+    "description": "Read PowerPoint speaker notes by exporting slides to Open XML when the native API does not expose notes directly.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "Optional 0-based slide index." }
+      }
+    },
+    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Reading slide notes" } }
+  },
   "set_presentation_content": {
     "hosts": ["powerpoint"],
     "description": "Add or update text on a PowerPoint slide.",
@@ -531,6 +543,20 @@
       "required": ["slideIndex"]
     },
     "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Editing shapes on slide ", "suffix": "" } }
+  },
+  "set_slide_notes": {
+    "hosts": ["powerpoint"],
+    "description": "Add or update PowerPoint speaker notes by round-tripping slides through Open XML. This replaces the slide in the deck and may change slide identity.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "notes": { "type": "string", "description": "Speaker notes text. Use an empty string to clear notes." }
+      },
+      "required": ["slideIndex", "notes"]
+    },
+    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Updating slide notes" } }
   },
   "duplicate_slide": {
     "hosts": ["powerpoint"],
