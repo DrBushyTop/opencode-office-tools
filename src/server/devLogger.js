@@ -15,16 +15,21 @@ function ensureLogDirectory() {
 function normalizeDetail(detail) {
   if (detail == null) return '';
   if (detail instanceof Error) {
-    return detail.stack || detail.message;
+    return (detail.stack || detail.message).replace(/\s*\n\s*/g, ' | ');
   }
   if (typeof detail === 'string') return detail;
-  return util.inspect(detail, { depth: 6, breakLength: 120, maxArrayLength: 20 });
+  return util.inspect(detail, {
+    depth: 6,
+    breakLength: Infinity,
+    maxArrayLength: 20,
+    compact: true,
+  }).replace(/\s*\n\s*/g, ' | ');
 }
 
 function writeLog(level, scope, message, detail) {
   const timestamp = new Date().toISOString();
   const suffix = normalizeDetail(detail);
-  const line = `${timestamp} ${level.toUpperCase()} [${scope}] ${message}${suffix ? `\n${suffix}` : ''}\n`;
+  const line = `${timestamp} ${level.toUpperCase()} [${scope}] ${message}${suffix ? ` | ${suffix}` : ''}\n`;
 
   try {
     ensureLogDirectory();

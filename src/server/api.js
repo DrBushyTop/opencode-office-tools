@@ -59,6 +59,28 @@ function readRecentLogs(limit = 200) {
 function createApiRouter(runtime, bridge) {
   const apiRouter = express.Router();
   apiRouter.use(express.json({ limit: '50mb' }));
+  apiRouter.use((req, res, next) => {
+    const startedAt = Date.now();
+    const requestId = Math.random().toString(36).slice(2, 8);
+    logInfo('http', `${req.method} ${req.originalUrl} started`, {
+      requestId,
+      host: req.get('host'),
+      origin: req.get('origin'),
+      referer: req.get('referer'),
+      userAgent: req.get('user-agent'),
+    });
+
+    res.on('finish', () => {
+      const level = res.statusCode >= 500 ? logError : res.statusCode >= 400 ? logWarn : logInfo;
+      level('http', `${req.method} ${req.originalUrl} completed`, {
+        requestId,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - startedAt,
+      });
+    });
+
+    next();
+  });
 
   apiRouter.get('/hello', (req, res) => {
     res.json({ message: 'Hello from backend!', timestamp: new Date().toISOString() });
