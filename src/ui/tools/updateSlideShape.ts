@@ -1,9 +1,10 @@
 import type { Tool } from "./types";
 import { loadTextFrames } from "./powerpointText";
+import { toolFailure } from "./powerpointShared";
 
 export const updateSlideShape: Tool = {
   name: "update_slide_shape",
-  description: "Update the text content of an existing shape on a slide. Use get_presentation_content first to see existing shapes and their indices.",
+  description: "Update the text content of an existing shape on a slide. Use get_slide_shapes first to discover shape ids and indices.",
   parameters: {
     type: "object",
     properties: {
@@ -13,17 +14,25 @@ export const updateSlideShape: Tool = {
       },
       shapeIndex: {
         type: "number",
-        description: "0-based shape index within the slide. Use get_presentation_content to see available shapes.",
+        description: "0-based shape index within the slide. Use get_slide_shapes to see available shapes.",
+      },
+      shapeId: {
+        type: "string",
+        description: "Optional shape id. Preferred over shapeIndex when available.",
       },
       text: {
         type: "string",
         description: "The new text content for the shape.",
       },
     },
-    required: ["slideIndex", "shapeIndex", "text"],
+    required: ["slideIndex", "text"],
   },
   handler: async (args) => {
-    const { slideIndex, shapeIndex, text } = args as { slideIndex: number; shapeIndex: number; text: string };
+    const { slideIndex, shapeIndex, shapeId, text } = args as { slideIndex: number; shapeIndex?: number; shapeId?: string; text: string };
+
+    if (shapeIndex === undefined && !shapeId) {
+      return toolFailure("Provide shapeId or shapeIndex.");
+    }
 
     try {
       return await PowerPoint.run(async (context) => {
@@ -31,52 +40,44 @@ export const updateSlideShape: Tool = {
         slides.load("items");
         await context.sync();
 
-        const slideCount = slides.items.length;
-
-        if (slideIndex < 0 || slideIndex >= slideCount) {
-          return {
-            textResultForLlm: `Invalid slideIndex ${slideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`,
-            resultType: "failure",
-            error: "Invalid slideIndex",
-            toolTelemetry: {},
-          };
+        const slide = slides.items[slideIndex];
+        if (!slide) {
+          return toolFailure(`Invalid slideIndex ${slideIndex}.`);
         }
 
-        const slide = slides.items[slideIndex];
         const shapes = slide.shapes;
         shapes.load("items");
         await context.sync();
 
-        const shapeCount = shapes.items.length;
-
-        if (shapeIndex < 0 || shapeIndex >= shapeCount) {
-          return {
-            textResultForLlm: `Invalid shapeIndex ${shapeIndex}. Slide ${slideIndex + 1} has ${shapeCount} shape(s) (indices 0-${shapeCount - 1}).`,
-            resultType: "failure",
-            error: "Invalid shapeIndex",
-            toolTelemetry: {},
-          };
+        let shape: PowerPoint.Shape;
+        if (shapeId) {
+          const byId = shapes.getItemOrNullObject(shapeId);
+          byId.load("isNullObject");
+          await context.sync();
+          if (byId.isNullObject) {
+            return toolFailure(`Shape ${shapeId} was not found on slide ${slideIndex + 1}.`);
+          }
+          shape = byId;
+        } else {
+          const shapeCount = shapes.items.length;
+          if ((shapeIndex as number) < 0 || (shapeIndex as number) >= shapeCount) {
+            return toolFailure(`Invalid shapeIndex ${shapeIndex}. Slide ${slideIndex + 1} has ${shapeCount} shape(s).`);
+          }
+          shape = shapes.items[shapeIndex as number];
         }
 
-        const shape = shapes.items[shapeIndex];
         const [frame] = await loadTextFrames(context, [shape]);
-        
         if (!frame || frame.isNullObject) {
-          return {
-            textResultForLlm: `Shape at index ${shapeIndex} does not support text content.`,
-            resultType: "failure",
-            error: "Shape does not support text content",
-            toolTelemetry: {},
-          };
+          return toolFailure("Target shape does not support text.");
         }
 
         frame.textRange.text = text;
         await context.sync();
 
-        return `Updated shape ${shapeIndex + 1} on slide ${slideIndex + 1} with new text.`;
+        return `Updated shape ${shapeId || shapeIndex} on slide ${slideIndex + 1} with new text.`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

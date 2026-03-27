@@ -68,6 +68,13 @@ export function formatOfficeToolActivity(toolName: string, args: ToolArgs) {
       const raw = Number(args[activity.field || "slideIndex"]);
       return `${activity.prefix || ""}${Number.isFinite(raw) ? raw + 1 : "?"}${activity.suffix || ""}`;
     }
+    case "slide_index_plus_one_or_all": {
+      if (args[activity.field || "slideIndex"] === undefined) {
+        return activity.default || "Inspecting all slides";
+      }
+      const raw = Number(args[activity.field || "slideIndex"]);
+      return `${activity.prefix || ""}${Number.isFinite(raw) ? raw + 1 : "?"}${activity.suffix || ""}`;
+    }
     case "presentation_content_range": {
       if (args.slideIndex !== undefined) return `Reading slide ${Number(args.slideIndex) + 1}`;
       if (args.startIndex !== undefined && args.endIndex !== undefined) {

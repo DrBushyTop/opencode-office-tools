@@ -3,6 +3,7 @@ import { powerpoint } from "../lib/office-powerpoint"
 
 export default powerpoint("update_slide_shape", "Update the text content of a PowerPoint shape.", {
   slideIndex: tool.schema.number().describe("0-based slide index."),
-  shapeIndex: tool.schema.number().describe("0-based shape index."),
+  shapeIndex: tool.schema.number().optional().describe("0-based shape index."),
+  shapeId: tool.schema.string().optional().describe("Optional shape id."),
   text: tool.schema.string().describe("Replacement text."),
 })

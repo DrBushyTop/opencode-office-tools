@@ -29,6 +29,11 @@ import { setDocumentPart } from "./setDocumentPart";
 import { getSlideNotes } from "./getSlideNotes";
 import { setSlideNotes } from "./setSlideNotes";
 import { duplicateSlide } from "./duplicateSlide";
+import { getPresentationStructure } from "./getPresentationStructure";
+import { getSlideShapes } from "./getSlideShapes";
+import { setSlideShapeProperties } from "./setSlideShapeProperties";
+import { deleteSlide } from "./deleteSlide";
+import { moveSlide } from "./moveSlide";
 
 // New Excel tools
 import { getWorkbookOverview } from "./getWorkbookOverview";
@@ -62,13 +67,18 @@ const officeToolHandlers = {
   [applyCellFormatting.name]: applyCellFormatting,
   [createNamedRange.name]: createNamedRange,
   [getPresentationOverview.name]: getPresentationOverview,
+  [getPresentationStructure.name]: getPresentationStructure,
   [getPresentationContent.name]: getPresentationContent,
   [getSlideImage.name]: getSlideImage,
+  [getSlideShapes.name]: getSlideShapes,
   [getSlideNotes.name]: getSlideNotes,
   [setPresentationContent.name]: setPresentationContent,
   [addSlideFromCode.name]: addSlideFromCode,
   [clearSlide.name]: clearSlide,
   [updateSlideShape.name]: updateSlideShape,
+  [setSlideShapeProperties.name]: setSlideShapeProperties,
+  [deleteSlide.name]: deleteSlide,
+  [moveSlide.name]: moveSlide,
   [setSlideNotes.name]: setSlideNotes,
   [duplicateSlide.name]: duplicateSlide,
 };
@@ -92,13 +102,18 @@ export const wordTools = [
 
 export const powerpointTools = [
   getPresentationOverview,
+  getPresentationStructure,
   getPresentationContent,
   getSlideImage,
+  getSlideShapes,
   getSlideNotes,
   setPresentationContent,
   addSlideFromCode,
   clearSlide,
   updateSlideShape,
+  setSlideShapeProperties,
+  deleteSlide,
+  moveSlide,
   setSlideNotes,
   duplicateSlide,
 ];
