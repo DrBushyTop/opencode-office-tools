@@ -47,12 +47,24 @@ async function createServer() {
   app.use('/api', apiRouter);
   bridgeApp.use('/api', createBridgeRouter(bridge));
 
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      logInfo('static', `${req.method} ${req.originalUrl}`, {
+        statusCode: res.statusCode,
+        durationMs: Date.now() - startedAt,
+      });
+    });
+    next();
+  });
+
   // ========== Static File Serving ==========
   const distPath = path.join(BASE_PATH, 'dist');
   app.use(express.static(distPath));
   
   // Fallback to index.html for SPA routing
   app.get('*path', (req, res) => {
+    logInfo('static', 'Serving SPA fallback', { url: req.originalUrl, distPath });
     res.sendFile(path.join(distPath, 'index.html'));
   });
 

@@ -1,15 +1,7 @@
 import type { Tool } from "./types";
 import { getWorksheet, splitSheetQualifiedRange, toolFailure } from "./excelShared";
 
-const chartTypeMap: Record<string, Excel.ChartType> = {
-  column: Excel.ChartType.columnClustered,
-  bar: Excel.ChartType.barClustered,
-  line: Excel.ChartType.line,
-  pie: Excel.ChartType.pie,
-  area: Excel.ChartType.area,
-  scatter: Excel.ChartType.xyscatter,
-  doughnut: Excel.ChartType.doughnut,
-};
+const supportedChartTypes = ["column", "bar", "line", "pie", "area", "scatter", "doughnut"] as const;
 
 export const manageChart: Tool = {
   name: "manage_chart",
@@ -36,7 +28,7 @@ export const manageChart: Tool = {
       },
       chartType: {
         type: "string",
-        enum: ["column", "bar", "line", "pie", "area", "scatter", "doughnut"],
+        enum: [...supportedChartTypes],
         description: "Chart type for create or setProperties.",
       },
       title: {
@@ -94,7 +86,7 @@ export const manageChart: Tool = {
       chartName?: string;
       sheetName?: string;
       dataRange?: string;
-      chartType?: keyof typeof chartTypeMap;
+      chartType?: (typeof supportedChartTypes)[number];
       title?: string;
       newName?: string;
       left?: number;
@@ -105,7 +97,7 @@ export const manageChart: Tool = {
       positionEndCell?: string;
     };
 
-    if (chartType && !chartTypeMap[chartType.toLowerCase()]) {
+    if (chartType && !supportedChartTypes.includes(chartType.toLowerCase() as (typeof supportedChartTypes)[number])) {
       return toolFailure(`Unsupported chartType ${chartType}.`);
     }
 
@@ -122,6 +114,16 @@ export const manageChart: Tool = {
 
     try {
       return await Excel.run(async (context) => {
+        const chartTypeMap: Record<string, Excel.ChartType> = {
+          column: Excel.ChartType.columnClustered,
+          bar: Excel.ChartType.barClustered,
+          line: Excel.ChartType.line,
+          pie: Excel.ChartType.pie,
+          area: Excel.ChartType.area,
+          scatter: Excel.ChartType.xyscatter,
+          doughnut: Excel.ChartType.doughnut,
+        };
+
         if (action === "create") {
           if (!dataRange) return toolFailure("dataRange is required for create.");
 

@@ -5,6 +5,42 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { remoteLog } from "./lib/remoteLog";
 
+declare global {
+  interface Window {
+    __opencodeBootstrapLog?: (level: "info" | "warn" | "error", tag: string, message: string, detail?: unknown) => void;
+  }
+}
+
+const earlyClientLogs: Array<{ level: "info" | "warn" | "error"; tag: string; message: string; detail?: unknown }> = [];
+
+function pushEarlyLog(level: "info" | "warn" | "error", tag: string, message: string, detail?: unknown) {
+  const payload = { level, tag, message, detail };
+  earlyClientLogs.push(payload);
+  window.__opencodeBootstrapLog?.(level, tag, message, detail);
+  remoteLog(tag, message, detail, level);
+}
+
+function installConsoleForwarding() {
+  const original = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  };
+
+  console.log = (...args: unknown[]) => {
+    original.log(...args);
+    remoteLog("ui.console", "console.log", args, "info");
+  };
+  console.warn = (...args: unknown[]) => {
+    original.warn(...args);
+    remoteLog("ui.console", "console.warn", args, "warn");
+  };
+  console.error = (...args: unknown[]) => {
+    original.error(...args);
+    remoteLog("ui.console", "console.error", args, "error");
+  };
+}
+
 type ErrorBoundaryState = {
   error: Error | null;
 };
@@ -41,7 +77,7 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBounda
 }
 
 window.addEventListener("error", (event) => {
-  remoteLog("ui.window", event.message || "Unhandled window error", {
+  pushEarlyLog("error", "ui.window", event.message || "Unhandled window error", {
     filename: event.filename,
     lineno: event.lineno,
     colno: event.colno,
@@ -50,21 +86,39 @@ window.addEventListener("error", (event) => {
 });
 
 window.addEventListener("unhandledrejection", (event) => {
-  remoteLog("ui.promise", "Unhandled promise rejection", event.reason);
+  pushEarlyLog("error", "ui.promise", "Unhandled promise rejection", event.reason);
 });
 
-Office.onReady(() => {
-  remoteLog("ui.bootstrap", "Office.onReady resolved", undefined, "info");
-  const container = document.getElementById("root");
-  if (container) {
-    const root = createRoot(container);
-    root.render(
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    );
-  } else {
-    remoteLog("ui.bootstrap", "Root container not found");
-  }
-  console.log("Add-in loaded successfully");
+installConsoleForwarding();
+pushEarlyLog("info", "ui.bootstrap", "Bootstrap script loaded", {
+  href: window.location.href,
+  userAgent: navigator.userAgent,
 });
+
+if (typeof Office === "undefined") {
+  pushEarlyLog("error", "ui.bootstrap", "Office global missing before onReady registration");
+} else {
+  pushEarlyLog("info", "ui.bootstrap", "Registering Office.onReady handler");
+}
+
+try {
+  Office.onReady((info) => {
+    pushEarlyLog("info", "ui.bootstrap", "Office.onReady resolved", info);
+    const container = document.getElementById("root");
+    if (container) {
+      pushEarlyLog("info", "ui.bootstrap", "Root container found, rendering app");
+      const root = createRoot(container);
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
+    } else {
+      pushEarlyLog("error", "ui.bootstrap", "Root container not found");
+    }
+    console.log("Add-in loaded successfully");
+  });
+} catch (error) {
+  pushEarlyLog("error", "ui.bootstrap", "Failed to register Office.onReady", error);
+  throw error;
+}
