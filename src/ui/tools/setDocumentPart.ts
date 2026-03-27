@@ -59,13 +59,14 @@ function describePlacement(location: TocInsertLocation) {
 
 export const setDocumentPart: Tool = {
   name: "set_document_part",
-  description: `Update a specific Word document part using an address.
+  description: `Update a structural Word document part using an address.
 
 Supported patterns:
 - section[1].header.primary with replace, append, or clear
 - section[2] or section[*] with configure page setup options
 - table_of_contents with insert
 
+Use set_document_range for generic body, selection, bookmark, content-control, and table edits.
 Use flat options for section configuration and TOC insertion.`,
   parameters: {
     type: "object",

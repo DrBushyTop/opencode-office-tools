@@ -109,8 +109,10 @@ const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
 - Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
 - Use get_presentation_structure for master/layout/theme/footer-placeholder discovery and get_slide_shapes for precise shape targeting before editing
+- Use manage_slide for slide create/move/duplicate/delete/clear operations and manage_slide_shapes for most shape creation, deletion, text edits, and formatting changes
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - When native PowerPoint APIs miss a feature such as speaker notes, prefer supported Open XML slide round-trips only if the tool explicitly implements them
+- Treat add_slide_from_code as an advanced fallback for cases the generic PowerPoint tools cannot express cleanly, not as the default way to add common shapes or text
 - For animations and transitions, inspect shape ids first and remember that Open XML fallback tools replace the slide and may change slide identity
 - For meaningful slide creation or major visual edits, treat visual QA as required, not optional
 - After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
@@ -201,15 +203,18 @@ ${VERIFICATION_SYSTEM_GUIDANCE}
 ${host === Office.HostType.Word ? `For Word:
 - Use get_document_overview first to map the document structure
 - Use get_document_content to read the document
-- Use get_document_section or selection tools for targeted edits
+- Use get_document_targets to discover tables, content controls, and bookmarks when you need precise targets
+- Use get_document_range, get_selection_html, or get_document_section for targeted reads
+- Use find_document_text before mutating replace operations when you need to locate text first
+- Use set_document_range for generic targeted edits against selection, bookmarks, content controls, tables, or table cells
 - Use mutation tools directly against the active document instead of asking the user to paste content
 - Use get_document_part and set_document_part for section headers, footers, section setup, and native table of contents work
-- Prefer addresses like section[1].header.primary, section[*], headers_footers, and table_of_contents` : ""}
+- Prefer addresses like section[1].header.primary, section[*], headers_footers, table_of_contents, selection, bookmark[Name], content_control[id=12], and table[1].cell[2,3]` : ""}
 
 ${host === Office.HostType.Excel ? `For Excel:
 - Use get_workbook_overview first for sheets, tables, PivotTables, filters, protection, and frozen panes
 - Use get_workbook_content or get_selected_range with detail=true when number formats, validation, merged cells, or table overlap matter
-- Prefer manage_table and manage_worksheet for real Excel structure changes instead of emulating them with raw cell edits
+- Prefer manage_table, manage_range, manage_chart, manage_named_range, and manage_worksheet for real Excel structure changes instead of emulating them with raw cell edits
 - After mutations, use a verification pass to re-read the affected ranges, formulas, tables, charts, or named ranges` : ""}
 
 Always operate on the open document through tools.`;

@@ -1,0 +1,410 @@
+import type { Tool } from "./types";
+import { loadTextFrames } from "./powerpointText";
+import { isPowerPointRequirementSetSupported, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
+
+type ManageSlideShapesAction = "create" | "update" | "delete";
+type CreateShapeType = "textBox" | "geometricShape" | "line";
+type ConnectorType = "Straight" | "Elbow" | "Curve";
+type ParagraphAlignment = "Left" | "Center" | "Right" | "Justify" | "JustifyLow" | "Distributed" | "ThaiDistributed";
+type UnderlineStyle = "None" | "Single" | "Double" | "Heavy" | "Dotted" | "DottedHeavy" | "Dash" | "DashHeavy" | "DashLong" | "DashLongHeavy" | "DotDash" | "DotDashHeavy" | "DotDotDash" | "DotDotDashHeavy" | "Wavy" | "WavyHeavy" | "WavyDouble";
+type TextAutoSize = "AutoSizeNone" | "AutoSizeTextToFitShape" | "AutoSizeShapeToFitText";
+type VerticalAlignment = "Top" | "Middle" | "Bottom" | "TopCentered" | "MiddleCentered" | "BottomCentered";
+
+interface ManageSlideShapesArgs {
+  action: ManageSlideShapesAction;
+  slideIndex: number;
+  shapeId?: string;
+  shapeIndex?: number;
+  placeholderType?: string;
+  shapeType?: CreateShapeType;
+  geometricShapeType?: string;
+  connectorType?: ConnectorType;
+  text?: string;
+  name?: string;
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  visible?: boolean;
+  altTextTitle?: string;
+  altTextDescription?: string;
+  fillColor?: string;
+  fillTransparency?: number;
+  clearFill?: boolean;
+  lineColor?: string;
+  lineWeight?: number;
+  lineTransparency?: number;
+  lineVisible?: boolean;
+  fontName?: string;
+  fontSize?: number;
+  fontColor?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: UnderlineStyle;
+  strikethrough?: boolean;
+  allCaps?: boolean;
+  smallCaps?: boolean;
+  subscript?: boolean;
+  superscript?: boolean;
+  doubleStrikethrough?: boolean;
+  paragraphAlignment?: ParagraphAlignment;
+  bulletVisible?: boolean;
+  indentLevel?: number;
+  textAutoSize?: TextAutoSize;
+  wordWrap?: boolean;
+  verticalAlignment?: VerticalAlignment;
+  marginLeft?: number;
+  marginRight?: number;
+  marginTop?: number;
+  marginBottom?: number;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
+}
+
+function normalizeColor(value: string) {
+  return value.startsWith("#") ? value : `#${value}`;
+}
+
+function validateRange(name: string, value: unknown, { min, max }: { min?: number; max?: number } = {}) {
+  if (value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return `${name} must be a finite number.`;
+  if (min !== undefined && value < min) return `${name} must be >= ${min}.`;
+  if (max !== undefined && value > max) return `${name} must be <= ${max}.`;
+  return null;
+}
+
+function hasTarget(args: ManageSlideShapesArgs) {
+  return args.shapeId !== undefined || args.shapeIndex !== undefined || args.placeholderType !== undefined;
+}
+
+function requiresTextAccess(args: ManageSlideShapesArgs) {
+  return [
+    args.text,
+    args.fontName,
+    args.fontSize,
+    args.fontColor,
+    args.bold,
+    args.italic,
+    args.underline,
+    args.strikethrough,
+    args.allCaps,
+    args.smallCaps,
+    args.subscript,
+    args.superscript,
+    args.doubleStrikethrough,
+    args.paragraphAlignment,
+    args.bulletVisible,
+    args.indentLevel,
+    args.textAutoSize,
+    args.wordWrap,
+    args.verticalAlignment,
+    args.marginLeft,
+    args.marginRight,
+    args.marginTop,
+    args.marginBottom,
+  ].some((value) => value !== undefined);
+}
+
+async function resolveTargetShape(
+  context: PowerPoint.RequestContext,
+  slide: PowerPoint.Slide,
+  args: ManageSlideShapesArgs,
+): Promise<PowerPoint.Shape | { error: string }> {
+  slide.shapes.load("items");
+  await context.sync();
+
+  if (args.shapeId) {
+    const byId = slide.shapes.getItemOrNullObject(args.shapeId);
+    byId.load("isNullObject");
+    await context.sync();
+    if (byId.isNullObject) {
+      return { error: `Shape ${args.shapeId} was not found on slide ${args.slideIndex + 1}.` };
+    }
+    return byId;
+  }
+
+  if (args.shapeIndex !== undefined) {
+    const shape = slide.shapes.items[args.shapeIndex];
+    if (!shape) {
+      return { error: `Invalid shapeIndex ${args.shapeIndex}. Slide ${args.slideIndex + 1} has ${slide.shapes.items.length} shape(s).` };
+    }
+    return shape;
+  }
+
+  if (args.placeholderType) {
+    if (!supportsPowerPointPlaceholders()) {
+      return { error: "Placeholder targeting requires PowerPointApi 1.8." };
+    }
+    for (const shape of slide.shapes.items) {
+      shape.load("type");
+    }
+    await context.sync();
+
+    const placeholders = slide.shapes.items.filter((shape) => shape.type === PowerPoint.ShapeType.placeholder);
+    for (const shape of placeholders) {
+      shape.placeholderFormat.load("type");
+    }
+    await context.sync();
+
+    const target = placeholders.find((shape) => String(shape.placeholderFormat.type) === args.placeholderType) || null;
+    if (!target) {
+      return { error: `Placeholder type ${args.placeholderType} was not found on slide ${args.slideIndex + 1}.` };
+    }
+    return target;
+  }
+
+  return { error: "Provide shapeId, shapeIndex, or placeholderType." };
+}
+
+async function applyShapeMutation(
+  context: PowerPoint.RequestContext,
+  shape: PowerPoint.Shape,
+  args: ManageSlideShapesArgs,
+): Promise<string | null> {
+  const needsText = requiresTextAccess(args);
+  let frame: PowerPoint.TextFrame | null = null;
+
+  if (needsText) {
+    if (
+      !isPowerPointRequirementSetSupported("1.8")
+      && [args.allCaps, args.smallCaps, args.subscript, args.superscript, args.strikethrough, args.doubleStrikethrough].some((value) => value !== undefined)
+    ) {
+      return "Advanced font effects require PowerPointApi 1.8.";
+    }
+    if (args.indentLevel !== undefined && !isPowerPointRequirementSetSupported("1.10")) {
+      return "indentLevel requires PowerPointApi 1.10.";
+    }
+
+    const [loadedFrame] = await loadTextFrames(context, [shape]);
+    if (!loadedFrame || loadedFrame.isNullObject) {
+      return "Target shape does not support text.";
+    }
+    frame = loadedFrame;
+  }
+
+  if (typeof args.name === "string") shape.name = args.name;
+  if (typeof args.left === "number") shape.left = args.left;
+  if (typeof args.top === "number") shape.top = args.top;
+  if (typeof args.width === "number") shape.width = args.width;
+  if (typeof args.height === "number") shape.height = args.height;
+  if (typeof args.rotation === "number") shape.rotation = args.rotation;
+  if (typeof args.visible === "boolean") shape.visible = args.visible;
+  if (typeof args.altTextTitle === "string") shape.altTextTitle = args.altTextTitle;
+  if (typeof args.altTextDescription === "string") shape.altTextDescription = args.altTextDescription;
+
+  if (args.clearFill) {
+    shape.fill.clear();
+  } else if (typeof args.fillColor === "string") {
+    shape.fill.setSolidColor(normalizeColor(args.fillColor));
+  }
+  if (typeof args.fillTransparency === "number") shape.fill.transparency = args.fillTransparency;
+  if (typeof args.lineColor === "string") shape.lineFormat.color = normalizeColor(args.lineColor);
+  if (typeof args.lineWeight === "number") shape.lineFormat.weight = args.lineWeight;
+  if (typeof args.lineTransparency === "number") shape.lineFormat.transparency = args.lineTransparency;
+  if (typeof args.lineVisible === "boolean") shape.lineFormat.visible = args.lineVisible;
+
+  if (frame) {
+    if (typeof args.text === "string") frame.textRange.text = args.text;
+
+    const font = frame.textRange.font;
+    const paragraph = frame.textRange.paragraphFormat;
+
+    if (typeof args.fontName === "string") font.name = args.fontName;
+    if (typeof args.fontSize === "number") font.size = args.fontSize;
+    if (typeof args.fontColor === "string") font.color = normalizeColor(args.fontColor);
+    if (typeof args.bold === "boolean") font.bold = args.bold;
+    if (typeof args.italic === "boolean") font.italic = args.italic;
+    if (typeof args.underline === "string") font.underline = args.underline;
+    if (typeof args.strikethrough === "boolean") font.strikethrough = args.strikethrough;
+    if (typeof args.allCaps === "boolean") font.allCaps = args.allCaps;
+    if (typeof args.smallCaps === "boolean") font.smallCaps = args.smallCaps;
+    if (typeof args.subscript === "boolean") font.subscript = args.subscript;
+    if (typeof args.superscript === "boolean") font.superscript = args.superscript;
+    if (typeof args.doubleStrikethrough === "boolean") font.doubleStrikethrough = args.doubleStrikethrough;
+
+    if (typeof args.paragraphAlignment === "string") paragraph.horizontalAlignment = args.paragraphAlignment;
+    if (typeof args.bulletVisible === "boolean") paragraph.bulletFormat.visible = args.bulletVisible;
+    if (typeof args.indentLevel === "number") paragraph.indentLevel = args.indentLevel;
+
+    if (typeof args.textAutoSize === "string") frame.autoSizeSetting = args.textAutoSize;
+    if (typeof args.wordWrap === "boolean") frame.wordWrap = args.wordWrap;
+    if (typeof args.verticalAlignment === "string") frame.verticalAlignment = args.verticalAlignment;
+    if (typeof args.marginLeft === "number") frame.leftMargin = args.marginLeft;
+    if (typeof args.marginRight === "number") frame.rightMargin = args.marginRight;
+    if (typeof args.marginTop === "number") frame.topMargin = args.marginTop;
+    if (typeof args.marginBottom === "number") frame.bottomMargin = args.marginBottom;
+  }
+
+  return null;
+}
+
+export const manageSlideShapes: Tool = {
+  name: "manage_slide_shapes",
+  description: "Create, update, or delete PowerPoint shapes with generic geometry, styling, and text formatting controls.",
+  parameters: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["create", "update", "delete"],
+        description: "Shape operation to perform.",
+      },
+      slideIndex: { type: "number", description: "0-based slide index." },
+      shapeId: { type: "string", description: "Existing shape id. Preferred over shapeIndex when available." },
+      shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide." },
+      placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
+      shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create." },
+      geometricShapeType: { type: "string", description: "Geometric shape type for create, such as Rectangle, Ellipse, Chevron, or RightArrow." },
+      connectorType: { type: "string", enum: ["Straight", "Elbow", "Curve"], description: "Optional connector type for line creation. Default Straight." },
+      text: { type: "string", description: "Text content to set or create." },
+      name: { type: "string" },
+      left: { type: "number" },
+      top: { type: "number" },
+      width: { type: "number" },
+      height: { type: "number" },
+      rotation: { type: "number" },
+      visible: { type: "boolean" },
+      altTextTitle: { type: "string" },
+      altTextDescription: { type: "string" },
+      fillColor: { type: "string" },
+      fillTransparency: { type: "number" },
+      clearFill: { type: "boolean" },
+      lineColor: { type: "string" },
+      lineWeight: { type: "number" },
+      lineTransparency: { type: "number" },
+      lineVisible: { type: "boolean" },
+      fontName: { type: "string" },
+      fontSize: { type: "number" },
+      fontColor: { type: "string" },
+      bold: { type: "boolean" },
+      italic: { type: "boolean" },
+      underline: {
+        type: "string",
+        enum: ["None", "Single", "Double", "Heavy", "Dotted", "DottedHeavy", "Dash", "DashHeavy", "DashLong", "DashLongHeavy", "DotDash", "DotDashHeavy", "DotDotDash", "DotDotDashHeavy", "Wavy", "WavyHeavy", "WavyDouble"],
+      },
+      strikethrough: { type: "boolean" },
+      allCaps: { type: "boolean" },
+      smallCaps: { type: "boolean" },
+      subscript: { type: "boolean" },
+      superscript: { type: "boolean" },
+      doubleStrikethrough: { type: "boolean" },
+      paragraphAlignment: { type: "string", enum: ["Left", "Center", "Right", "Justify", "JustifyLow", "Distributed", "ThaiDistributed"] },
+      bulletVisible: { type: "boolean" },
+      indentLevel: { type: "number" },
+      textAutoSize: { type: "string", enum: ["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"] },
+      wordWrap: { type: "boolean" },
+      verticalAlignment: { type: "string", enum: ["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"] },
+      marginLeft: { type: "number" },
+      marginRight: { type: "number" },
+      marginTop: { type: "number" },
+      marginBottom: { type: "number" },
+    },
+    required: ["action", "slideIndex"],
+  },
+  handler: async (args) => {
+    const update = args as ManageSlideShapesArgs;
+
+    if (!isNonNegativeInteger(update.slideIndex)) {
+      return toolFailure("slideIndex must be a non-negative integer.");
+    }
+    if (update.shapeIndex !== undefined && !isNonNegativeInteger(update.shapeIndex)) {
+      return toolFailure("shapeIndex must be a non-negative integer.");
+    }
+
+    const validationError = [
+      validateRange("width", update.width, { min: 0 }),
+      validateRange("height", update.height, { min: 0 }),
+      validateRange("fillTransparency", update.fillTransparency, { min: 0, max: 1 }),
+      validateRange("lineWeight", update.lineWeight, { min: 0 }),
+      validateRange("lineTransparency", update.lineTransparency, { min: 0, max: 1 }),
+      validateRange("fontSize", update.fontSize, { min: 1 }),
+      validateRange("indentLevel", update.indentLevel, { min: 0 }),
+      validateRange("marginLeft", update.marginLeft, { min: 0 }),
+      validateRange("marginRight", update.marginRight, { min: 0 }),
+      validateRange("marginTop", update.marginTop, { min: 0 }),
+      validateRange("marginBottom", update.marginBottom, { min: 0 }),
+    ].find(Boolean);
+    if (validationError) {
+      return toolFailure(validationError);
+    }
+
+    if (update.action === "create") {
+      if (!update.shapeType) {
+        return toolFailure("shapeType is required for create.");
+      }
+      if (update.shapeType === "geometricShape" && !update.geometricShapeType) {
+        return toolFailure("geometricShapeType is required when creating a geometric shape.");
+      }
+      if (update.shapeType === "line" && requiresTextAccess(update)) {
+        return toolFailure("Line shapes do not support text or text formatting.");
+      }
+    } else if (!hasTarget(update)) {
+      return toolFailure("Provide shapeId, shapeIndex, or placeholderType.");
+    }
+
+    try {
+      return await PowerPoint.run(async (context) => {
+        const slides = context.presentation.slides;
+        slides.load("items");
+        await context.sync();
+
+        const slide = slides.items[update.slideIndex];
+        if (!slide) {
+          return toolFailure(`Invalid slideIndex ${update.slideIndex}.`);
+        }
+
+        if (update.action === "create") {
+          const options = {
+            ...(typeof update.left === "number" ? { left: update.left } : {}),
+            ...(typeof update.top === "number" ? { top: update.top } : {}),
+            ...(typeof update.width === "number" ? { width: update.width } : {}),
+            ...(typeof update.height === "number" ? { height: update.height } : {}),
+          };
+
+          const created = update.shapeType === "textBox"
+            ? slide.shapes.addTextBox(update.text || "", options)
+            : update.shapeType === "geometricShape"
+              ? slide.shapes.addGeometricShape(update.geometricShapeType as PowerPoint.GeometricShapeType, options)
+              : slide.shapes.addLine(update.connectorType || "Straight", options);
+
+          created.load(["id", "name"]);
+          await context.sync();
+
+          const mutationError = await applyShapeMutation(context, created, update);
+          if (mutationError) {
+            created.delete();
+            await context.sync();
+            return toolFailure(mutationError);
+          }
+
+          await context.sync();
+          return `Created ${update.shapeType} ${created.id} on slide ${update.slideIndex + 1}.`;
+        }
+
+        const resolved = await resolveTargetShape(context, slide, update);
+        if ("error" in resolved) {
+          return toolFailure(resolved.error);
+        }
+
+        if (update.action === "delete") {
+          resolved.delete();
+          await context.sync();
+          return `Deleted shape on slide ${update.slideIndex + 1}.`;
+        }
+
+        const mutationError = await applyShapeMutation(context, resolved, update);
+        if (mutationError) {
+          return toolFailure(mutationError);
+        }
+
+        await context.sync();
+        return `Updated shape on slide ${update.slideIndex + 1}.`;
+      });
+    } catch (error: unknown) {
+      return toolFailure(error);
+    }
+  },
+};

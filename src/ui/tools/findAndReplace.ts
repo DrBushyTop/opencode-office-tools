@@ -1,14 +1,16 @@
 import type { Tool } from "./types";
+import { parseDocumentRangeAddress, resolveDocumentRangeTarget, toolFailure } from "./wordShared";
 
 export const findAndReplace: Tool = {
   name: "find_and_replace",
-  description: `Find and replace text in the Word document.
+  description: `Find and replace text in Word.
 
-Searches the entire document for occurrences of the search text and replaces them.
+ Searches the entire document by default, or a generic target scope when address is provided.
 
 Parameters:
 - find: The text to search for
 - replace: The text to replace it with
+- address: Optional scope such as selection, bookmark[Name], content_control[id=12], or table[1]
 - matchCase: If true, search is case-sensitive (default: false)
 - matchWholeWord: If true, only match whole words, not partial matches (default: false)
 
@@ -29,6 +31,10 @@ Examples:
         type: "string",
         description: "The text to replace matches with.",
       },
+      address: {
+        type: "string",
+        description: "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1].",
+      },
       matchCase: {
         type: "boolean",
         description: "If true, the search is case-sensitive. Default is false.",
@@ -44,20 +50,29 @@ Examples:
     const { find, replace, matchCase = false, matchWholeWord = false } = args as {
       find: string;
       replace: string;
+      address?: string;
       matchCase?: boolean;
       matchWholeWord?: boolean;
     };
+    const { address } = args as { address?: string };
     
     if (!find || find.length === 0) {
-      return { textResultForLlm: "Search text cannot be empty.", resultType: "failure", error: "Empty search", toolTelemetry: {} };
+      return toolFailure("Search text cannot be empty.");
+    }
+
+    const parsed = address ? parseDocumentRangeAddress(address) : null;
+    if (address && !parsed) {
+      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], or table[1].");
     }
     
     try {
       return await Word.run(async (context) => {
-        const body = context.document.body;
+        const target = parsed
+          ? await resolveDocumentRangeTarget(context, parsed)
+          : { kind: "body" as const, label: "document", target: context.document.body };
         
         // Create search options
-        const searchResults = body.search(find, {
+        const searchResults = target.target.search(find, {
           ignorePunct: false,
           ignoreSpace: false,
           matchCase: matchCase,
@@ -70,7 +85,7 @@ Examples:
         const count = searchResults.items.length;
         
         if (count === 0) {
-          return `No matches found for "${find}".`;
+          return `No matches found for "${find}" in ${target.label}.`;
         }
         
         // Replace all matches
@@ -80,10 +95,10 @@ Examples:
         
         await context.sync();
         
-        return `Replaced ${count} occurrence${count === 1 ? "" : "s"} of "${find}" with "${replace}".`;
+        return `Replaced ${count} occurrence${count === 1 ? "" : "s"} of "${find}" with "${replace}" in ${target.label}.`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

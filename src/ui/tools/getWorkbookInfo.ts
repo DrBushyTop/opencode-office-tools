@@ -2,7 +2,7 @@ import type { Tool } from "./types";
 
 export const getWorkbookInfo: Tool = {
   name: "get_workbook_info",
-  description: "Get metadata about the Excel workbook including all worksheet/tab names, the active sheet, and basic workbook properties. Use this to understand the structure of the workbook before reading or writing data.",
+  description: "Get a lightweight workbook summary including worksheet names and the active sheet. Prefer get_workbook_overview when you need structural details like tables, filters, named ranges, or charts.",
   parameters: {
     type: "object",
     properties: {},

@@ -1,0 +1,32 @@
+import { tool } from "@opencode-ai/plugin"
+import { excel } from "../lib/office-excel"
+
+export default excel("manage_range", "Perform generic Excel range operations such as clear, insert, delete, copy, fill, sort, and filter.", {
+  action: tool.schema.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"]).describe("Range operation to perform."),
+  sheetName: tool.schema.string().optional().describe("Worksheet name for range values that are not already sheet-qualified."),
+  range: tool.schema.string().describe("Target range such as A1:D10 or Sheet1!A1:D10."),
+  clearMode: tool.schema.enum(["All", "Formats", "Contents", "Hyperlinks", "RemoveHyperlinks", "ResetContents"]).optional().describe("What to clear for the clear action. Default is Contents."),
+  insertShift: tool.schema.enum(["Down", "Right"]).optional().describe("Shift direction for insert."),
+  deleteShift: tool.schema.enum(["Up", "Left"]).optional().describe("Shift direction for delete."),
+  sourceRange: tool.schema.string().optional().describe("Source range for copy."),
+  copyType: tool.schema.enum(["All", "Formulas", "Values", "Formats", "Link"]).optional().describe("Content to copy for copy. Default is All."),
+  skipBlanks: tool.schema.boolean().optional().describe("Skip blank source cells during copy."),
+  transpose: tool.schema.boolean().optional().describe("Transpose during copy."),
+  destinationRange: tool.schema.string().optional().describe("Destination range for fill."),
+  fillType: tool.schema.enum(["FillDefault", "FillCopy", "FillSeries", "FillFormats", "FillValues", "FillDays", "FillWeekdays", "FillMonths", "FillYears", "LinearTrend", "GrowthTrend", "FlashFill"]).optional().describe("AutoFill mode for fill. Default is FillDefault."),
+  sortKey: tool.schema.number().optional().describe("Zero-based column or row offset within the range for sort."),
+  sortAscending: tool.schema.boolean().optional().describe("Whether sort is ascending. Default true."),
+  hasHeaders: tool.schema.boolean().optional().describe("Whether the sorted range has headers."),
+  matchCase: tool.schema.boolean().optional().describe("Whether sort should be case-sensitive."),
+  sortOrientation: tool.schema.enum(["Rows", "Columns"]).optional().describe("Whether to sort rows or columns."),
+  sortMethod: tool.schema.enum(["PinYin", "StrokeCount"]).optional().describe("Chinese character ordering method for sort."),
+  filterOperation: tool.schema.enum(["apply", "clearAll", "remove", "reapply"]).optional().describe("Filter lifecycle operation. Default is apply."),
+  columnIndex: tool.schema.number().optional().describe("Zero-based column offset within the range for filter apply."),
+  filterOn: tool.schema.enum(["BottomItems", "BottomPercent", "CellColor", "Dynamic", "FontColor", "Values", "TopItems", "TopPercent", "Icon", "Custom"]).optional().describe("How to filter the column when filterOperation is apply."),
+  criterion1: tool.schema.string().optional().describe("Primary filter criterion, such as >50 or =North."),
+  criterion2: tool.schema.string().optional().describe("Secondary filter criterion for custom filters."),
+  filterOperator: tool.schema.enum(["And", "Or"]).optional().describe("How to combine custom criteria."),
+  filterValues: tool.schema.array(tool.schema.string()).optional().describe("Explicit values to keep visible when filtering by values."),
+  dynamicCriteria: tool.schema.enum(["Unknown", "AboveAverage", "AllDatesInPeriodApril", "AllDatesInPeriodAugust", "AllDatesInPeriodDecember", "AllDatesInPeriodFebruray", "AllDatesInPeriodJanuary", "AllDatesInPeriodJuly", "AllDatesInPeriodJune", "AllDatesInPeriodMarch", "AllDatesInPeriodMay", "AllDatesInPeriodNovember", "AllDatesInPeriodOctober", "AllDatesInPeriodQuarter1", "AllDatesInPeriodQuarter2", "AllDatesInPeriodQuarter3", "AllDatesInPeriodQuarter4", "AllDatesInPeriodSeptember", "BelowAverage", "LastMonth", "LastQuarter", "LastWeek", "LastYear", "NextMonth", "NextQuarter", "NextWeek", "NextYear", "ThisMonth", "ThisQuarter", "ThisWeek", "ThisYear", "Today", "Tomorrow", "YearToDate", "Yesterday"]).optional().describe("Dynamic filter criteria when filterOn is Dynamic."),
+  filterColor: tool.schema.string().optional().describe("HTML color string for cellColor or fontColor filters."),
+})

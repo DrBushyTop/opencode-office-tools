@@ -15,7 +15,7 @@
   },
   "get_document_part": {
     "hosts": ["word"],
-    "description": "Read a specific Word document part using an address.",
+    "description": "Read a structural Word document part using an address.",
     "mutating": false,
     "parameters": {
       "type": "object",
@@ -56,7 +56,7 @@
   },
   "set_document_part": {
     "hosts": ["word"],
-    "description": "Update a specific Word document part using an address.",
+    "description": "Update a structural Word document part using an address.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -93,6 +93,75 @@
     "parameters": { "type": "object", "properties": {} },
     "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selected text" } }
   },
+  "get_selection_html": {
+    "hosts": ["word"],
+    "description": "Read the current Word selection as HTML.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selection HTML" } }
+  },
+  "get_document_range": {
+    "hosts": ["word"],
+    "description": "Read a generic Word target by address.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "address": { "type": "string", "description": "Target address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3]." },
+        "format": { "type": "string", "enum": ["summary", "text", "html", "ooxml"], "description": "Preferred response format." }
+      },
+      "required": ["address"]
+    },
+    "ui": { "icon": "🎯", "activity": { "type": "address", "prefix": "Reading " } }
+  },
+  "set_document_range": {
+    "hosts": ["word"],
+    "description": "Update a generic Word target by address.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "address": { "type": "string", "description": "Target address such as selection, bookmark[Clause], content_control[id=12], table[1], or table[1].cell[2,3]." },
+        "operation": { "type": "string", "enum": ["replace", "insert", "clear"], "description": "Operation to perform." },
+        "format": { "type": "string", "enum": ["html", "text", "ooxml"], "description": "Content format for replace or insert operations." },
+        "content": { "type": "string", "description": "Content to write for replace or insert operations." },
+        "location": { "type": "string", "enum": ["replace", "before", "after", "start", "end"], "description": "Insertion location for insert operations." }
+      },
+      "required": ["address"]
+    },
+    "ui": { "icon": "🎯", "activity": { "type": "address", "prefix": "Updating " } }
+  },
+  "find_document_text": {
+    "hosts": ["word"],
+    "description": "Locate text in the active Word document without modifying it.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "find": { "type": "string", "description": "Text to find." },
+        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1]." },
+        "matchCase": { "type": "boolean", "description": "Match case exactly." },
+        "matchWholeWord": { "type": "boolean", "description": "Match whole words only." },
+        "maxResults": { "type": "number", "description": "Maximum number of preview matches to return." }
+      },
+      "required": ["find"]
+    },
+    "ui": { "icon": "🔎", "activity": { "type": "json_value", "field": "find", "prefix": "Finding " } }
+  },
+  "get_document_targets": {
+    "hosts": ["word"],
+    "description": "Inspect Word tables, content controls, and bookmarks for later generic targeting.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["all", "tables", "contentControls", "bookmarks"], "description": "Which target family to inspect." },
+        "maxItems": { "type": "number", "description": "Maximum items to include per family." },
+        "includeText": { "type": "boolean", "description": "Include short text previews when available." }
+      }
+    },
+    "ui": { "icon": "🗂️", "activity": { "type": "field_or_default", "field": "kind", "prefix": "Inspecting Word targets: ", "default": "all" } }
+  },
   "insert_content_at_selection": {
     "hosts": ["word"],
     "description": "Insert HTML content at the current Word selection.",
@@ -109,13 +178,14 @@
   },
   "find_and_replace": {
     "hosts": ["word"],
-    "description": "Find and replace text throughout the active Word document.",
+    "description": "Find and replace text in Word, optionally scoped to a generic target address.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
         "find": { "type": "string", "description": "Text to find." },
         "replace": { "type": "string", "description": "Replacement text." },
+        "address": { "type": "string", "description": "Optional scope address such as selection, bookmark[Clause], content_control[id=12], or table[1]." },
         "matchCase": { "type": "boolean", "description": "Match case exactly." },
         "matchWholeWord": { "type": "boolean", "description": "Match whole words only." }
       },
@@ -170,7 +240,7 @@
   },
   "get_workbook_info": {
     "hosts": ["excel"],
-    "description": "Get workbook metadata including worksheet names and the active sheet.",
+    "description": "Get a lightweight workbook summary with worksheet names and the active sheet. Prefer get_workbook_overview for structural inspection.",
     "mutating": false,
     "parameters": { "type": "object", "properties": {} },
     "ui": { "icon": "📊", "activity": { "type": "static", "text": "Getting workbook structure" } }
@@ -267,21 +337,30 @@
     },
     "ui": { "icon": "🔁", "activity": { "type": "json_value", "field": "find", "prefix": "Replacing " } }
   },
-  "insert_chart": {
+  "manage_chart": {
     "hosts": ["excel"],
-    "description": "Create a chart from data in Excel.",
+    "description": "Create or update Excel charts, including placement, resizing, source data changes, title changes, type changes, activation, and deletion.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "dataRange": { "type": "string", "description": "Data range for the chart." },
-        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie", "area", "scatter", "doughnut"], "description": "Chart type." },
-        "title": { "type": "string", "description": "Optional chart title." },
-        "sheetName": { "type": "string", "description": "Worksheet name to use." }
+        "action": { "type": "string", "enum": ["create", "setData", "setProperties", "activate", "delete"], "description": "Chart operation to perform." },
+        "chartName": { "type": "string", "description": "Existing chart name. Required for all actions except create." },
+        "sheetName": { "type": "string", "description": "Worksheet name for create, placement, or data ranges when ranges are sheet-local." },
+        "dataRange": { "type": "string", "description": "Source data range for create or setData." },
+        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie", "area", "scatter", "doughnut"], "description": "Chart type for create or setProperties." },
+        "title": { "type": "string", "description": "Optional chart title. Use an empty string to clear it in setProperties." },
+        "newName": { "type": "string", "description": "New chart name for create or setProperties." },
+        "left": { "type": "number", "description": "Left position in points for setProperties." },
+        "top": { "type": "number", "description": "Top position in points for setProperties." },
+        "width": { "type": "number", "description": "Width in points for setProperties." },
+        "height": { "type": "number", "description": "Height in points for setProperties." },
+        "positionStartCell": { "type": "string", "description": "Top-left placement cell for create or setProperties." },
+        "positionEndCell": { "type": "string", "description": "Optional bottom-right placement cell for create or setProperties." }
       },
-      "required": ["dataRange"]
+      "required": ["action"]
     },
-    "ui": { "icon": "📈", "activity": { "type": "static", "text": "Creating chart" } }
+    "ui": { "icon": "📈", "activity": { "type": "json_value", "field": "action", "prefix": "Chart action: " } }
   },
   "apply_cell_formatting": {
     "hosts": ["excel"],
@@ -316,20 +395,62 @@
     },
     "ui": { "icon": "🎨", "activity": { "type": "static", "text": "Formatting cells" } }
   },
-  "create_named_range": {
+  "manage_named_range": {
     "hosts": ["excel"],
-    "description": "Create or update a named range in Excel.",
+    "description": "Create, update, rename, set visibility, or delete Excel named ranges.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "Range name." },
-        "range": { "type": "string", "description": "Cell range." },
-        "comment": { "type": "string", "description": "Optional description." }
+        "action": { "type": "string", "enum": ["create", "update", "rename", "setVisibility", "delete"], "description": "Named range operation to perform." },
+        "name": { "type": "string", "description": "Existing or new named range name depending on the action." },
+        "newName": { "type": "string", "description": "New named range name for rename." },
+        "reference": { "type": "string", "description": "Cell or formula reference such as A1:D10, Sheet1!B2, or =SUM(A:A)." },
+        "comment": { "type": "string", "description": "Optional description to set when creating or updating." },
+        "visible": { "type": "boolean", "description": "Whether the named range is visible for setVisibility or update." }
       },
-      "required": ["name", "range"]
+      "required": ["action", "name"]
     },
-    "ui": { "icon": "🏷️", "activity": { "type": "json_value", "field": "name", "prefix": "Naming range " } }
+    "ui": { "icon": "🏷️", "activity": { "type": "json_value", "field": "action", "prefix": "Named range action: " } }
+  },
+  "manage_range": {
+    "hosts": ["excel"],
+    "description": "Perform generic Excel range operations such as clear, insert, delete, copy, fill, sort, and filter.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["clear", "insert", "delete", "copy", "fill", "sort", "filter"], "description": "Range operation to perform." },
+        "sheetName": { "type": "string", "description": "Worksheet name for range values that are not already sheet-qualified." },
+        "range": { "type": "string", "description": "Target range such as A1:D10 or Sheet1!A1:D10." },
+        "clearMode": { "type": "string", "enum": ["All", "Formats", "Contents", "Hyperlinks", "RemoveHyperlinks", "ResetContents"], "description": "What to clear for the clear action. Default is Contents." },
+        "insertShift": { "type": "string", "enum": ["Down", "Right"], "description": "Shift direction for insert." },
+        "deleteShift": { "type": "string", "enum": ["Up", "Left"], "description": "Shift direction for delete." },
+        "sourceRange": { "type": "string", "description": "Source range for copy." },
+        "copyType": { "type": "string", "enum": ["All", "Formulas", "Values", "Formats", "Link"], "description": "Content to copy for copy. Default is All." },
+        "skipBlanks": { "type": "boolean", "description": "Skip blank source cells during copy." },
+        "transpose": { "type": "boolean", "description": "Transpose during copy." },
+        "destinationRange": { "type": "string", "description": "Destination range for fill." },
+        "fillType": { "type": "string", "enum": ["FillDefault", "FillCopy", "FillSeries", "FillFormats", "FillValues", "FillDays", "FillWeekdays", "FillMonths", "FillYears", "LinearTrend", "GrowthTrend", "FlashFill"], "description": "AutoFill mode for fill. Default is FillDefault." },
+        "sortKey": { "type": "number", "description": "Zero-based column or row offset within the range for sort." },
+        "sortAscending": { "type": "boolean", "description": "Whether sort is ascending. Default true." },
+        "hasHeaders": { "type": "boolean", "description": "Whether the sorted range has headers." },
+        "matchCase": { "type": "boolean", "description": "Whether sort should be case-sensitive." },
+        "sortOrientation": { "type": "string", "enum": ["Rows", "Columns"], "description": "Whether to sort rows or columns." },
+        "sortMethod": { "type": "string", "enum": ["PinYin", "StrokeCount"], "description": "Chinese character ordering method for sort." },
+        "filterOperation": { "type": "string", "enum": ["apply", "clearAll", "remove", "reapply"], "description": "Filter lifecycle operation. Default is apply." },
+        "columnIndex": { "type": "number", "description": "Zero-based column offset within the range for filter apply." },
+        "filterOn": { "type": "string", "enum": ["BottomItems", "BottomPercent", "CellColor", "Dynamic", "FontColor", "Values", "TopItems", "TopPercent", "Icon", "Custom"], "description": "How to filter the column when filterOperation is apply." },
+        "criterion1": { "type": "string", "description": "Primary filter criterion, such as >50 or =North." },
+        "criterion2": { "type": "string", "description": "Secondary filter criterion for custom filters." },
+        "filterOperator": { "type": "string", "enum": ["And", "Or"], "description": "How to combine custom criteria." },
+        "filterValues": { "type": "array", "items": { "type": "string" }, "description": "Explicit values to keep visible when filtering by values." },
+        "dynamicCriteria": { "type": "string", "enum": ["Unknown", "AboveAverage", "AllDatesInPeriodApril", "AllDatesInPeriodAugust", "AllDatesInPeriodDecember", "AllDatesInPeriodFebruray", "AllDatesInPeriodJanuary", "AllDatesInPeriodJuly", "AllDatesInPeriodJune", "AllDatesInPeriodMarch", "AllDatesInPeriodMay", "AllDatesInPeriodNovember", "AllDatesInPeriodOctober", "AllDatesInPeriodQuarter1", "AllDatesInPeriodQuarter2", "AllDatesInPeriodQuarter3", "AllDatesInPeriodQuarter4", "AllDatesInPeriodSeptember", "BelowAverage", "LastMonth", "LastQuarter", "LastWeek", "LastYear", "NextMonth", "NextQuarter", "NextWeek", "NextYear", "ThisMonth", "ThisQuarter", "ThisWeek", "ThisYear", "Today", "Tomorrow", "YearToDate", "Yesterday"], "description": "Dynamic filter criteria when filterOn is Dynamic." },
+        "filterColor": { "type": "string", "description": "HTML color string for cellColor or fontColor filters." }
+      },
+      "required": ["action", "range"]
+    },
+    "ui": { "icon": "🧰", "activity": { "type": "json_value", "field": "action", "prefix": "Range action: " } }
   },
   "manage_worksheet": {
     "hosts": ["excel"],
@@ -354,12 +475,12 @@
   },
   "manage_table": {
     "hosts": ["excel"],
-    "description": "Create or update Excel tables, including style, totals, resizing, filter reset, conversion, and deletion.",
+    "description": "Create or update Excel tables, including style, totals, resizing, row appends/inserts, filter reset, conversion, and deletion.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["create", "rename", "resize", "setProperties", "clearFilters", "reapplyFilters", "convertToRange", "delete"], "description": "Table operation to perform." },
+        "action": { "type": "string", "enum": ["create", "rename", "resize", "setProperties", "addRows", "clearFilters", "reapplyFilters", "convertToRange", "delete"], "description": "Table operation to perform." },
         "tableName": { "type": "string", "description": "Existing table name or id. Required except for create." },
         "sheetName": { "type": "string", "description": "Worksheet name for create when sourceRange is sheet-local." },
         "sourceRange": { "type": "string", "description": "Source range for create or resize." },
@@ -372,7 +493,17 @@
         "showBandedColumns": { "type": "boolean" },
         "showFilterButton": { "type": "boolean" },
         "highlightFirstColumn": { "type": "boolean" },
-        "highlightLastColumn": { "type": "boolean" }
+        "highlightLastColumn": { "type": "boolean" },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
+          },
+          "description": "Row data to append or insert for addRows."
+        },
+        "rowIndex": { "type": "number", "description": "Zero-based row index for addRows. Omit or use -1 to append." },
+        "alwaysInsert": { "type": "boolean", "description": "Whether addRows should insert into the table when adding rows. Default true." }
       },
       "required": ["action"]
     },
@@ -499,27 +630,24 @@
     },
     "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Inspecting transition on slide ", "suffix": "" } }
   },
-  "set_presentation_content": {
+  "manage_slide": {
     "hosts": ["powerpoint"],
-    "description": "Add or update text on a PowerPoint slide.",
+    "description": "Create, duplicate, delete, move, or clear PowerPoint slides with one generic slide-management tool.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index." },
-        "text": { "type": "string", "description": "Text to add." },
-        "shapeId": { "type": "string", "description": "Optional existing shape id to update instead of adding a new text box." },
-        "placeholderType": { "type": "string", "description": "Optional placeholder type to target, such as Title, Body, Subtitle, Content, Footer, Header, Date, or SlideNumber." },
-        "slideMasterId": { "type": "string", "description": "Optional slide master id to use when creating a new slide." },
-        "layoutId": { "type": "string", "description": "Optional slide layout id to use when creating a new slide." },
-        "left": { "type": "number", "description": "Left position for a new text box." },
-        "top": { "type": "number", "description": "Top position for a new text box." },
-        "width": { "type": "number", "description": "Width for a new text box." },
-        "height": { "type": "number", "description": "Height for a new text box." }
+        "action": { "type": "string", "enum": ["create", "duplicate", "delete", "move", "clear"], "description": "Slide operation to perform." },
+        "slideIndex": { "type": "number", "description": "0-based target slide index for delete, move, or clear." },
+        "sourceIndex": { "type": "number", "description": "0-based source slide index for duplicate." },
+        "targetIndex": { "type": "number", "description": "0-based destination or insertion index for create, duplicate, or move." },
+        "slideMasterId": { "type": "string", "description": "Optional slide master id for create." },
+        "layoutId": { "type": "string", "description": "Optional layout id for create." },
+        "formatting": { "type": "string", "enum": ["KeepSourceFormatting", "UseDestinationTheme"], "description": "Formatting behavior for duplicate. Default KeepSourceFormatting." }
       },
-      "required": ["slideIndex", "text"]
+      "required": ["action"]
     },
-    "ui": { "icon": "✏️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Adding content to slide ", "suffix": "" } }
+    "ui": { "icon": "🗂️", "activity": { "type": "field_or_default", "field": "action", "prefix": "Slide action: ", "default": "manage slide" } }
   },
   "add_slide_from_code": {
     "hosts": ["powerpoint"],
@@ -535,46 +663,22 @@
     },
     "ui": { "icon": "➕", "activity": { "type": "static", "text": "Creating new slide" } }
   },
-  "clear_slide": {
+  "manage_slide_shapes": {
     "hosts": ["powerpoint"],
-    "description": "Remove all shapes from a PowerPoint slide.",
+    "description": "Create, update, or delete PowerPoint shapes with generic geometry, styling, and text formatting controls.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index to clear." }
-      },
-      "required": ["slideIndex"]
-    },
-    "ui": { "icon": "🗑️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Clearing slide ", "suffix": "" } }
-  },
-  "update_slide_shape": {
-    "hosts": ["powerpoint"],
-    "description": "Update the text content of a PowerPoint shape.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
+        "action": { "type": "string", "enum": ["create", "update", "delete"], "description": "Shape operation to perform." },
         "slideIndex": { "type": "number", "description": "0-based slide index." },
-        "shapeIndex": { "type": "number", "description": "0-based shape index." },
-        "shapeId": { "type": "string", "description": "Optional shape id." },
-        "text": { "type": "string", "description": "Replacement text." }
-      },
-      "required": ["slideIndex", "text"]
-    },
-    "ui": { "icon": "✏️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating shape on slide ", "suffix": "" } }
-  },
-  "set_slide_shape_properties": {
-    "hosts": ["powerpoint"],
-    "description": "Update PowerPoint shape properties by shape id or shape index.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index." },
-        "shapeIndex": { "type": "number", "description": "0-based shape index within the slide." },
-        "shapeId": { "type": "string", "description": "Unique PowerPoint shape id. Preferred when available." },
-        "text": { "type": "string", "description": "Replacement text for shapes that support text." },
+        "shapeId": { "type": "string", "description": "Existing shape id. Preferred over shapeIndex when available." },
+        "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide." },
+        "placeholderType": { "type": "string", "description": "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
+        "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create." },
+        "geometricShapeType": { "type": "string", "description": "Geometric shape type for create, such as Rectangle, Ellipse, Chevron, or RightArrow." },
+        "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight." },
+        "text": { "type": "string", "description": "Text content to set or create." },
         "name": { "type": "string" },
         "left": { "type": "number" },
         "top": { "type": "number" },
@@ -590,11 +694,33 @@
         "lineColor": { "type": "string" },
         "lineWeight": { "type": "number" },
         "lineTransparency": { "type": "number" },
-        "lineVisible": { "type": "boolean" }
+        "lineVisible": { "type": "boolean" },
+        "fontName": { "type": "string" },
+        "fontSize": { "type": "number" },
+        "fontColor": { "type": "string" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "string", "enum": ["None", "Single", "Double", "Heavy", "Dotted", "DottedHeavy", "Dash", "DashHeavy", "DashLong", "DashLongHeavy", "DotDash", "DotDashHeavy", "DotDotDash", "DotDotDashHeavy", "Wavy", "WavyHeavy", "WavyDouble"] },
+        "strikethrough": { "type": "boolean" },
+        "allCaps": { "type": "boolean" },
+        "smallCaps": { "type": "boolean" },
+        "subscript": { "type": "boolean" },
+        "superscript": { "type": "boolean" },
+        "doubleStrikethrough": { "type": "boolean" },
+        "paragraphAlignment": { "type": "string", "enum": ["Left", "Center", "Right", "Justify", "JustifyLow", "Distributed", "ThaiDistributed"] },
+        "bulletVisible": { "type": "boolean" },
+        "indentLevel": { "type": "number" },
+        "textAutoSize": { "type": "string", "enum": ["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"] },
+        "wordWrap": { "type": "boolean" },
+        "verticalAlignment": { "type": "string", "enum": ["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"] },
+        "marginLeft": { "type": "number" },
+        "marginRight": { "type": "number" },
+        "marginTop": { "type": "number" },
+        "marginBottom": { "type": "number" }
       },
-      "required": ["slideIndex"]
+      "required": ["action", "slideIndex"]
     },
-    "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Editing shapes on slide ", "suffix": "" } }
+    "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Managing shapes on slide ", "suffix": "" } }
   },
   "set_slide_notes": {
     "hosts": ["powerpoint"],
@@ -630,47 +756,5 @@
       "required": ["slideIndex", "effect"]
     },
     "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating transition on slide ", "suffix": "" } }
-  },
-  "duplicate_slide": {
-    "hosts": ["powerpoint"],
-    "description": "Duplicate a PowerPoint slide.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "sourceIndex": { "type": "number", "description": "0-based slide index to duplicate." },
-        "targetIndex": { "type": "number", "description": "Optional 0-based insertion index." },
-        "formatting": { "type": "string", "enum": ["KeepSourceFormatting", "UseDestinationTheme"], "description": "Formatting behavior for the duplicated slide." }
-      },
-      "required": ["sourceIndex"]
-    },
-    "ui": { "icon": "📑", "activity": { "type": "static", "text": "Duplicating slide" } }
-  },
-  "delete_slide": {
-    "hosts": ["powerpoint"],
-    "description": "Delete a slide from the PowerPoint presentation.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index to delete." }
-      },
-      "required": ["slideIndex"]
-    },
-    "ui": { "icon": "🗑️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Deleting slide ", "suffix": "" } }
-  },
-  "move_slide": {
-    "hosts": ["powerpoint"],
-    "description": "Move a slide to a new zero-based position in the PowerPoint presentation.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "0-based index of the slide to move." },
-        "targetIndex": { "type": "number", "description": "0-based index where the slide should be moved." }
-      },
-      "required": ["slideIndex", "targetIndex"]
-    },
-    "ui": { "icon": "↕️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Moving slide ", "suffix": "" } }
   }
 }
