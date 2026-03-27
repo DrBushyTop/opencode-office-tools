@@ -26,8 +26,12 @@ import { getDocumentPart } from "./getDocumentPart";
 import { setDocumentPart } from "./setDocumentPart";
 
 // New PowerPoint tools
+import { addSlideAnimation } from "./addSlideAnimation";
+import { clearSlideAnimations } from "./clearSlideAnimations";
 import { getSlideNotes } from "./getSlideNotes";
+import { getSlideTransition } from "./getSlideTransition";
 import { setSlideNotes } from "./setSlideNotes";
+import { setSlideTransition } from "./setSlideTransition";
 import { duplicateSlide } from "./duplicateSlide";
 import { getPresentationStructure } from "./getPresentationStructure";
 import { getSlideShapes } from "./getSlideShapes";
@@ -75,7 +79,10 @@ const officeToolHandlers = {
   [getPresentationContent.name]: getPresentationContent,
   [getSlideImage.name]: getSlideImage,
   [getSlideShapes.name]: getSlideShapes,
+  [addSlideAnimation.name]: addSlideAnimation,
+  [clearSlideAnimations.name]: clearSlideAnimations,
   [getSlideNotes.name]: getSlideNotes,
+  [getSlideTransition.name]: getSlideTransition,
   [setPresentationContent.name]: setPresentationContent,
   [addSlideFromCode.name]: addSlideFromCode,
   [clearSlide.name]: clearSlide,
@@ -84,6 +91,7 @@ const officeToolHandlers = {
   [deleteSlide.name]: deleteSlide,
   [moveSlide.name]: moveSlide,
   [setSlideNotes.name]: setSlideNotes,
+  [setSlideTransition.name]: setSlideTransition,
   [duplicateSlide.name]: duplicateSlide,
 };
 
@@ -110,7 +118,10 @@ export const powerpointTools = [
   getPresentationContent,
   getSlideImage,
   getSlideShapes,
+  addSlideAnimation,
+  clearSlideAnimations,
   getSlideNotes,
+  getSlideTransition,
   setPresentationContent,
   addSlideFromCode,
   clearSlide,
@@ -119,6 +130,7 @@ export const powerpointTools = [
   deleteSlide,
   moveSlide,
   setSlideNotes,
+  setSlideTransition,
   duplicateSlide,
 ];
 

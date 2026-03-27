@@ -435,6 +435,45 @@
     },
     "ui": { "icon": "📸", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Capturing slide ", "suffix": "" } }
   },
+  "add_slide_animation": {
+    "hosts": ["powerpoint"],
+    "description": "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. This replaces the slide in the deck and may change slide identity.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "shapeId": { "type": "string", "description": "Preferred shape id target." },
+        "shapeIndex": { "type": "number", "description": "0-based shape index target if shapeId is unavailable." },
+        "type": { "type": "string", "enum": ["motionPath", "scale", "rotate"], "description": "Animation type." },
+        "start": { "type": "string", "enum": ["onClick", "withPrevious", "afterPrevious"], "description": "When the animation starts relative to the sequence." },
+        "durationMs": { "type": "number", "description": "Optional animation duration in milliseconds." },
+        "delayMs": { "type": "number", "description": "Optional start delay in milliseconds." },
+        "repeatCount": { "type": "number", "description": "Optional repeat count." },
+        "path": { "type": "string", "description": "Motion path string such as 'M 0 0 L 0.25 0 E'. Required for motionPath." },
+        "pathOrigin": { "type": "string", "enum": ["parent", "layout"], "description": "Optional motion-path origin." },
+        "pathEditMode": { "type": "string", "enum": ["relative", "fixed"], "description": "Optional motion-path edit mode." },
+        "scaleXPercent": { "type": "number", "description": "Relative X scale change as a percentage." },
+        "scaleYPercent": { "type": "number", "description": "Relative Y scale change as a percentage." },
+        "angleDegrees": { "type": "number", "description": "Rotation amount in degrees for rotate animations." }
+      },
+      "required": ["slideIndex", "type", "start"]
+    },
+    "ui": { "icon": "🎞️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Adding animation to slide ", "suffix": "" } }
+  },
+  "clear_slide_animations": {
+    "hosts": ["powerpoint"],
+    "description": "Remove all animations from a PowerPoint slide through an Open XML slide round-trip. This replaces the slide in the deck and may change slide identity.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." }
+      },
+      "required": ["slideIndex"]
+    },
+    "ui": { "icon": "🧹", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Clearing animations on slide ", "suffix": "" } }
+  },
   "get_slide_notes": {
     "hosts": ["powerpoint"],
     "description": "Read PowerPoint speaker notes by exporting slides to Open XML when the native API does not expose notes directly.",
@@ -446,6 +485,19 @@
       }
     },
     "ui": { "icon": "📝", "activity": { "type": "static", "text": "Reading slide notes" } }
+  },
+  "get_slide_transition": {
+    "hosts": ["powerpoint"],
+    "description": "Inspect a slide transition by exporting the slide through an Open XML fallback and reading the transition metadata.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." }
+      },
+      "required": ["slideIndex"]
+    },
+    "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Inspecting transition on slide ", "suffix": "" } }
   },
   "set_presentation_content": {
     "hosts": ["powerpoint"],
@@ -557,6 +609,27 @@
       "required": ["slideIndex", "notes"]
     },
     "ui": { "icon": "📝", "activity": { "type": "static", "text": "Updating slide notes" } }
+  },
+  "set_slide_transition": {
+    "hosts": ["powerpoint"],
+    "description": "Set a PowerPoint slide transition by round-tripping the slide through Open XML. This replaces the slide in the deck and may change slide identity.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "effect": { "type": "string", "enum": ["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"], "description": "Transition effect to apply. Use none to clear the transition." },
+        "speed": { "type": "string", "enum": ["slow", "medium", "fast"], "description": "Optional transition speed." },
+        "advanceOnClick": { "type": "boolean", "description": "Whether a click advances the slide." },
+        "advanceAfterMs": { "type": "number", "description": "Optional auto-advance delay in milliseconds." },
+        "durationMs": { "type": "number", "description": "Optional transition duration in milliseconds for clients that support the p14 duration extension." },
+        "direction": { "type": "string", "enum": ["left", "right", "up", "down", "horizontal", "vertical", "in", "out"], "description": "Optional direction for effects that support it." },
+        "orientation": { "type": "string", "enum": ["horizontal", "vertical"], "description": "Optional orientation for split transitions." },
+        "throughBlack": { "type": "boolean", "description": "Optional cut-through-black flag for cut transitions." }
+      },
+      "required": ["slideIndex", "effect"]
+    },
+    "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating transition on slide ", "suffix": "" } }
   },
   "duplicate_slide": {
     "hosts": ["powerpoint"],
