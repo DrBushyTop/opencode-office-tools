@@ -145,6 +145,23 @@ function describeToolActivity(toolName: string, toolArgs: Record<string, unknown
   return formatOfficeToolActivity(toolName, toolArgs) || `Calling ${toolName}...`;
 }
 
+function redactSensitiveFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSensitiveFields);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const sensitiveKeys = new Set(["password", "token", "secret", "apikey", "api_key"]);
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, innerValue]) => [
+      key,
+      sensitiveKeys.has(key.toLowerCase()) ? "[REDACTED]" : redactSensitiveFields(innerValue),
+    ]),
+  );
+}
+
 function previewEvent(eventType: string, data: Record<string, unknown>) {
   if (eventType === "assistant.message_delta") return String(data.deltaContent || "").slice(0, 80);
   if (eventType === "assistant.message") return String(data.content || "").slice(0, 80);
@@ -188,9 +205,10 @@ ${host === Office.HostType.Word ? `For Word:
 - Prefer addresses like section[1].header.primary, section[*], headers_footers, and table_of_contents` : ""}
 
 ${host === Office.HostType.Excel ? `For Excel:
-- Use get_workbook_info to understand workbook structure
-- Use get_workbook_content to inspect sheet data before making changes
-- After mutations, use a verification pass to re-read the affected ranges, formulas, charts, or named ranges` : ""}
+- Use get_workbook_overview first for sheets, tables, PivotTables, filters, protection, and frozen panes
+- Use get_workbook_content or get_selected_range with detail=true when number formats, validation, merged cells, or table overlap matter
+- Prefer manage_table and manage_worksheet for real Excel structure changes instead of emulating them with raw cell edits
+- After mutations, use a verification pass to re-read the affected ranges, formulas, tables, charts, or named ranges` : ""}
 
 Always operate on the open document through tools.`;
 }
@@ -447,13 +465,14 @@ export const App: React.FC = () => {
         if (event.type === "tool.execution_start") {
           const toolName = String(data.toolName || "tool");
           const toolArgs = (data.arguments || {}) as Record<string, unknown>;
+          const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
           setCurrentActivity(describeToolActivity(toolName, toolArgs));
           setMessages((prev) => [...prev, {
             id: String(event.id || crypto.randomUUID()),
-            text: JSON.stringify(toolArgs, null, 2),
+            text: JSON.stringify(safeToolArgs, null, 2),
             sender: "tool",
             toolName,
-            toolArgs,
+            toolArgs: safeToolArgs,
             timestamp: new Date(),
           }]);
           continue;

@@ -78,7 +78,8 @@ Examples:
           const activeSheet = workbook.worksheets.getActiveWorksheet();
           activeSheet.load("name");
           await context.sync();
-          fullReference = `'${activeSheet.name}'!${rangeAddress}`;
+          const escapedSheetName = activeSheet.name.replace(/'/g, "''");
+          fullReference = `'${escapedSheetName}'!${rangeAddress}`;
         }
 
         if (existingName) {

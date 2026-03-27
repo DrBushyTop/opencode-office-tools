@@ -45,16 +45,18 @@ This document lists all available tools that OpenCode can use when working with 
 
 | Tool | Description |
 |------|-------------|
-| `get_workbook_overview` | Get a structural overview of the workbook including sheets, used ranges, named ranges, and chart counts. Use this first. |
+| `get_workbook_overview` | Get a structural overview of the workbook including sheets, visibility, protection, used ranges, tables, PivotTables, filters, frozen panes, named ranges, and chart counts. Use this first. |
 | `get_workbook_info` | List all worksheet names and the active sheet. |
-| `get_workbook_content` | Read cell values and formulas from a worksheet or specific range. |
-| `set_workbook_content` | Write a 2D array of values to cells starting at a specific position. |
-| `get_selected_range` | Read the currently selected cells including values and formulas. |
-| `set_selected_range` | Write values to the currently selected range. |
-| `find_and_replace_cells` | Search and replace text in cells with case and whole-cell matching options. |
+| `get_workbook_content` | Read cell values and formulas from a worksheet or specific range; detail mode also includes display text, number formats, validation, merged areas, and table/PivotTable overlap. |
+| `set_workbook_content` | Write a 2D array of values or formulas to cells starting at a specific position, optionally clear first, and optionally create a table. |
+| `get_selected_range` | Read the currently selected cells including values and formulas; detail mode also includes richer cell metadata. |
+| `set_selected_range` | Write values or formulas to the currently selected range, expanding from a single selected cell when needed. |
+| `find_and_replace_cells` | Search and replace text in cells with Excel's native replace behavior (ExcelApi 1.9+), preserving formulas better than value-only rewrites. |
 | `insert_chart` | Create charts (column, bar, line, pie, area, scatter, doughnut) from a data range. |
-| `apply_cell_formatting` | Format cells with bold, colors, borders, number formats, and alignment. |
+| `apply_cell_formatting` | Format cells with fonts, fills, borders, number formats, horizontal/vertical alignment, wrapping, merging, and row/column sizing. |
 | `create_named_range` | Define named ranges for easier reference in formulas and AI interactions. |
+| `manage_worksheet` | Create, rename, delete, move, change visibility, freeze/unfreeze, activate, protect, or unprotect worksheets. |
+| `manage_table` | Create or update Excel tables, including style, totals, resizing, filter reset, conversion back to ranges, and deletion. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ---

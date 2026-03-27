@@ -41,6 +41,8 @@ import { findAndReplaceCells } from "./findAndReplaceCells";
 import { insertChart } from "./insertChart";
 import { applyCellFormatting } from "./applyCellFormatting";
 import { createNamedRange } from "./createNamedRange";
+import { manageWorksheet } from "./manageWorksheet";
+import { manageTable } from "./manageTable";
 import { getOfficeToolNames } from "../../shared/office-tool-definitions";
 
 const officeToolHandlers = {
@@ -66,6 +68,8 @@ const officeToolHandlers = {
   [insertChart.name]: insertChart,
   [applyCellFormatting.name]: applyCellFormatting,
   [createNamedRange.name]: createNamedRange,
+  [manageWorksheet.name]: manageWorksheet,
+  [manageTable.name]: manageTable,
   [getPresentationOverview.name]: getPresentationOverview,
   [getPresentationStructure.name]: getPresentationStructure,
   [getPresentationContent.name]: getPresentationContent,
@@ -129,6 +133,8 @@ export const excelTools = [
   insertChart,
   applyCellFormatting,
   createNamedRange,
+  manageWorksheet,
+  manageTable,
 ];
 
 export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office.HostType]) {

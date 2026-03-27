@@ -1,17 +1,9 @@
 import type { Tool } from "./types";
+import { isExcelRequirementSetSupported, toolFailure } from "./excelShared";
 
 export const getWorkbookOverview: Tool = {
   name: "get_workbook_overview",
-  description: `Get a structural overview of the Excel workbook. Use this first to understand the workbook before reading or editing specific sheets.
-
-Returns:
-- List of all worksheets with their used range dimensions
-- Active worksheet name
-- Named ranges defined in the workbook
-- Chart count per sheet
-- Total cell count with data
-
-This is faster than reading entire sheets and helps you understand what to target for edits.`,
+  description: "Get a structural overview of the Excel workbook, including worksheets, used ranges, visibility, protection, tables, PivotTables, charts, named ranges, filters, and frozen panes.",
   parameters: {
     type: "object",
     properties: {},
@@ -22,86 +14,121 @@ This is faster than reading entire sheets and helps you understand what to targe
         const workbook = context.workbook;
         const sheets = workbook.worksheets;
         const names = workbook.names;
-        
+        const supportsFreeze = isExcelRequirementSetSupported("1.7");
+        const supportsAutoFilter = isExcelRequirementSetSupported("1.9");
+        const supportsPivotTables = isExcelRequirementSetSupported("1.3");
+
         sheets.load("items");
         names.load("items");
-        workbook.load("name");
-        
         await context.sync();
 
-        // Get active sheet
         const activeSheet = workbook.worksheets.getActiveWorksheet();
         activeSheet.load("name");
+
+        const usedRanges = sheets.items.map((sheet) => sheet.getUsedRangeOrNullObject());
+        const chartCounts = sheets.items.map((sheet) => sheet.charts.getCount());
+        const tableCounts = sheets.items.map((sheet) => sheet.tables.getCount());
+        const pivotCounts = supportsPivotTables ? sheets.items.map((sheet) => sheet.pivotTables.getCount()) : [];
+        const tableCollections = sheets.items.map((sheet) => sheet.tables);
+        const sheetNames = sheets.items.map((sheet) => sheet.names);
+        const protections = sheets.items.map((sheet) => sheet.protection);
+        const freezeRanges = supportsFreeze ? sheets.items.map((sheet) => sheet.freezePanes.getLocationOrNullObject()) : [];
+        const autoFilters = supportsAutoFilter ? sheets.items.map((sheet) => sheet.autoFilter) : [];
+
+        for (const [index, sheet] of sheets.items.entries()) {
+          sheet.load(["id", "name", "position", "visibility"]);
+          usedRanges[index].load(["isNullObject", "address", "rowCount", "columnCount"]);
+          tableCollections[index].load("items/name,items/style,items/showTotals");
+          sheetNames[index].load("items/name");
+          protections[index].load("protected");
+          if (supportsFreeze) {
+            freezeRanges[index].load(["isNullObject", "address"]);
+          }
+          if (supportsAutoFilter) {
+            autoFilters[index].load(["enabled", "isDataFiltered"]);
+          }
+        }
+
+        for (const name of names.items) {
+          name.load(["name", "value", "scope"]);
+        }
+
         await context.sync();
 
-        const sheetInfos: string[] = [];
+        const lines: string[] = [
+          `Workbook overview`,
+          `${"━".repeat(40)}`,
+          `Worksheets: ${sheets.items.length}`,
+          `Active sheet: ${activeSheet.name}`,
+        ];
+
         let totalCells = 0;
         let totalCharts = 0;
+        let totalTables = 0;
+        let totalPivotTables = 0;
 
-        // Load details for each sheet
-        for (const sheet of sheets.items) {
-          sheet.load("name");
-          const usedRange = sheet.getUsedRangeOrNullObject();
-          usedRange.load(["address", "rowCount", "columnCount"]);
-          const charts = sheet.charts;
-          charts.load("count");
-        }
-        await context.sync();
+        for (const [index, sheet] of sheets.items.entries()) {
+          const usedRange = usedRanges[index];
+          const chartCount = chartCounts[index].value;
+          const tableCount = tableCounts[index].value;
+          const pivotCount = supportsPivotTables ? pivotCounts[index].value : 0;
+          const visibility = sheet.visibility || "Visible";
+          const protection = protections[index].protected ? "protected" : "unprotected";
+          const usedRangeText = usedRange.isNullObject
+            ? "(empty)"
+            : `${usedRange.address} (${usedRange.rowCount} rows x ${usedRange.columnCount} cols)`;
 
-        for (const sheet of sheets.items) {
-          const usedRange = sheet.getUsedRangeOrNullObject();
-          const charts = sheet.charts;
-          
-          let rangeInfo = "(empty)";
-          let cellCount = 0;
-          
           if (!usedRange.isNullObject) {
-            const rows = usedRange.rowCount;
-            const cols = usedRange.columnCount;
-            cellCount = rows * cols;
-            rangeInfo = `${usedRange.address} (${rows} rows × ${cols} cols)`;
+            totalCells += usedRange.rowCount * usedRange.columnCount;
           }
-          
-          totalCells += cellCount;
-          totalCharts += charts.count;
-          
-          const isActive = sheet.name === activeSheet.name ? " ← active" : "";
-          const chartInfo = charts.count > 0 ? `, ${charts.count} chart(s)` : "";
-          
-          sheetInfos.push(`  • ${sheet.name}: ${rangeInfo}${chartInfo}${isActive}`);
+          totalCharts += chartCount;
+          totalTables += tableCount;
+          totalPivotTables += pivotCount;
+
+          lines.push(
+            "",
+            `- ${sheet.name}${sheet.name === activeSheet.name ? " <- active" : ""}`,
+            `  id=${sheet.id}, position=${sheet.position}, visibility=${visibility}, ${protection}`,
+            `  usedRange=${usedRangeText}`,
+            `  charts=${chartCount}, tables=${tableCount}, pivotTables=${pivotCount}`,
+          );
+
+          if (supportsAutoFilter) {
+            lines.push(`  autoFilter=${autoFilters[index].enabled ? "enabled" : "disabled"}, filtered=${autoFilters[index].isDataFiltered ? "yes" : "no"}`);
+          }
+
+          if (supportsFreeze) {
+            lines.push(`  frozenPanes=${freezeRanges[index].isNullObject ? "(none)" : freezeRanges[index].address}`);
+          }
+
+          if (tableCollections[index].items.length) {
+            lines.push(`  tableDetails=${tableCollections[index].items.map((table) => `${table.name} (${table.style}${table.showTotals ? ", totals" : ""})`).join(", ")}`);
+          }
+
+          if (sheetNames[index].items.length) {
+            lines.push(`  worksheetNames=${sheetNames[index].items.map((name) => name.name).join(", ")}`);
+          }
         }
 
-        // Get named ranges
-        const namedRanges: string[] = [];
-        for (const name of names.items) {
-          name.load(["name", "value"]);
-        }
-        await context.sync();
-        
-        for (const name of names.items) {
-          namedRanges.push(`  • ${name.name}: ${name.value}`);
+        lines.push(
+          "",
+          `Total cells with data: ${totalCells.toLocaleString()}`,
+          `Total charts: ${totalCharts}`,
+          `Total tables: ${totalTables}`,
+          `Total PivotTables: ${totalPivotTables}`,
+        );
+
+        if (names.items.length) {
+          lines.push("", `Workbook names (${names.items.length}):`);
+          for (const name of names.items) {
+            lines.push(`- ${name.name} [${name.scope}]: ${name.value}`);
+          }
         }
 
-        // Build output
-        let output = `Workbook Overview:\n`;
-        output += `${"━".repeat(40)}\n`;
-        output += `Worksheets (${sheets.items.length}):\n`;
-        output += sheetInfos.join("\n");
-        output += `\n\nTotal cells with data: ${totalCells.toLocaleString()}`;
-        
-        if (totalCharts > 0) {
-          output += `\nTotal charts: ${totalCharts}`;
-        }
-        
-        if (namedRanges.length > 0) {
-          output += `\n\nNamed Ranges (${namedRanges.length}):\n`;
-          output += namedRanges.join("\n");
-        }
-
-        return output;
+        return lines.join("\n");
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };
