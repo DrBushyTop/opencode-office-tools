@@ -1,5 +1,16 @@
 import type { Tool } from "./types";
 
+function splitSheetQualifiedRange(input: string) {
+  const bangIndex = input.lastIndexOf("!");
+  if (bangIndex === -1) return null;
+  const rawSheet = input.slice(0, bangIndex);
+  const rangeAddress = input.slice(bangIndex + 1);
+  const normalizedSheet = rawSheet.startsWith("'") && rawSheet.endsWith("'")
+    ? rawSheet.slice(1, -1).replace(/''/g, "'")
+    : rawSheet;
+  return { sheetName: normalizedSheet, rangeAddress };
+}
+
 export const insertChart: Tool = {
   name: "insert_chart",
   description: `Create a chart from data in an Excel worksheet.
@@ -50,17 +61,20 @@ Examples:
 
     try {
       return await Excel.run(async (context) => {
-        // Get the target worksheet
+        const qualifiedRange = splitSheetQualifiedRange(dataRange);
+        const targetSheetName = qualifiedRange?.sheetName || sheetName;
+        const targetRangeAddress = qualifiedRange?.rangeAddress || dataRange;
+
         let sheet: Excel.Worksheet;
-        if (sheetName) {
-          sheet = context.workbook.worksheets.getItem(sheetName);
+        if (targetSheetName) {
+          sheet = context.workbook.worksheets.getItem(targetSheetName);
         } else {
           sheet = context.workbook.worksheets.getActiveWorksheet();
         }
         sheet.load("name");
 
         // Get the data range
-        const range = sheet.getRange(dataRange);
+        const range = sheet.getRange(targetRangeAddress);
         range.load(["address", "left", "top", "width"]);
         await context.sync();
 
@@ -104,7 +118,7 @@ Examples:
 
         await context.sync();
 
-        return `Created ${chartType} chart from range ${dataRange}${title ? ` with title "${title}"` : ""} in worksheet "${sheet.name}".`;
+        return `Created ${chartType} chart from range ${range.address}${title ? ` with title "${title}"` : ""} in worksheet "${sheet.name}".`;
       });
     } catch (e: any) {
       return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };

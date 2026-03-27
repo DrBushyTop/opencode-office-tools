@@ -1,22 +1,23 @@
 import type { Tool } from "./types";
+import { getWorksheet, toolFailure } from "./excelShared";
 
 export const setWorkbookContent: Tool = {
   name: "set_workbook_content",
-  description: "Write data to a specific range in an Excel worksheet. The data should be provided as a 2D array where each inner array represents a row. If no sheet name is provided, writes to the active sheet.",
+  description: "Write a 2D array to a worksheet starting at a specific cell. Can write formulas, clear the destination first, and optionally turn the written range into a table.",
   parameters: {
     type: "object",
     properties: {
       sheetName: {
         type: "string",
-        description: "Optional name of the worksheet to write to. If not provided, writes to the active sheet.",
+        description: "Optional worksheet name. Defaults to the active sheet.",
       },
       startCell: {
         type: "string",
-        description: "The starting cell address (e.g., 'A1', 'B5'). Data will be written starting from this cell.",
+        description: "Starting cell address such as 'A1' or 'B5'.",
       },
       data: {
         type: "array",
-        description: "2D array of values to write. Each inner array represents a row. Example: [['Name', 'Age'], ['John', 30], ['Jane', 25]]",
+        description: "2D array of values to write.",
         items: {
           type: "array",
           items: {
@@ -24,52 +25,104 @@ export const setWorkbookContent: Tool = {
           },
         },
       },
+      useFormulas: {
+        type: "boolean",
+        description: "If true, string values starting with '=' are written as formulas. Default false.",
+      },
+      clearMode: {
+        type: "string",
+        enum: ["none", "contents", "all"],
+        description: "Optionally clear the target range before writing. Default none.",
+      },
+      createTable: {
+        type: "boolean",
+        description: "Create an Excel table over the written range after writing. Default false.",
+      },
+      tableName: {
+        type: "string",
+        description: "Optional table name to assign when createTable is true.",
+      },
+      hasHeaders: {
+        type: "boolean",
+        description: "Whether the written range includes a header row when createTable is true. Default true.",
+      },
+      tableStyle: {
+        type: "string",
+        description: "Optional Excel table style to apply when createTable is true.",
+      },
     },
     required: ["startCell", "data"],
   },
   handler: async (args) => {
-    const { sheetName, startCell, data } = args as {
+    const {
+      sheetName,
+      startCell,
+      data,
+      useFormulas = false,
+      clearMode = "none",
+      createTable = false,
+      tableName,
+      hasHeaders = true,
+      tableStyle,
+    } = args as {
       sheetName?: string;
       startCell: string;
-      data: any[][];
+      data: Array<Array<string | number | boolean>>;
+      useFormulas?: boolean;
+      clearMode?: "none" | "contents" | "all";
+      createTable?: boolean;
+      tableName?: string;
+      hasHeaders?: boolean;
+      tableStyle?: string;
     };
+
+    if (!Array.isArray(data) || data.length === 0 || !Array.isArray(data[0]) || data[0].length === 0) {
+      return toolFailure("Provide a non-empty 2D data array.");
+    }
+
+    const columnCount = data[0].length;
+    if (!data.every((row) => Array.isArray(row) && row.length === columnCount)) {
+      return toolFailure("All rows in data must have the same length.");
+    }
 
     try {
       return await Excel.run(async (context) => {
-        let worksheet: Excel.Worksheet;
-
-        if (sheetName) {
-          worksheet = context.workbook.worksheets.getItem(sheetName);
-        } else {
-          worksheet = context.workbook.worksheets.getActiveWorksheet();
-        }
-
-        worksheet.load("name");
-
-        // Calculate the range size based on the data
+        const worksheet = await getWorksheet(context, sheetName);
         const rowCount = data.length;
-        const colCount = data[0]?.length || 0;
-
-        if (rowCount === 0 || colCount === 0) {
-          return {
-            textResultForLlm: "No data provided to write",
-            resultType: "failure",
-            error: "Empty data array",
-            toolTelemetry: {}
-          };
-        }
-
-        // Get the range starting from startCell
         const startRange = worksheet.getRange(startCell);
-        const targetRange = startRange.getResizedRange(rowCount - 1, colCount - 1);
-
-        targetRange.values = data;
+        const targetRange = startRange.getResizedRange(rowCount - 1, columnCount - 1);
+        targetRange.load("address");
         await context.sync();
 
-        return `Successfully wrote ${rowCount} rows and ${colCount} columns to ${worksheet.name} starting at ${startCell}`;
+        if (clearMode === "contents") {
+          targetRange.clear(Excel.ClearApplyTo.contents);
+        } else if (clearMode === "all") {
+          targetRange.clear(Excel.ClearApplyTo.all);
+        }
+
+        const hasFormulaStrings = useFormulas && data.some((row) => row.some((cell) => typeof cell === "string" && cell.startsWith("=")));
+        if (hasFormulaStrings) {
+          targetRange.formulas = data;
+        } else {
+          targetRange.values = data;
+        }
+
+        let tableResult = "";
+        if (createTable) {
+          const table = worksheet.tables.add(targetRange, hasHeaders);
+          if (tableName) table.name = tableName;
+          if (tableStyle) table.style = tableStyle;
+          table.load("name");
+          await context.sync();
+          tableResult = ` Created table ${table.name}.`;
+        } else {
+          await context.sync();
+        }
+
+        return `Wrote ${rowCount} rows and ${columnCount} columns to ${targetRange.address} in ${worksheet.name}.${tableResult}`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

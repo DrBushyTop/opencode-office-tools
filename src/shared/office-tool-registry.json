@@ -177,13 +177,14 @@
   },
   "get_workbook_content": {
     "hosts": ["excel"],
-    "description": "Read content from an Excel worksheet or range.",
+    "description": "Read values and formulas from an Excel worksheet or range, with optional rich cell metadata.",
     "mutating": false,
     "parameters": {
       "type": "object",
       "properties": {
         "sheetName": { "type": "string", "description": "Worksheet name to read. Defaults to the active sheet." },
-        "range": { "type": "string", "description": "Optional cell range such as A1:D10." }
+        "range": { "type": "string", "description": "Optional cell range such as A1:D10." },
+        "detail": { "type": "boolean", "description": "Include display text, number formats, validation, merged areas, and table or PivotTable overlap details." }
       }
     },
     "ui": { "icon": "📄", "activity": { "type": "sheet_name_or_default", "field": "sheetName", "prefix": "Reading ", "default": "Reading worksheet" } }
@@ -204,7 +205,13 @@
             "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
           },
           "description": "Two-dimensional array of cell values."
-        }
+        },
+        "useFormulas": { "type": "boolean", "description": "Treat strings starting with = as formulas." },
+        "clearMode": { "type": "string", "enum": ["none", "contents", "all"], "description": "Optionally clear the destination before writing." },
+        "createTable": { "type": "boolean", "description": "Create an Excel table over the written range after writing." },
+        "tableName": { "type": "string", "description": "Optional table name when createTable is true." },
+        "hasHeaders": { "type": "boolean", "description": "Whether the written range includes a header row when createTable is true." },
+        "tableStyle": { "type": "string", "description": "Optional Excel table style when createTable is true." }
       },
       "required": ["startCell", "data"]
     },
@@ -212,9 +219,14 @@
   },
   "get_selected_range": {
     "hosts": ["excel"],
-    "description": "Read the currently selected Excel range.",
+    "description": "Read the currently selected Excel range, with optional rich cell metadata.",
     "mutating": false,
-    "parameters": { "type": "object", "properties": {} },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "detail": { "type": "boolean", "description": "Include display text, number formats, validation, merged areas, and table or PivotTable overlap details." }
+      }
+    },
     "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selected range" } }
   },
   "set_selected_range": {
@@ -240,7 +252,7 @@
   },
   "find_and_replace_cells": {
     "hosts": ["excel"],
-    "description": "Find and replace text in Excel cells.",
+    "description": "Find and replace text in Excel cells using Excel's native replace API (ExcelApi 1.9+).",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -273,7 +285,7 @@
   },
   "apply_cell_formatting": {
     "hosts": ["excel"],
-    "description": "Apply formatting to cells in Excel.",
+    "description": "Apply formatting to cells in Excel, including alignment, wrapping, merging, borders, and sizing.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -287,9 +299,18 @@
         "fontColor": { "type": "string" },
         "backgroundColor": { "type": "string" },
         "numberFormat": { "type": "string" },
-        "horizontalAlignment": { "type": "string", "enum": ["left", "center", "right"] },
-        "borderStyle": { "type": "string", "enum": ["thin", "medium", "thick", "none"] },
-        "borderColor": { "type": "string" }
+        "horizontalAlignment": { "type": "string", "enum": ["left", "center", "right", "general", "fill", "justify", "centerAcrossSelection", "distributed"] },
+        "verticalAlignment": { "type": "string", "enum": ["top", "center", "bottom", "justify", "distributed"] },
+        "wrapText": { "type": "boolean" },
+        "merge": { "type": "boolean" },
+        "mergeAcross": { "type": "boolean" },
+        "borderStyle": { "type": "string", "enum": ["thin", "medium", "thick", "none", "double", "dashed", "dotted"] },
+        "borderColor": { "type": "string" },
+        "interiorBorders": { "type": "boolean" },
+        "rowHeight": { "type": "number" },
+        "columnWidth": { "type": "number" },
+        "autoFitRows": { "type": "boolean" },
+        "autoFitColumns": { "type": "boolean" }
       },
       "required": ["range"]
     },
@@ -309,6 +330,53 @@
       "required": ["name", "range"]
     },
     "ui": { "icon": "🏷️", "activity": { "type": "json_value", "field": "name", "prefix": "Naming range " } }
+  },
+  "manage_worksheet": {
+    "hosts": ["excel"],
+    "description": "Create, rename, delete, move, change visibility, freeze, unfreeze, activate, protect, or unprotect Excel worksheets.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "rename", "delete", "move", "setVisibility", "activate", "freeze", "unfreeze", "protect", "unprotect"], "description": "Worksheet operation to perform." },
+        "sheetName": { "type": "string", "description": "Target worksheet name. Omit for the active sheet when supported." },
+        "newName": { "type": "string", "description": "New worksheet name for create or rename." },
+        "targetPosition": { "type": "number", "description": "Zero-based worksheet position for move or create." },
+        "visibility": { "type": "string", "enum": ["Visible", "Hidden", "VeryHidden"], "description": "Visibility to apply for setVisibility." },
+        "freezeRows": { "type": "number", "description": "Number of top rows to freeze." },
+        "freezeColumns": { "type": "number", "description": "Number of left columns to freeze." },
+        "freezeRange": { "type": "string", "description": "Range to freeze at, such as B2." },
+        "password": { "type": "string", "description": "Optional protection password for protect or unprotect." }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "🗂️", "activity": { "type": "json_value", "field": "action", "prefix": "Worksheet action: " } }
+  },
+  "manage_table": {
+    "hosts": ["excel"],
+    "description": "Create or update Excel tables, including style, totals, resizing, filter reset, conversion, and deletion.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "rename", "resize", "setProperties", "clearFilters", "reapplyFilters", "convertToRange", "delete"], "description": "Table operation to perform." },
+        "tableName": { "type": "string", "description": "Existing table name or id. Required except for create." },
+        "sheetName": { "type": "string", "description": "Worksheet name for create when sourceRange is sheet-local." },
+        "sourceRange": { "type": "string", "description": "Source range for create or resize." },
+        "hasHeaders": { "type": "boolean", "description": "Whether the source range has headers when creating a table." },
+        "newName": { "type": "string", "description": "New table name for rename or create." },
+        "style": { "type": "string", "description": "Excel table style to apply." },
+        "showHeaders": { "type": "boolean" },
+        "showTotals": { "type": "boolean" },
+        "showBandedRows": { "type": "boolean" },
+        "showBandedColumns": { "type": "boolean" },
+        "showFilterButton": { "type": "boolean" },
+        "highlightFirstColumn": { "type": "boolean" },
+        "highlightLastColumn": { "type": "boolean" }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "📋", "activity": { "type": "json_value", "field": "action", "prefix": "Table action: " } }
   },
   "get_presentation_overview": {
     "hosts": ["powerpoint"],
