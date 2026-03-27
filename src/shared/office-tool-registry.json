@@ -435,18 +435,6 @@
     },
     "ui": { "icon": "📸", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Capturing slide ", "suffix": "" } }
   },
-  "get_slide_notes": {
-    "hosts": ["powerpoint"],
-    "description": "Read speaker notes from PowerPoint slides.",
-    "mutating": false,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "Optional 0-based slide index." }
-      }
-    },
-    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Reading slide notes" } }
-  },
   "set_presentation_content": {
     "hosts": ["powerpoint"],
     "description": "Add or update text on a PowerPoint slide.",
@@ -543,20 +531,6 @@
       "required": ["slideIndex"]
     },
     "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Editing shapes on slide ", "suffix": "" } }
-  },
-  "set_slide_notes": {
-    "hosts": ["powerpoint"],
-    "description": "Add or update PowerPoint speaker notes.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index." },
-        "notes": { "type": "string", "description": "Speaker notes text." }
-      },
-      "required": ["slideIndex", "notes"]
-    },
-    "ui": { "icon": "📝", "activity": { "type": "static", "text": "Updating slide notes" } }
   },
   "duplicate_slide": {
     "hosts": ["powerpoint"],
