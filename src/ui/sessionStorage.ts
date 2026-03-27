@@ -10,7 +10,7 @@ export interface SavedSession {
   updatedAt: string;
 }
 
-export type OfficeHost = "powerpoint" | "word" | "excel";
+export type OfficeHost = "powerpoint" | "word" | "excel" | "onenote";
 
 export function getHostFromOfficeHost(host: typeof Office.HostType[keyof typeof Office.HostType]): OfficeHost {
   switch (host) {
@@ -20,6 +20,8 @@ export function getHostFromOfficeHost(host: typeof Office.HostType[keyof typeof 
       return "word";
     case Office.HostType.Excel:
       return "excel";
+    case Office.HostType.OneNote:
+      return "onenote";
     default:
       return "word";
   }

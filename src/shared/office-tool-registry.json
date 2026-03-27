@@ -756,5 +756,103 @@
       "required": ["slideIndex", "effect"]
     },
     "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating transition on slide ", "suffix": "" } }
+  },
+  "get_notebook_overview": {
+    "hosts": ["onenote"],
+    "description": "Get a structural overview of the active OneNote notebook.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "📓", "activity": { "type": "static", "text": "Mapping notebook structure" } }
+  },
+  "get_page_content": {
+    "hosts": ["onenote"],
+    "description": "Read the active OneNote page.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "format": { "type": "string", "enum": ["summary", "text", "json"], "description": "Preferred response format. Default is summary." }
+      }
+    },
+    "ui": { "icon": "📄", "activity": { "type": "static", "text": "Reading active page" } }
+  },
+  "get_note_selection": {
+    "hosts": ["onenote"],
+    "description": "Read the current OneNote selection as plain text or a matrix of values.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "format": { "type": "string", "enum": ["text", "matrix"], "description": "Selection format to read. Default is text." }
+      }
+    },
+    "ui": { "icon": "✂️", "activity": { "type": "field_or_default", "field": "format", "prefix": "Reading OneNote selection as ", "default": "text" } }
+  },
+  "set_note_selection": {
+    "hosts": ["onenote"],
+    "description": "Write text, HTML, or an image to the current OneNote selection.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "Content to insert into the current selection." },
+        "coercionType": { "type": "string", "enum": ["text", "html", "image"], "description": "How to treat the provided content. Default is text." }
+      },
+      "required": ["content"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "field_or_default", "field": "coercionType", "prefix": "Updating OneNote selection as ", "default": "text" } }
+  },
+  "create_page": {
+    "hosts": ["onenote"],
+    "description": "Create a new OneNote page in the active section or before/after the active page, with optional initial HTML content.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "New page title. Default is New Page." },
+        "html": { "type": "string", "description": "Optional initial HTML content to place on the new page as an outline." },
+        "location": { "type": "string", "enum": ["sectionEnd", "before", "after"], "description": "Where to create the page. Default is sectionEnd." }
+      }
+    },
+    "ui": { "icon": "➕", "activity": { "type": "field_or_default", "field": "location", "prefix": "Creating page at ", "default": "sectionEnd" } }
+  },
+  "set_page_title": {
+    "hosts": ["onenote"],
+    "description": "Update the title of the active OneNote page.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "New title for the active page." }
+      },
+      "required": ["title"]
+    },
+    "ui": { "icon": "🏷️", "activity": { "type": "json_value", "field": "title", "prefix": "Renaming page to " } }
+  },
+  "append_page_content": {
+    "hosts": ["onenote"],
+    "description": "Append HTML content to the active OneNote page. Appends to the last outline when possible, or creates a new outline if needed.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "html": { "type": "string", "description": "HTML content to append to the active page." }
+      },
+      "required": ["html"]
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "static", "text": "Appending page content" } }
+  },
+  "navigate_to_page": {
+    "hosts": ["onenote"],
+    "description": "Navigate OneNote to a specific page by page id or client URL.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pageId": { "type": "string", "description": "Page id from get_notebook_overview. Provide exactly one of pageId or clientUrl." },
+        "clientUrl": { "type": "string", "description": "Client URL of the page to open. Provide exactly one of pageId or clientUrl." }
+      }
+    },
+    "ui": { "icon": "🧭", "activity": { "type": "static", "text": "Navigating to page" } }
   }
 }

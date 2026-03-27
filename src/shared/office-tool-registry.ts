@@ -1,6 +1,6 @@
 import rawRegistry from "./office-tool-registry.json";
 
-export type OfficeToolHost = "word" | "powerpoint" | "excel";
+export type OfficeToolHost = "word" | "powerpoint" | "excel" | "onenote";
 
 export interface OfficeToolDefinition {
   name: string;

@@ -59,7 +59,7 @@ const useStyles = makeStyles({
 });
 
 function getHostLabel(host: OfficeHost) {
-  return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : "Word";
+  return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : host === "onenote" ? "OneNote" : "Word";
 }
 
 function getSurfaceVars(isDarkMode: boolean): React.CSSProperties {
@@ -190,6 +190,8 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
       ? "Word"
       : host === Office.HostType.Excel
         ? "Excel"
+        : host === Office.HostType.OneNote
+          ? "OneNote"
         : "Office";
 
   return `You are a helpful AI assistant embedded inside Microsoft ${hostName} as an Office Add-in. The user's ${hostName} document is already open.
@@ -216,6 +218,13 @@ ${host === Office.HostType.Excel ? `For Excel:
 - Use get_workbook_content or get_selected_range with detail=true when number formats, validation, merged cells, or table overlap matter
 - Prefer manage_table, manage_range, manage_chart, manage_named_range, and manage_worksheet for real Excel structure changes instead of emulating them with raw cell edits
 - After mutations, use a verification pass to re-read the affected ranges, formulas, tables, charts, or named ranges` : ""}
+
+${host === Office.HostType.OneNote ? `For OneNote:
+- Use get_notebook_overview first to understand the active notebook, section tree, and page ids
+- Use get_page_content only for the active page; navigate_to_page first when the target page is not active
+- Prefer append_page_content, set_page_title, create_page, and set_note_selection over asking the user to paste content manually
+- OneNote page edits accept limited HTML and typically append into one outline; keep markup simple and semantic
+- Use get_note_selection for cursor-context reads and set_note_selection for text, HTML, or image insertion at the selection` : ""}
 
 Always operate on the open document through tools.`;
 }
@@ -348,7 +357,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      const session = await client.createSession({ title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : "Word"}: New chat` });
+      const session = await client.createSession({ title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat` });
       setCurrentSessionId(session.id);
     } catch (err) {
       setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);

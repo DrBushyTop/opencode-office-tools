@@ -38,6 +38,15 @@ describe("office permissions", () => {
       metadata: { tool: "find_document_text" },
       always: [],
     })).toBe(true);
+
+    expect(canAutoApprove({
+      id: "2d",
+      sessionID: "s",
+      permission: "tool",
+      patterns: ["get_notebook_overview"],
+      metadata: { tool: "get_notebook_overview" },
+      always: [],
+    })).toBe(true);
   });
 
   it("keeps mutating tools interactive", () => {
@@ -65,6 +74,15 @@ describe("office permissions", () => {
       permission: "tool",
       patterns: ["set_document_range"],
       metadata: { tool: "set_document_range" },
+      always: [],
+    })).toBe(false);
+
+    expect(canAutoApprove({
+      id: "6",
+      sessionID: "s",
+      permission: "tool",
+      patterns: ["append_page_content"],
+      metadata: { tool: "append_page_content" },
       always: [],
     })).toBe(false);
   });

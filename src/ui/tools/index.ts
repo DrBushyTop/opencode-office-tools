@@ -48,6 +48,14 @@ import { manageNamedRange } from "./manageNamedRange";
 import { manageRange } from "./manageRange";
 import { manageWorksheet } from "./manageWorksheet";
 import { manageTable } from "./manageTable";
+import { getNotebookOverview } from "./getNotebookOverview";
+import { getPageContent } from "./getPageContent";
+import { getNoteSelection } from "./getNoteSelection";
+import { setNoteSelection } from "./setNoteSelection";
+import { createPage } from "./createPage";
+import { setPageTitle } from "./setPageTitle";
+import { appendPageContent } from "./appendPageContent";
+import { navigateToPage } from "./navigateToPage";
 import { getOfficeToolNames } from "../../shared/office-tool-definitions";
 
 const officeToolHandlers = {
@@ -81,6 +89,14 @@ const officeToolHandlers = {
   [manageRange.name]: manageRange,
   [manageWorksheet.name]: manageWorksheet,
   [manageTable.name]: manageTable,
+  [getNotebookOverview.name]: getNotebookOverview,
+  [getPageContent.name]: getPageContent,
+  [getNoteSelection.name]: getNoteSelection,
+  [setNoteSelection.name]: setNoteSelection,
+  [createPage.name]: createPage,
+  [setPageTitle.name]: setPageTitle,
+  [appendPageContent.name]: appendPageContent,
+  [navigateToPage.name]: navigateToPage,
   [getPresentationOverview.name]: getPresentationOverview,
   [getPresentationStructure.name]: getPresentationStructure,
   [getPresentationContent.name]: getPresentationContent,
@@ -152,6 +168,17 @@ export const excelTools = [
   manageTable,
 ];
 
+export const onenoteTools = [
+  getNotebookOverview,
+  getPageContent,
+  getNoteSelection,
+  setNoteSelection,
+  createPage,
+  setPageTitle,
+  appendPageContent,
+  navigateToPage,
+];
+
 export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office.HostType]) {
   const registryHost = host === Office.HostType.Word
     ? "word"
@@ -159,6 +186,8 @@ export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office
       ? "powerpoint"
       : host === Office.HostType.Excel
         ? "excel"
+        : host === Office.HostType.OneNote
+          ? "onenote"
         : null;
 
   if (!registryHost) return [];
@@ -200,6 +229,6 @@ export function getOfficeToolExecutor(host: typeof Office.HostType[keyof typeof 
   };
 }
 
-export function getToolNamesForHost(host: "word" | "powerpoint" | "excel") {
+export function getToolNamesForHost(host: "word" | "powerpoint" | "excel" | "onenote") {
   return getOfficeToolNames(host);
 }

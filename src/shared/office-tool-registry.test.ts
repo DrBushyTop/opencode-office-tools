@@ -24,6 +24,7 @@ describe("office tool registry", () => {
     const manageRangeWrapper = fs.readFileSync(path.join(toolsDir, "manage_range.ts"), "utf8");
     const manageSlideWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide.ts"), "utf8");
     const manageSlideShapesWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide_shapes.ts"), "utf8");
+    const getNotebookOverviewWrapper = fs.readFileSync(path.join(toolsDir, "get_notebook_overview.ts"), "utf8");
 
     expect(wrapperFiles).toEqual(registryFiles);
     expect(getDocumentPartWrapper).toContain('export default word("get_document_part"');
@@ -40,9 +41,11 @@ describe("office tool registry", () => {
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["create", "update", "delete"])');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["textBox", "geometricShape", "line"])');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["Straight", "Elbow", "Curve"])');
+    expect(getNotebookOverviewWrapper).toContain('export default onenote("get_notebook_overview"');
     expect(getOfficeToolNames("word")).toContain("get_document_part");
     expect(getOfficeToolNames("word")).toContain("get_document_range");
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide");
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide_shapes");
+    expect(getOfficeToolNames("onenote")).toContain("get_notebook_overview");
   });
 });
