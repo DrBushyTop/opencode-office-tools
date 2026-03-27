@@ -1,0 +1,15 @@
+2026-03-27T21:35:15.866Z INFO [tray] Debug logging enabled
+{ logFilePath: '/Users/pasi/Code/Omat/opencode-office-tools/.opencode/debug.log' }
+2026-03-27T21:35:15.963Z INFO [tray] Server started successfully
+2026-03-27T21:35:15.964Z INFO [server] HTTPS server started
+{ port: 52390, basePath: '/Users/pasi/Code/Omat/opencode-office-tools' }
+2026-03-27T21:35:15.966Z INFO [server] Bridge server started
+{ port: 52391 }
+2026-03-27T21:36:36.448Z INFO [server] Received SIGINT
+2026-03-27T21:36:43.643Z INFO [tray] Debug logging enabled
+{ logFilePath: '/Users/pasi/Code/Omat/opencode-office-tools/.opencode/debug.log' }
+2026-03-27T21:36:43.735Z INFO [tray] Server started successfully
+2026-03-27T21:36:43.736Z INFO [server] HTTPS server started
+{ port: 52390, basePath: '/Users/pasi/Code/Omat/opencode-office-tools' }
+2026-03-27T21:36:43.738Z INFO [server] Bridge server started
+{ port: 52391 }

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { validateOfficeToolCall } = require('./officeToolValidation');
+const { getLogFilePath, logInfo, logWarn, logError } = require('./devLogger');
 
 const MODEL_FALLBACK = [
   {
@@ -46,6 +47,13 @@ function sendExecuteResponse(res, bridge, body, token) {
     validateOfficeToolCall(body.host, body.toolName, args);
     res.json(await bridge.execute(body.host, body.toolName, args, token));
   })();
+}
+
+function readRecentLogs(limit = 200) {
+  const filePath = getLogFilePath();
+  if (!fs.existsSync(filePath)) return [];
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean);
+  return lines.slice(-limit);
 }
 
 function createApiRouter(runtime, bridge) {
@@ -124,10 +132,22 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/log', (req, res) => {
     const { level = 'error', tag = 'client', message, detail } = req.body || {};
-    const prefix = `[${tag}]`;
-    if (level === 'error') console.error(prefix, message, detail || '');
-    else console.log(prefix, message, detail || '');
-    res.sendStatus(204);
+    const scope = String(tag || 'client');
+    if (level === 'error') {
+      console.error(`[${scope}]`, message, detail || '');
+      logError(scope, String(message || 'Client error'), detail);
+    } else if (level === 'warn') {
+      console.warn(`[${scope}]`, message, detail || '');
+      logWarn(scope, String(message || 'Client warning'), detail);
+    } else {
+      console.log(`[${scope}]`, message, detail || '');
+      logInfo(scope, String(message || 'Client log'), detail);
+    }
+    res.json({ ok: true, logFilePath: getLogFilePath() });
+  });
+
+  apiRouter.get('/debug/logs', (req, res) => {
+    res.json({ logFilePath: getLogFilePath(), lines: readRecentLogs() });
   });
 
   apiRouter.get('/models', async (req, res) => {

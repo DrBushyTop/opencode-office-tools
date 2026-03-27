@@ -14,6 +14,60 @@ The add-in bundles its own OpenCode tool configuration, so users do not need to 
 
 The getting started guide walks you through running the add-in locally using the tray app. Standalone installers are in development and will be available once code signing is complete.
 
+## Flow Overview
+
+```text
++-------------------+
+| Office Add-in UI  |
+| Word / Excel /    |
+| PowerPoint        |
++---------+---------+
+          |
+          | user prompt / action
+          v
++-------------------+
+| Office bridge     |
+| task pane + local |
+| add-in server     |
++---------+---------+
+          |
+          | starts or attaches
+          v
++-------------------+
+| OpenCode runtime  |
+| agent + tool      |
+| orchestration     |
++---------+---------+
+          |
+          | calls bundled tools
+          v
++-------------------+
+| .opencode tools   |
+| Office tools +    |
+| local utilities   |
++----+---------+----+
+     |         |
+     |         +------------------------+
+     |                                  |
+     v                                  v
++------------+                   +--------------+
+| Read state |                   | Make edits   |
+| document,  |                   | update Word, |
+| slides,    |                   | Excel, PPT   |
+| workbook   |                   | content      |
++-----+------+                   +------+-------+
+      |                                   |
+      +----------------+------------------+
+                       |
+                       | results / updated state
+                       v
+                +-------------+
+                | Office app  |
+                | reflects    |
+                | changes     |
+                +-------------+
+```
+
 ## Office Videos
 
 ### PowerPoint

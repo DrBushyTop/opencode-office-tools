@@ -8,6 +8,7 @@ const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
 const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
+const { logInfo, logError } = require('./server/devLogger');
 
 async function createServer() {
   const PORT = 52390;
@@ -55,9 +56,11 @@ async function createServer() {
   httpsServer.listen(PORT, () => {
     console.log(`Server running on https://localhost:${PORT}`);
     console.log(`API available at https://localhost:${PORT}/api`);
+    logInfo('server', 'Dev HTTPS server started', { port: PORT });
   });
   bridgeServer.listen(BRIDGE_PORT, '127.0.0.1', () => {
     console.log(`Office bridge available at http://127.0.0.1:${BRIDGE_PORT}/api`);
+    logInfo('server', 'Dev bridge server started', { port: BRIDGE_PORT });
   });
 
   const close = () => {
@@ -68,10 +71,12 @@ async function createServer() {
   };
 
   process.once('SIGINT', () => {
+    logInfo('server', 'Received SIGINT');
     close();
     process.exit(0);
   });
   process.once('SIGTERM', () => {
+    logInfo('server', 'Received SIGTERM');
     close();
     process.exit(0);
   });
@@ -79,4 +84,7 @@ async function createServer() {
   return { close };
 }
 
-createServer().catch(console.error);
+createServer().catch((error) => {
+  console.error(error);
+  logError('server', 'Failed to create dev server', error);
+});
