@@ -29,11 +29,13 @@ This document lists all available tools that OpenCode can use when working with 
 | `get_presentation_content` | Read text content from slides with support for chunked reading of large presentations. |
 | `get_slide_shapes` | Inspect shape ids, indices, names, types, positions, placeholder types, text, and table info for targeting later edits. |
 | `get_slide_image` | Capture a slide as a PNG image for visual inspection before making changes. |
+| `get_slide_notes` | Read speaker notes by exporting slides through an Open XML fallback when the native PowerPoint API does not expose notes directly. |
 | `set_presentation_content` | Add or update text using an existing shape, a placeholder, or a new text box; explicit shape/placeholder targets fail fast if not found, and new slides can use specific masters/layouts. |
 | `add_slide_from_code` | Programmatically create slides using PptxGenJS API. Supports text, bullets, tables, shapes, and images with full formatting control. |
 | `clear_slide` | Remove all shapes from a slide. |
 | `update_slide_shape` | Update the text content of an existing shape on a slide by index or id. |
 | `set_slide_shape_properties` | Update shape text, geometry, visibility, alt text, fill, and line formatting by shape id or index. |
+| `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
 | `duplicate_slide` | Copy an existing slide to a new position in the presentation. |
 | `delete_slide` | Delete a slide from the presentation. |
 | `move_slide` | Reorder a slide within the presentation. |
