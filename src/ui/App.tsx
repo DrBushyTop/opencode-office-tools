@@ -18,6 +18,7 @@ import { makeSessionTitle, restoreSession, updateSessionTitle, type OpencodeSess
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
+import { formatOfficeToolActivity } from "../shared/office-tool-registry";
 import {
   SavedSession,
   OfficeHost,
@@ -107,6 +108,8 @@ const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
 - Use get_presentation_content to inspect slide text and get_slide_image when visual layout, spacing, or styling matters
 - Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
+- Use get_presentation_structure for master/layout/theme/footer-placeholder discovery and get_slide_shapes for precise shape targeting before editing
+- Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - For meaningful slide creation or major visual edits, treat visual QA as required, not optional
 - After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
 - Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content
@@ -139,7 +142,7 @@ function describeToolActivity(toolName: string, toolArgs: Record<string, unknown
     return `Launching ${subagentType}: ${description}`;
   }
 
-  return `Calling ${toolName}...`;
+  return formatOfficeToolActivity(toolName, toolArgs) || `Calling ${toolName}...`;
 }
 
 function previewEvent(eventType: string, data: Record<string, unknown>) {

@@ -25,15 +25,20 @@ This document lists all available tools that OpenCode can use when working with 
 | Tool | Description |
 |------|-------------|
 | `get_presentation_overview` | Get a quick overview of the presentation with slide count and content previews. Use this first. |
+| `get_presentation_structure` | Inspect slide masters, layouts, themes, backgrounds, footer-like placeholders, and selection state. |
 | `get_presentation_content` | Read text content from slides with support for chunked reading of large presentations. |
+| `get_slide_shapes` | Inspect shape ids, indices, names, types, positions, placeholder types, text, and table info for targeting later edits. |
 | `get_slide_image` | Capture a slide as a PNG image for visual inspection before making changes. |
 | `get_slide_notes` | Read speaker notes from slides. |
-| `set_presentation_content` | Add a text box to an existing slide or create a new slide with text. |
+| `set_presentation_content` | Add or update text using an existing shape, a placeholder, or a new text box; explicit shape/placeholder targets fail fast if not found, and new slides can use specific masters/layouts. |
 | `add_slide_from_code` | Programmatically create slides using PptxGenJS API. Supports text, bullets, tables, shapes, and images with full formatting control. |
 | `clear_slide` | Remove all shapes from a slide. |
-| `update_slide_shape` | Update the text content of an existing shape on a slide. |
+| `update_slide_shape` | Update the text content of an existing shape on a slide by index or id. |
+| `set_slide_shape_properties` | Update shape text, geometry, visibility, alt text, fill, and line formatting by shape id or index. |
 | `set_slide_notes` | Add or update speaker notes for a slide. |
 | `duplicate_slide` | Copy an existing slide to a new position in the presentation. |
+| `delete_slide` | Delete a slide from the presentation. |
+| `move_slide` | Reorder a slide within the presentation. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## Excel Tools
