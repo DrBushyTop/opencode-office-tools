@@ -66,7 +66,8 @@
         </DesktopFormFactor>
       </Host>
       <Host xsi:type="Notebook">
-        <AllFormFactors>
+        <DesktopFormFactor>
+          <FunctionFile resid="Commands.Url"/>
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
             <OfficeTab id="TabHome">
               <Group id="CommandsGroupOneNote">
@@ -95,7 +96,7 @@
               </Group>
             </OfficeTab>
           </ExtensionPoint>
-        </AllFormFactors>
+        </DesktopFormFactor>
       </Host>
       <Host xsi:type="Presentation">
         <DesktopFormFactor>
