@@ -1,0 +1,111 @@
+import type { Tool } from "./types";
+import { qualifyNamedRangeReference, toolFailure } from "./excelShared";
+
+export const manageNamedRange: Tool = {
+  name: "manage_named_range",
+  description: "Create, update, rename, set visibility, or delete Excel named ranges.",
+  parameters: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["create", "update", "rename", "setVisibility", "delete"],
+        description: "Named range operation to perform.",
+      },
+      name: {
+        type: "string",
+        description: "Existing or new named range name depending on the action.",
+      },
+      newName: {
+        type: "string",
+        description: "New named range name for rename.",
+      },
+      reference: {
+        type: "string",
+        description: "Cell or formula reference such as A1:D10, Sheet1!B2, or =SUM(A:A).",
+      },
+      comment: {
+        type: "string",
+        description: "Optional description to set when creating or updating.",
+      },
+      visible: {
+        type: "boolean",
+        description: "Whether the named range is visible for setVisibility or update.",
+      },
+    },
+    required: ["action", "name"],
+  },
+  handler: async (args) => {
+    const { action, name, newName, reference, comment, visible } = args as {
+      action: "create" | "update" | "rename" | "setVisibility" | "delete";
+      name: string;
+      newName?: string;
+      reference?: string;
+      comment?: string;
+      visible?: boolean;
+    };
+
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
+      return toolFailure("Invalid name. Must start with a letter and contain only letters, numbers, and underscores.");
+    }
+    if (newName && !/^[A-Za-z][A-Za-z0-9_]*$/.test(newName)) {
+      return toolFailure("Invalid newName. Must start with a letter and contain only letters, numbers, and underscores.");
+    }
+
+    try {
+      return await Excel.run(async (context) => {
+        const names = context.workbook.names;
+
+        if (action === "create") {
+          if (!reference) return toolFailure("reference is required for create.");
+          const resolvedReference = await qualifyNamedRangeReference(context, reference);
+          const namedItem = names.add(name, resolvedReference, comment);
+          if (visible !== undefined) namedItem.visible = visible;
+          namedItem.load(["name", "value", "visible"]);
+          await context.sync();
+          return `Created named range ${namedItem.name} pointing to ${namedItem.value}${visible !== undefined ? ` (visible=${namedItem.visible})` : ""}.`;
+        }
+
+        const namedItem = names.getItemOrNullObject(name);
+        namedItem.load(["isNullObject", "name", "value", "visible", "formula", "comment"]);
+        await context.sync();
+
+        if ((namedItem as Excel.NamedItem & { isNullObject?: boolean }).isNullObject) {
+          return toolFailure(`Named range ${name} was not found.`);
+        }
+
+        switch (action) {
+          case "update":
+            if (reference !== undefined) namedItem.formula = await qualifyNamedRangeReference(context, reference);
+            if (comment !== undefined) namedItem.comment = comment;
+            if (visible !== undefined) namedItem.visible = visible;
+            await context.sync();
+            return `Updated named range ${namedItem.name}.`;
+          case "rename":
+            if (!newName) return toolFailure("newName is required for rename.");
+            names.add(newName, namedItem.formula, comment ?? namedItem.comment);
+            {
+              const replacement = names.getItem(newName);
+              replacement.visible = visible ?? namedItem.visible;
+            }
+            namedItem.delete();
+            await context.sync();
+            return `Renamed named range ${name} to ${newName}.`;
+          case "setVisibility":
+            if (visible === undefined) return toolFailure("visible is required for setVisibility.");
+            namedItem.visible = visible;
+            await context.sync();
+            return `Set named range ${namedItem.name} visibility to ${visible}.`;
+          case "delete":
+            namedItem.delete();
+            await context.sync();
+            return `Deleted named range ${name}.`;
+          default:
+            return toolFailure(`Unsupported action ${action}.`);
+        }
+      });
+    } catch (error: unknown) {
+      return toolFailure(error);
+    }
+  },
+};

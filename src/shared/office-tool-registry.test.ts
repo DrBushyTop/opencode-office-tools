@@ -12,6 +12,8 @@ describe("office tool registry", () => {
     expect(officeToolDefinitions.get_document_part.description).toBe(officeToolRegistry.get_document_part.description);
     expect(isReadOnlyOfficeTool("get_document_part")).toBe(true);
     expect(isReadOnlyOfficeTool("set_document_part")).toBe(false);
+    expect(isReadOnlyOfficeTool("find_document_text")).toBe(true);
+    expect(isReadOnlyOfficeTool("set_document_range")).toBe(false);
   });
 
   it("keeps generated .opencode wrappers aligned with the registry", () => {
@@ -19,10 +21,18 @@ describe("office tool registry", () => {
     const wrapperFiles = fs.readdirSync(toolsDir).filter((name) => name.endsWith(".ts")).sort();
     const registryFiles = Object.keys(officeToolRegistry).map((name) => `${name}.ts`).sort();
     const getDocumentPartWrapper = fs.readFileSync(path.join(toolsDir, "get_document_part.ts"), "utf8");
+    const manageRangeWrapper = fs.readFileSync(path.join(toolsDir, "manage_range.ts"), "utf8");
 
     expect(wrapperFiles).toEqual(registryFiles);
     expect(getDocumentPartWrapper).toContain('export default word("get_document_part"');
     expect(getDocumentPartWrapper).toContain('tool.schema.enum(["summary", "text", "html"])');
+    expect(wrapperFiles).toContain("get_document_range.ts");
+    expect(wrapperFiles).toContain("set_document_range.ts");
+    expect(wrapperFiles).toContain("find_document_text.ts");
+    expect(wrapperFiles).toContain("get_document_targets.ts");
+    expect(manageRangeWrapper).toContain('export default excel("manage_range"');
+    expect(manageRangeWrapper).toContain('tool.schema.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"])');
     expect(getOfficeToolNames("word")).toContain("get_document_part");
+    expect(getOfficeToolNames("word")).toContain("get_document_range");
   });
 });

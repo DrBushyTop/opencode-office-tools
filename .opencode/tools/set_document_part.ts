@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { word } from "../lib/office-word"
 
-export default word("set_document_part", "Update a specific Word document part using an address.", {
+export default word("set_document_part", "Update a structural Word document part using an address.", {
   address: tool.schema.string().describe("Document part address such as section[1].header.primary, section[*], or table_of_contents."),
   operation: tool.schema.enum(["replace", "append", "clear", "insert", "configure"]).optional().describe("Operation to perform."),
   html: tool.schema.string().optional().describe("HTML content to write when updating a body-like part."),

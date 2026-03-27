@@ -13,7 +13,7 @@ const headerFooterTypes: HeaderFooterTypeName[] = ["primary", "firstPage", "even
 
 export const getDocumentPart: Tool = {
   name: "get_document_part",
-  description: `Read a specific Word document part using an address.
+  description: `Read a structural Word document part using an address.
 
 Supported addresses:
 - headers_footers
@@ -23,6 +23,7 @@ Supported addresses:
 - section[2].footer.firstPage
 - table_of_contents
 
+Use get_document_range for generic body, selection, bookmark, content-control, and table reads.
 Use format="text" or format="html" for specific header/footer bodies. Use format="summary" for overviews.`,
   parameters: {
     type: "object",

@@ -8,14 +8,19 @@ This document lists all available tools that OpenCode can use when working with 
 |------|-------------|
 | `get_document_overview` | Get a structural overview of the document including word count, heading hierarchy, table count, and list count. Use this first to understand the document structure. |
 | `get_document_content` | Get the full HTML content of the Word document. |
-| `get_document_part` | Read generic Word document parts by address, including `headers_footers`, `section[1]`, `section[1].header.primary`, and `table_of_contents`. |
+| `get_document_part` | Read structural Word document parts by address, including `headers_footers`, `section[1]`, `section[1].header.primary`, and `table_of_contents`. |
 | `get_document_section` | Read content of a specific section by heading name. More efficient than reading the entire document. |
 | `set_document_content` | Replace the entire document body with new HTML content. |
-| `set_document_part` | Update generic Word document parts by address for header/footer content, section page setup, and native table of contents insertion. |
+| `set_document_part` | Update structural Word document parts by address for header/footer content, section page setup, and native table of contents insertion. |
 | `get_selection` | Get the currently selected content as OOXML. |
 | `get_selection_text` | Get the currently selected text as plain readable text. |
+| `get_selection_html` | Get the currently selected content as HTML. |
+| `get_document_range` | Read a generic Word target by address such as `selection`, `bookmark[Name]`, `content_control[id=12]`, `table[1]`, or `table[1].cell[2,3]`. |
+| `set_document_range` | Update a generic Word target by address with HTML, text, or OOXML using replace/insert/clear. |
+| `find_document_text` | Locate text without mutating the document, optionally scoped to a generic Word target address. |
+| `get_document_targets` | Inspect tables, content controls, and bookmarks so later range operations can target them precisely. |
 | `insert_content_at_selection` | Insert HTML content at the cursor position (before, after, or replace selection). |
-| `find_and_replace` | Search and replace text with options for case sensitivity and whole word matching. |
+| `find_and_replace` | Search and replace text with options for case sensitivity, whole word matching, and optional generic target scoping. |
 | `insert_table` | Insert a formatted table at the cursor with header styling and grid/striped options. |
 | `apply_style_to_selection` | Apply formatting to selected text (bold, italic, underline, font size, colors, highlighting). |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
@@ -33,16 +38,11 @@ This document lists all available tools that OpenCode can use when working with 
 | `clear_slide_animations` | Remove all animations from a slide through an Open XML fallback; this replaces the slide in the deck. |
 | `get_slide_notes` | Read speaker notes by exporting slides through an Open XML fallback when the native PowerPoint API does not expose notes directly. |
 | `get_slide_transition` | Inspect a slide transition through an Open XML fallback. |
-| `set_presentation_content` | Add or update text using an existing shape, a placeholder, or a new text box; explicit shape/placeholder targets fail fast if not found, and new slides can use specific masters/layouts. |
+| `manage_slide` | Create, duplicate, delete, move, or clear slides with one generic slide-management tool. |
+| `manage_slide_shapes` | Create, update, or delete shapes with generic geometry, styling, text, and text-formatting controls. |
 | `add_slide_from_code` | Programmatically create slides using PptxGenJS API. Supports text, bullets, tables, shapes, and images with full formatting control. |
-| `clear_slide` | Remove all shapes from a slide. |
-| `update_slide_shape` | Update the text content of an existing shape on a slide by index or id. |
-| `set_slide_shape_properties` | Update shape text, geometry, visibility, alt text, fill, and line formatting by shape id or index. |
 | `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
 | `set_slide_transition` | Add, update, or clear a slide transition by round-tripping a slide through Open XML; this may change slide identity. |
-| `duplicate_slide` | Copy an existing slide to a new position in the presentation. |
-| `delete_slide` | Delete a slide from the presentation. |
-| `move_slide` | Reorder a slide within the presentation. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## Excel Tools
@@ -50,17 +50,18 @@ This document lists all available tools that OpenCode can use when working with 
 | Tool | Description |
 |------|-------------|
 | `get_workbook_overview` | Get a structural overview of the workbook including sheets, visibility, protection, used ranges, tables, PivotTables, filters, frozen panes, named ranges, and chart counts. Use this first. |
-| `get_workbook_info` | List all worksheet names and the active sheet. |
+| `get_workbook_info` | Get a lightweight workbook summary with worksheet names and the active sheet; prefer `get_workbook_overview` for structure. |
 | `get_workbook_content` | Read cell values and formulas from a worksheet or specific range; detail mode also includes display text, number formats, validation, merged areas, and table/PivotTable overlap. |
 | `set_workbook_content` | Write a 2D array of values or formulas to cells starting at a specific position, optionally clear first, and optionally create a table. |
 | `get_selected_range` | Read the currently selected cells including values and formulas; detail mode also includes richer cell metadata. |
 | `set_selected_range` | Write values or formulas to the currently selected range, expanding from a single selected cell when needed. |
 | `find_and_replace_cells` | Search and replace text in cells with Excel's native replace behavior (ExcelApi 1.9+), preserving formulas better than value-only rewrites. |
-| `insert_chart` | Create charts (column, bar, line, pie, area, scatter, doughnut) from a data range. |
+| `manage_chart` | Create or update charts, including source data, title, type, placement, resizing, activation, and deletion. |
 | `apply_cell_formatting` | Format cells with fonts, fills, borders, number formats, horizontal/vertical alignment, wrapping, merging, and row/column sizing. |
-| `create_named_range` | Define named ranges for easier reference in formulas and AI interactions. |
+| `manage_named_range` | Create, update, rename, hide/show, or delete named ranges. |
+| `manage_range` | Perform generic range operations like clear, insert, delete, copy, fill, sort, and filter. |
 | `manage_worksheet` | Create, rename, delete, move, change visibility, freeze/unfreeze, activate, protect, or unprotect worksheets. |
-| `manage_table` | Create or update Excel tables, including style, totals, resizing, filter reset, conversion back to ranges, and deletion. |
+| `manage_table` | Create or update Excel tables, including style, totals, resizing, row appends/inserts, filter reset, conversion back to ranges, and deletion. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ---
@@ -81,8 +82,8 @@ This helps OpenCode understand your document structure before making targeted re
 - Read-only inspection tools are auto-approved; mutating tools use the OpenCode permission flow.
 
 ### Surgical Edits vs Full Replacement
-- **Surgical**: Use `insert_content_at_selection`, `find_and_replace`, `update_slide_shape` for targeted changes
-- **Full replacement**: Use `set_document_content`, `add_slide_from_code` when rebuilding content
+- **Surgical**: Use `set_document_range`, `insert_content_at_selection`, `find_document_text`, `find_and_replace`, `manage_slide_shapes` for targeted changes
+- **Full replacement**: Use `set_document_content`; for PowerPoint, prefer `manage_slide` and `manage_slide_shapes` first, then `add_slide_from_code` for advanced slide generation
 
 ### Word: Generic Part Addressing
 When working with advanced Word structure, prefer document-part addresses:
@@ -91,8 +92,24 @@ When working with advanced Word structure, prefer document-part addresses:
 - `section[1].header.primary` or `section[2].footer.firstPage` for boilerplate areas
 - `table_of_contents` for native TOC insertion or inspection
 
-### PowerPoint: Code-Based Slide Creation
-The `add_slide_from_code` tool is the most powerful way to create slides. It accepts JavaScript code using the PptxGenJS API:
+### Word: Generic Target Addressing
+When working with body content, prefer a small set of generic target primitives:
+- `selection` for the current selection
+- `bookmark[Name]` for bookmark-oriented reads and writes
+- `content_control[id=12]` or `content_control[index=1]` for content-control targeting
+- `table[1]` for an entire table range
+- `table[1].cell[2,3]` for a specific table cell body
+
+Suggested pattern:
+1. Use `get_document_targets` to discover tables, content controls, and bookmarks
+2. Use `get_document_range` or `find_document_text` to inspect the exact target
+3. Use `set_document_range` for generic edits
+4. Keep `set_document_part` for headers, footers, section setup, and native TOC work
+
+### PowerPoint: Prefer Generic Slide/Shape Tools Before Code
+Use `manage_slide` and `manage_slide_shapes` for most native slide and shape mutations. Reach for `add_slide_from_code` when you need advanced generated layouts, tables, images, or other content that the generic native tools still cannot express cleanly.
+
+The `add_slide_from_code` tool accepts JavaScript code using the PptxGenJS API:
 
 ```javascript
 // Example: Create a title slide
@@ -108,5 +125,6 @@ slide.addText([
 When working with Excel data:
 1. Use `set_workbook_content` to write data
 2. Use `apply_cell_formatting` to style headers and cells
-3. Use `insert_chart` to visualize the data
-4. Use `create_named_range` for important data regions
+3. Use `manage_chart` to visualize or refine the data
+4. Use `manage_named_range` for important data regions
+5. Use `manage_range` for generic range-level cleanup, fill, sort, or filter operations

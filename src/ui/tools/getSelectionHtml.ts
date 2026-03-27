@@ -1,9 +1,9 @@
 import type { Tool } from "./types";
-import { extractDocumentElementFromOoxml, toolFailure } from "./wordShared";
+import { toolFailure } from "./wordShared";
 
-export const getSelection: Tool = {
-  name: "get_selection",
-  description: "Get the currently selected OOXML content (w:document element only).",
+export const getSelectionHtml: Tool = {
+  name: "get_selection_html",
+  description: "Read the current Word selection as HTML.",
   parameters: {
     type: "object",
     properties: {},
@@ -12,10 +12,9 @@ export const getSelection: Tool = {
     try {
       return await Word.run(async (context) => {
         const selection = context.document.getSelection();
-        const ooxml = selection.getOoxml();
+        const html = selection.getHtml();
         await context.sync();
-
-        return extractDocumentElementFromOoxml(ooxml.value || "") || "(no selection)";
+        return html.value || "(empty selection)";
       });
     } catch (error: unknown) {
       return toolFailure(error);

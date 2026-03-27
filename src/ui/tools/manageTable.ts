@@ -3,13 +3,13 @@ import { getWorksheet, isExcelRequirementSetSupported, toolFailure } from "./exc
 
 export const manageTable: Tool = {
   name: "manage_table",
-  description: "Create or update Excel tables. Supports creation, rename, resize, style changes, header or totals visibility, filter reset, conversion back to range, and deletion.",
+  description: "Create or update Excel tables. Supports creation, rename, resize, style changes, header or totals visibility, row appends/inserts, filter reset, conversion back to range, and deletion.",
   parameters: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["create", "rename", "resize", "setProperties", "clearFilters", "reapplyFilters", "convertToRange", "delete"],
+        enum: ["create", "rename", "resize", "setProperties", "addRows", "clearFilters", "reapplyFilters", "convertToRange", "delete"],
         description: "Table operation to perform.",
       },
       tableName: {
@@ -43,6 +43,22 @@ export const manageTable: Tool = {
       showFilterButton: { type: "boolean" },
       highlightFirstColumn: { type: "boolean" },
       highlightLastColumn: { type: "boolean" },
+      values: {
+        type: "array",
+        items: {
+          type: "array",
+          items: { anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }] },
+        },
+        description: "Row data to append or insert for addRows.",
+      },
+      rowIndex: {
+        type: "number",
+        description: "Zero-based row index for addRows. Omit or use -1 to append.",
+      },
+      alwaysInsert: {
+        type: "boolean",
+        description: "Whether addRows should insert into the table when adding rows. Default true.",
+      },
     },
     required: ["action"],
   },
@@ -62,8 +78,11 @@ export const manageTable: Tool = {
       showFilterButton,
       highlightFirstColumn,
       highlightLastColumn,
+      values,
+      rowIndex,
+      alwaysInsert = true,
     } = args as {
-      action: "create" | "rename" | "resize" | "setProperties" | "clearFilters" | "reapplyFilters" | "convertToRange" | "delete";
+      action: "create" | "rename" | "resize" | "setProperties" | "addRows" | "clearFilters" | "reapplyFilters" | "convertToRange" | "delete";
       tableName?: string;
       sheetName?: string;
       sourceRange?: string;
@@ -77,7 +96,14 @@ export const manageTable: Tool = {
       showFilterButton?: boolean;
       highlightFirstColumn?: boolean;
       highlightLastColumn?: boolean;
+      values?: Array<Array<boolean | number | string>>;
+      rowIndex?: number;
+      alwaysInsert?: boolean;
     };
+
+    if (rowIndex !== undefined && (!Number.isInteger(rowIndex) || rowIndex < -1)) {
+      return toolFailure("rowIndex must be an integer greater than or equal to -1.");
+    }
 
     if ((action === "create" && hasHeaders === false && showFilterButton) || (action === "setProperties" && showHeaders === false && showFilterButton)) {
       return toolFailure("showFilterButton can only be enabled when the table shows headers.");
@@ -137,6 +163,19 @@ export const manageTable: Tool = {
             if (highlightLastColumn !== undefined) table.highlightLastColumn = highlightLastColumn;
             await context.sync();
             return `Updated table ${table.name}.`;
+          case "addRows": {
+            if (!values?.length) return toolFailure("values is required for addRows.");
+            if (alwaysInsert !== true && !isExcelRequirementSetSupported("1.15")) {
+              return toolFailure("alwaysInsert=false for addRows requires ExcelApi 1.15.");
+            }
+            if (isExcelRequirementSetSupported("1.15")) {
+              table.rows.add(rowIndex ?? -1, values, alwaysInsert);
+            } else {
+              table.rows.add(rowIndex ?? -1, values);
+            }
+            await context.sync();
+            return `Added ${values.length} row(s) to table ${table.name}${rowIndex !== undefined && rowIndex >= 0 ? ` at index ${rowIndex}` : ""}.`;
+          }
           case "clearFilters":
             table.clearFilters();
             await context.sync();

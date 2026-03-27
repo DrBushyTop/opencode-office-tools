@@ -4,10 +4,7 @@ import { getSelection } from "./getSelection";
 import { getPresentationContent } from "./getPresentationContent";
 import { getPresentationOverview } from "./getPresentationOverview";
 import { getSlideImage } from "./getSlideImage";
-import { setPresentationContent } from "./setPresentationContent";
 import { addSlideFromCode } from "./addSlideFromCode";
-import { clearSlide } from "./clearSlide";
-import { updateSlideShape } from "./updateSlideShape";
 import { getWorkbookContent } from "./getWorkbookContent";
 import { setWorkbookContent } from "./setWorkbookContent";
 import { getSelectedRange } from "./getSelectedRange";
@@ -17,6 +14,7 @@ import { getWorkbookInfo } from "./getWorkbookInfo";
 // New Word tools
 import { getDocumentOverview } from "./getDocumentOverview";
 import { getSelectionText } from "./getSelectionText";
+import { getSelectionHtml } from "./getSelectionHtml";
 import { insertContentAtSelection } from "./insertContentAtSelection";
 import { findAndReplace } from "./findAndReplace";
 import { getDocumentSection } from "./getDocumentSection";
@@ -24,6 +22,10 @@ import { insertTable } from "./insertTable";
 import { applyStyleToSelection } from "./applyStyleToSelection";
 import { getDocumentPart } from "./getDocumentPart";
 import { setDocumentPart } from "./setDocumentPart";
+import { getDocumentRange } from "./getDocumentRange";
+import { setDocumentRange } from "./setDocumentRange";
+import { findDocumentText } from "./findDocumentText";
+import { getDocumentTargets } from "./getDocumentTargets";
 
 // New PowerPoint tools
 import { addSlideAnimation } from "./addSlideAnimation";
@@ -32,19 +34,18 @@ import { getSlideNotes } from "./getSlideNotes";
 import { getSlideTransition } from "./getSlideTransition";
 import { setSlideNotes } from "./setSlideNotes";
 import { setSlideTransition } from "./setSlideTransition";
-import { duplicateSlide } from "./duplicateSlide";
 import { getPresentationStructure } from "./getPresentationStructure";
 import { getSlideShapes } from "./getSlideShapes";
-import { setSlideShapeProperties } from "./setSlideShapeProperties";
-import { deleteSlide } from "./deleteSlide";
-import { moveSlide } from "./moveSlide";
+import { manageSlide } from "./manageSlide";
+import { manageSlideShapes } from "./manageSlideShapes";
 
 // New Excel tools
 import { getWorkbookOverview } from "./getWorkbookOverview";
 import { findAndReplaceCells } from "./findAndReplaceCells";
-import { insertChart } from "./insertChart";
 import { applyCellFormatting } from "./applyCellFormatting";
-import { createNamedRange } from "./createNamedRange";
+import { manageChart } from "./manageChart";
+import { manageNamedRange } from "./manageNamedRange";
+import { manageRange } from "./manageRange";
 import { manageWorksheet } from "./manageWorksheet";
 import { manageTable } from "./manageTable";
 import { getOfficeToolNames } from "../../shared/office-tool-definitions";
@@ -58,6 +59,11 @@ const officeToolHandlers = {
   [setDocumentPart.name]: setDocumentPart,
   [getSelection.name]: getSelection,
   [getSelectionText.name]: getSelectionText,
+  [getSelectionHtml.name]: getSelectionHtml,
+  [getDocumentRange.name]: getDocumentRange,
+  [setDocumentRange.name]: setDocumentRange,
+  [findDocumentText.name]: findDocumentText,
+  [getDocumentTargets.name]: getDocumentTargets,
   [insertContentAtSelection.name]: insertContentAtSelection,
   [findAndReplace.name]: findAndReplace,
   [insertTable.name]: insertTable,
@@ -69,9 +75,10 @@ const officeToolHandlers = {
   [getSelectedRange.name]: getSelectedRange,
   [setSelectedRange.name]: setSelectedRange,
   [findAndReplaceCells.name]: findAndReplaceCells,
-  [insertChart.name]: insertChart,
   [applyCellFormatting.name]: applyCellFormatting,
-  [createNamedRange.name]: createNamedRange,
+  [manageChart.name]: manageChart,
+  [manageNamedRange.name]: manageNamedRange,
+  [manageRange.name]: manageRange,
   [manageWorksheet.name]: manageWorksheet,
   [manageTable.name]: manageTable,
   [getPresentationOverview.name]: getPresentationOverview,
@@ -83,16 +90,11 @@ const officeToolHandlers = {
   [clearSlideAnimations.name]: clearSlideAnimations,
   [getSlideNotes.name]: getSlideNotes,
   [getSlideTransition.name]: getSlideTransition,
-  [setPresentationContent.name]: setPresentationContent,
+  [manageSlide.name]: manageSlide,
+  [manageSlideShapes.name]: manageSlideShapes,
   [addSlideFromCode.name]: addSlideFromCode,
-  [clearSlide.name]: clearSlide,
-  [updateSlideShape.name]: updateSlideShape,
-  [setSlideShapeProperties.name]: setSlideShapeProperties,
-  [deleteSlide.name]: deleteSlide,
-  [moveSlide.name]: moveSlide,
   [setSlideNotes.name]: setSlideNotes,
   [setSlideTransition.name]: setSlideTransition,
-  [duplicateSlide.name]: duplicateSlide,
 };
 
 export const allOfficeTools = Object.values(officeToolHandlers);
@@ -106,6 +108,11 @@ export const wordTools = [
   setDocumentPart,
   getSelection,
   getSelectionText,
+  getSelectionHtml,
+  getDocumentRange,
+  setDocumentRange,
+  findDocumentText,
+  getDocumentTargets,
   insertContentAtSelection,
   findAndReplace,
   insertTable,
@@ -122,16 +129,11 @@ export const powerpointTools = [
   clearSlideAnimations,
   getSlideNotes,
   getSlideTransition,
-  setPresentationContent,
+  manageSlide,
+  manageSlideShapes,
   addSlideFromCode,
-  clearSlide,
-  updateSlideShape,
-  setSlideShapeProperties,
-  deleteSlide,
-  moveSlide,
   setSlideNotes,
   setSlideTransition,
-  duplicateSlide,
 ];
 
 export const excelTools = [
@@ -142,9 +144,10 @@ export const excelTools = [
   getSelectedRange,
   setSelectedRange,
   findAndReplaceCells,
-  insertChart,
   applyCellFormatting,
-  createNamedRange,
+  manageChart,
+  manageNamedRange,
+  manageRange,
   manageWorksheet,
   manageTable,
 ];

@@ -22,6 +22,38 @@ export function cellToString(value: unknown) {
   return JSON.stringify(value);
 }
 
+export function splitSheetQualifiedRange(input: string) {
+  const bangIndex = input.lastIndexOf("!");
+  if (bangIndex === -1) return null;
+
+  const rawSheet = input.slice(0, bangIndex);
+  const rangeAddress = input.slice(bangIndex + 1);
+  const normalizedSheet = rawSheet.startsWith("'") && rawSheet.endsWith("'")
+    ? rawSheet.slice(1, -1).replace(/''/g, "'")
+    : rawSheet;
+
+  return { sheetName: normalizedSheet, rangeAddress };
+}
+
+const a1ReferencePattern = /^\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?$/;
+
+function looksLikeA1Reference(reference: string) {
+  return a1ReferencePattern.test(reference.trim());
+}
+
+export async function qualifyNamedRangeReference(context: Excel.RequestContext, reference: string) {
+  const trimmedReference = reference.trim();
+  if (trimmedReference.startsWith("=")) return trimmedReference;
+  if (trimmedReference.includes("!")) return `=${trimmedReference}`;
+  if (!looksLikeA1Reference(trimmedReference)) return `=${trimmedReference}`;
+
+  const activeSheet = context.workbook.worksheets.getActiveWorksheet();
+  activeSheet.load("name");
+  await context.sync();
+  const escapedSheetName = activeSheet.name.replace(/'/g, "''");
+  return `='${escapedSheetName}'!${trimmedReference}`;
+}
+
 export function rangeGridToLines(
   values: unknown[][],
   formulas: unknown[][],

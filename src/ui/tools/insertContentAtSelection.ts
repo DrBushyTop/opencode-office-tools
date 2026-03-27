@@ -1,4 +1,9 @@
 import type { Tool } from "./types";
+import {
+  resolveDocumentRangeTarget,
+  toolFailure,
+  writeResolvedWordTarget,
+} from "./wordShared";
 
 export const insertContentAtSelection: Tool = {
   name: "insert_content_at_selection",
@@ -40,36 +45,14 @@ Examples:
     
     try {
       return await Word.run(async (context) => {
-        const selection = context.document.getSelection();
-        
-        // Map location string to Word.InsertLocation
-        let insertLocation: Word.InsertLocation;
-        switch (location) {
-          case "before":
-            insertLocation = Word.InsertLocation.before;
-            break;
-          case "after":
-            insertLocation = Word.InsertLocation.after;
-            break;
-          case "start":
-            insertLocation = Word.InsertLocation.start;
-            break;
-          case "end":
-            insertLocation = Word.InsertLocation.end;
-            break;
-          case "replace":
-          default:
-            insertLocation = Word.InsertLocation.replace;
-            break;
-        }
-        
-        selection.insertHtml(html, insertLocation);
+        const selection = await resolveDocumentRangeTarget(context, { kind: "selection" });
+        writeResolvedWordTarget(selection, "insert", "html", html, location as "replace" | "before" | "after" | "start" | "end");
         await context.sync();
         
         return `Content inserted successfully (location: ${location}).`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };
