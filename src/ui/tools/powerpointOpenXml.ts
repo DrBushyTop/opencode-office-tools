@@ -40,7 +40,7 @@ export interface SlideTransitionDefinition {
 }
 
 export interface SlideAnimationDefinition {
-  type: "motionPath" | "scale" | "rotate";
+  type: "motionPath" | "scale" | "rotate" | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn";
   start: "onClick" | "withPrevious" | "afterPrevious";
   durationMs?: number;
   delayMs?: number;
@@ -52,7 +52,32 @@ export interface SlideAnimationDefinition {
   scaleXPercent?: number;
   scaleYPercent?: number;
   angleDegrees?: number;
+  direction?: "left" | "right" | "up" | "down";
 }
+
+const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn"]);
+
+const ENTRANCE_PRESET_IDS: Record<string, number> = {
+  appear: 1,
+  fade: 10,
+  flyIn: 2,
+  wipe: 22,
+  zoomIn: 23,
+};
+
+const FLY_IN_DIRECTION_SUBTYPES: Record<string, number> = {
+  left: 4,
+  right: 2,
+  up: 1,
+  down: 3,
+};
+
+const WIPE_DIRECTION_SUBTYPES: Record<string, number> = {
+  left: 2,
+  right: 4,
+  up: 10,
+  down: 3,
+};
 
 interface SlideAnimationMutationDefinition extends Omit<SlideAnimationDefinition, "shapeId"> {
   targetXmlShapeId: string;
@@ -532,7 +557,131 @@ function buildCommonBehavior(doc: XMLDocument, animation: SlideAnimationMutation
   return cBhvr;
 }
 
-function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
+function buildVisibilitySet(doc: XMLDocument, targetShapeId: string, allocTimeNodeId: () => string) {
+  const set = doc.createElementNS(NS_P, "p:set");
+  const cBhvr = doc.createElementNS(NS_P, "p:cBhvr");
+  const cTn = doc.createElementNS(NS_P, "p:cTn");
+  cTn.setAttribute("id", allocTimeNodeId());
+  cTn.setAttribute("dur", "1");
+  cTn.setAttribute("fill", "hold");
+  const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
+  const cond = doc.createElementNS(NS_P, "p:cond");
+  cond.setAttribute("delay", "0");
+  stCondLst.appendChild(cond);
+  cTn.appendChild(stCondLst);
+  cBhvr.appendChild(cTn);
+  cBhvr.appendChild(buildTargetElement(doc, targetShapeId));
+  const attrNameLst = doc.createElementNS(NS_P, "p:attrNameLst");
+  const attrName = doc.createElementNS(NS_P, "p:attrName");
+  attrName.textContent = "style.visibility";
+  attrNameLst.appendChild(attrName);
+  cBhvr.appendChild(attrNameLst);
+  set.appendChild(cBhvr);
+  const to = doc.createElementNS(NS_P, "p:to");
+  const strVal = doc.createElementNS(NS_P, "p:strVal");
+  strVal.setAttribute("val", "visible");
+  to.appendChild(strVal);
+  set.appendChild(to);
+  return set;
+}
+
+function buildEntranceAnimationNodes(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string): Element[] {
+  const visibilitySet = buildVisibilitySet(doc, animation.targetXmlShapeId, allocTimeNodeId);
+
+  if (animation.type === "appear") {
+    return [visibilitySet];
+  }
+
+  if (animation.type === "fade") {
+    const animEffect = doc.createElementNS(NS_P, "p:animEffect");
+    animEffect.setAttribute("transition", "in");
+    animEffect.setAttribute("filter", "fade");
+    const cBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    animEffect.appendChild(cBhvr);
+    return [visibilitySet, animEffect];
+  }
+
+  if (animation.type === "flyIn") {
+    const dir = animation.direction || "down";
+    const paths: Record<string, string> = {
+      left: "M -1 0 L 0 0 E",
+      right: "M 1 0 L 0 0 E",
+      up: "M 0 1 L 0 0 E",
+      down: "M 0 -1 L 0 0 E",
+    };
+    const node = doc.createElementNS(NS_P, "p:animMotion");
+    node.setAttribute("origin", "layout");
+    node.setAttribute("path", paths[dir] || paths.down);
+    node.setAttribute("pathEditMode", "relative");
+    const cBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    const attrNameList = doc.createElementNS(NS_P, "p:attrNameLst");
+    const attrX = doc.createElementNS(NS_P, "p:attrName");
+    attrX.textContent = "ppt_x";
+    const attrY = doc.createElementNS(NS_P, "p:attrName");
+    attrY.textContent = "ppt_y";
+    attrNameList.appendChild(attrX);
+    attrNameList.appendChild(attrY);
+    cBhvr.appendChild(attrNameList);
+    node.appendChild(cBhvr);
+    return [visibilitySet, node];
+  }
+
+  if (animation.type === "wipe") {
+    const dir = animation.direction || "left";
+    const filterMap: Record<string, string> = {
+      left: "wipe(left)",
+      right: "wipe(right)",
+      up: "wipe(up)",
+      down: "wipe(down)",
+    };
+    const animEffect = doc.createElementNS(NS_P, "p:animEffect");
+    animEffect.setAttribute("transition", "in");
+    animEffect.setAttribute("filter", filterMap[dir] || filterMap.left);
+    const cBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    animEffect.appendChild(cBhvr);
+    return [visibilitySet, animEffect];
+  }
+
+  if (animation.type === "zoomIn") {
+    const node = doc.createElementNS(NS_P, "p:animScale");
+    const cBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    node.appendChild(cBhvr);
+    const from = doc.createElementNS(NS_P, "p:from");
+    from.setAttribute("x", "0");
+    from.setAttribute("y", "0");
+    const to = doc.createElementNS(NS_P, "p:to");
+    to.setAttribute("x", "100000");
+    to.setAttribute("y", "100000");
+    node.appendChild(from);
+    node.appendChild(to);
+    return [visibilitySet, node];
+  }
+
+  return [visibilitySet];
+}
+
+function isEntranceAnimation(animation: SlideAnimationMutationDefinition) {
+  return ENTRANCE_ANIMATION_TYPES.has(animation.type);
+}
+
+function getEntrancePresetId(animation: SlideAnimationMutationDefinition) {
+  return ENTRANCE_PRESET_IDS[animation.type];
+}
+
+function getEntrancePresetSubtype(animation: SlideAnimationMutationDefinition): number | undefined {
+  if (animation.type === "flyIn") return FLY_IN_DIRECTION_SUBTYPES[animation.direction || "down"];
+  if (animation.type === "wipe") return WIPE_DIRECTION_SUBTYPES[animation.direction || "left"];
+  return undefined;
+}
+
+function buildAnimationNodes(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string): Element[] {
+  if (isEntranceAnimation(animation)) {
+    return buildEntranceAnimationNodes(doc, animation, allocTimeNodeId);
+  }
+  return [buildEmphasisAnimationNode(doc, animation, allocTimeNodeId)];
+}
+
+function buildEmphasisAnimationNode(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
   if (animation.type === "motionPath") {
     const node = doc.createElementNS(NS_P, "p:animMotion");
     node.setAttribute("origin", animation.pathOrigin || "parent");
@@ -567,7 +716,22 @@ function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationMutationD
   return node;
 }
 
+function applyEntrancePresetAttributes(cTn: Element, animation: SlideAnimationMutationDefinition) {
+  if (!isEntranceAnimation(animation)) return;
+  const presetId = getEntrancePresetId(animation);
+  if (presetId !== undefined) {
+    cTn.setAttribute("presetClass", "entr");
+    cTn.setAttribute("presetID", String(presetId));
+  }
+  const subtype = getEntrancePresetSubtype(animation);
+  if (subtype !== undefined) {
+    cTn.setAttribute("presetSubtype", String(subtype));
+  }
+}
+
 function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
+  const nodes = buildAnimationNodes(doc, animation, allocTimeNodeId);
+
   if (animation.start === "onClick") {
     const seq = doc.createElementNS(NS_P, "p:seq");
     const cTn = doc.createElementNS(NS_P, "p:cTn");
@@ -581,8 +745,9 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
     parCtn.setAttribute("id", allocTimeNodeId());
     parCtn.setAttribute("dur", String(getAnimationDurationMs(animation)));
     parCtn.setAttribute("fill", "hold");
+    applyEntrancePresetAttributes(parCtn, animation);
     const parChildren = doc.createElementNS(NS_P, "p:childTnLst");
-    parChildren.appendChild(buildAnimationNode(doc, animation, allocTimeNodeId));
+    for (const node of nodes) parChildren.appendChild(node);
     parCtn.appendChild(parChildren);
     par.appendChild(parCtn);
     childTnLst.appendChild(par);
@@ -596,6 +761,7 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
   cTn.setAttribute("id", allocTimeNodeId());
   cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
   cTn.setAttribute("fill", "hold");
+  applyEntrancePresetAttributes(cTn, animation);
   if ((animation.start === "withPrevious" || animation.start === "afterPrevious") && animation.delayMs && animation.delayMs > 0) {
     cTn.appendChild(buildStartConditions(doc, animation.start, animation.delayMs));
   }
@@ -603,7 +769,7 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
     cTn.setAttribute("repeatCount", String(animation.repeatCount));
   }
   const childTnLst = doc.createElementNS(NS_P, "p:childTnLst");
-  childTnLst.appendChild(buildAnimationNode(doc, animation, allocTimeNodeId));
+  for (const node of nodes) childTnLst.appendChild(node);
   cTn.appendChild(childTnLst);
   par.appendChild(cTn);
   return par;
@@ -627,7 +793,9 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
     if (lastPar) {
       const lastParCtn = getOrCreateChild(lastPar, NS_P, "p:cTn");
       const lastParChildren = getOrCreateChild(lastParCtn, NS_P, "p:childTnLst");
-      lastParChildren.appendChild(buildAnimationNode(slideDoc, animation, allocTimeNodeId));
+      for (const node of buildAnimationNodes(slideDoc, animation, allocTimeNodeId)) {
+        lastParChildren.appendChild(node);
+      }
       ensureContainerDurationAtLeast(lastParCtn, getAnimationDurationMs(animation));
       return;
     }
