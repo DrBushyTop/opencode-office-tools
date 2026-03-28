@@ -680,7 +680,7 @@
         "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
         "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight." },
         "text": { "type": "string", "description": "Text content to set or create." },
-        "name": { "type": "string" },
+        "name": { "type": "string", "description": "Descriptive shape name for identification and animation targeting. Use semantic names like 'Bullet 1 - Revenue' or 'Hero Image'." },
         "left": { "type": "number" },
         "top": { "type": "number" },
         "width": { "type": "number" },
