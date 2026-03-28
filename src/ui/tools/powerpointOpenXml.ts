@@ -123,13 +123,7 @@ function getSlideShapeElementsInOrder(slideDoc: XMLDocument) {
   ) as Element[];
 }
 
-function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: number) {
-  const shapes = getSlideShapeElementsInOrder(slideDoc);
-  const shape = shapes[shapeIndex];
-  if (!shape) {
-    throw new Error(`The exported slide XML does not contain shapeIndex ${shapeIndex}. Available shape indexes: 0-${Math.max(shapes.length - 1, 0)}.`);
-  }
-
+function getXmlShapeId(shape: Element, shapeIndex: number) {
   const cNvPr = shape.getElementsByTagNameNS(NS_P, "cNvPr")[0];
   const xmlShapeId = cNvPr?.getAttribute("id");
   if (!xmlShapeId) {
@@ -137,6 +131,22 @@ function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: num
   }
 
   return xmlShapeId;
+}
+
+function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: number) {
+  const shapes = getSlideShapeElementsInOrder(slideDoc);
+  const shape = shapes[shapeIndex];
+  if (!shape) {
+    throw new Error(`The exported slide XML does not contain shapeIndex ${shapeIndex}. Available shape indexes: 0-${Math.max(shapes.length - 1, 0)}.`);
+  }
+
+  return getXmlShapeId(shape, shapeIndex);
+}
+
+export function findSlideShapeIndexByXmlShapeIdInBase64Presentation(base64: string, xmlShapeId: string) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slideDoc } = getFirstSlideDocument(pkg);
+  return getSlideShapeElementsInOrder(slideDoc).findIndex((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex) === xmlShapeId);
 }
 
 function extractTextBody(textBody: Element | null) {
@@ -397,6 +407,27 @@ function createTimeNodeIdAllocator(slideDoc: XMLDocument) {
   return () => String(nextId++);
 }
 
+function getAnimationDurationMs(animation: SlideAnimationMutationDefinition) {
+  return animation.durationMs ?? 1000;
+}
+
+function getNumericDurationAttribute(element: Element) {
+  const value = element.getAttribute("dur");
+  if (!value || value === "indefinite") {
+    return null;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function ensureContainerDurationAtLeast(element: Element, durationMs: number) {
+  const currentDurationMs = getNumericDurationAttribute(element);
+  if (currentDurationMs === null || currentDurationMs < durationMs) {
+    element.setAttribute("dur", String(durationMs));
+  }
+}
+
 function getOrCreateChild(parent: Element, namespace: string, qualifiedName: string) {
   const localName = qualifiedName.split(":").pop() || qualifiedName;
   const existing = Array.from(parent.childNodes).find(
@@ -485,7 +516,7 @@ function buildCommonBehavior(doc: XMLDocument, animation: SlideAnimationMutation
   const cBhvr = doc.createElementNS(NS_P, "p:cBhvr");
   const cTn = doc.createElementNS(NS_P, "p:cTn");
   cTn.setAttribute("id", allocTimeNodeId());
-  cTn.setAttribute("dur", String(animation.durationMs ?? 1000));
+  cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
   cTn.setAttribute("fill", "hold");
   if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
     cTn.setAttribute("repeatCount", String(animation.repeatCount));
@@ -542,7 +573,7 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
     const par = doc.createElementNS(NS_P, "p:par");
     const parCtn = doc.createElementNS(NS_P, "p:cTn");
     parCtn.setAttribute("id", allocTimeNodeId());
-    parCtn.setAttribute("dur", String(animation.durationMs ?? 1000));
+    parCtn.setAttribute("dur", String(getAnimationDurationMs(animation)));
     parCtn.setAttribute("fill", "hold");
     const parChildren = doc.createElementNS(NS_P, "p:childTnLst");
     parChildren.appendChild(buildAnimationNode(doc, animation, allocTimeNodeId));
@@ -557,10 +588,10 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
   const par = doc.createElementNS(NS_P, "p:par");
   const cTn = doc.createElementNS(NS_P, "p:cTn");
   cTn.setAttribute("id", allocTimeNodeId());
-  cTn.setAttribute("dur", String(animation.durationMs ?? 1000));
+  cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
   cTn.setAttribute("fill", "hold");
-  if (animation.start === "withPrevious" && animation.delayMs) {
-    cTn.appendChild(buildStartConditions(doc, "withPrevious", animation.delayMs));
+  if ((animation.start === "withPrevious" || animation.start === "afterPrevious") && animation.delayMs && animation.delayMs > 0) {
+    cTn.appendChild(buildStartConditions(doc, animation.start, animation.delayMs));
   }
   if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
     cTn.setAttribute("repeatCount", String(animation.repeatCount));
@@ -591,6 +622,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
       const lastParCtn = getOrCreateChild(lastPar, NS_P, "p:cTn");
       const lastParChildren = getOrCreateChild(lastParCtn, NS_P, "p:childTnLst");
       lastParChildren.appendChild(buildAnimationNode(slideDoc, animation, allocTimeNodeId));
+      ensureContainerDurationAtLeast(lastParCtn, getAnimationDurationMs(animation));
       return;
     }
   }
@@ -687,6 +719,11 @@ export function extractSpeakerNotesFromBase64Presentation(base64: string) {
   if (!pkg.has(notesPath)) return "";
 
   const notesDoc = parseXml(pkg.readText(notesPath));
+  const speakerNotesShape = getSpeakerNotesShape(notesDoc);
+  if (speakerNotesShape) {
+    return extractTextBody(getTextBody(speakerNotesShape));
+  }
+
   const shapes = Array.from(notesDoc.getElementsByTagNameNS(NS_P, "sp"));
   const noteBlocks = shapes
     .filter((shape) => !EXCLUDED_NOTE_PLACEHOLDER_TYPES.has(getPlaceholderType(shape) || ""))

@@ -5,6 +5,7 @@ import {
   roundTripRefreshHint,
   roundTripSlideRefreshHint,
   shouldAddRoundTripRefreshHint,
+  shouldAddRoundTripShapeTargetRefreshHint,
   toolFailure,
 } from "./powerpointShared";
 
@@ -40,6 +41,13 @@ describe("powerpointShared", () => {
     expect(shouldAddRoundTripRefreshHint("The object can not be found here.")).toBe(true);
     expect(shouldAddRoundTripRefreshHint("Invalid slideIndex 4. Available slideIndex values: 0, 1, 2.")).toBe(false);
     expect(shouldAddRoundTripRefreshHint("Shape abc was not found on slide 2.")).toBe(false);
+  });
+
+  it("adds animation refresh hints for stale shape-id misses without catching plain index validation", () => {
+    expect(shouldAddRoundTripShapeTargetRefreshHint("The object can not be found here.")).toBe(true);
+    expect(shouldAddRoundTripShapeTargetRefreshHint("Shape abc was not found on slide 2. Available shapes on slide 2: shapeIndex 0: id=def, name=\"Title\"")).toBe(true);
+    expect(shouldAddRoundTripShapeTargetRefreshHint("Invalid slideIndex 4. Available slideIndex values: 0, 1, 2.")).toBe(false);
+    expect(shouldAddRoundTripShapeTargetRefreshHint("Provide a valid shapeId or shapeIndex for slide 2. Available shapes on slide 2: shapeIndex 0: id=def, name=\"Title\"")).toBe(false);
   });
 
   it("separates shape and slide refresh hints", () => {

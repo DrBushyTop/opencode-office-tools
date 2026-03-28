@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { loadTextFrames } from "./powerpointText";
+import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import {
   formatAvailableShapeTargets,
   invalidSlideIndexMessage,
@@ -19,7 +20,7 @@ type VerticalAlignment = "Top" | "Middle" | "Bottom" | "TopCentered" | "MiddleCe
 interface ManageSlideShapesArgs {
   action: ManageSlideShapesAction;
   slideIndex: number;
-  shapeId?: string;
+  shapeId?: string | number;
   shapeIndex?: number;
   placeholderType?: string;
   shapeType?: CreateShapeType;
@@ -140,18 +141,17 @@ async function resolveTargetShape(
   slide: PowerPoint.Slide,
   args: ManageSlideShapesArgs,
 ): Promise<PowerPoint.Shape | { error: string }> {
+  if (args.shapeId !== undefined) {
+    try {
+      const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, args.slideIndex, args.shapeId);
+      return resolved.shape;
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   slide.shapes.load("items/id,name,type");
   await context.sync();
-
-  if (args.shapeId) {
-    const byId = slide.shapes.getItemOrNullObject(args.shapeId);
-    byId.load("isNullObject");
-    await context.sync();
-    if (byId.isNullObject) {
-      return { error: `Shape ${args.shapeId} was not found on slide ${args.slideIndex + 1}. ${formatAvailableShapeTargets(args.slideIndex, slide.shapes.items)}` };
-    }
-    return byId;
-  }
 
   if (args.shapeIndex !== undefined) {
     const shape = slide.shapes.items[args.shapeIndex];
@@ -284,7 +284,10 @@ export const manageSlideShapes: Tool = {
         description: "Shape operation to perform.",
       },
       slideIndex: { type: "number", description: "0-based slide index." },
-      shapeId: { type: "string", description: "Existing shape id. Preferred over shapeIndex when available." },
+      shapeId: {
+        anyOf: [{ type: "string" }, { type: "number" }],
+        description: "Existing Office shape id, or an exported XML p:cNvPr id after an Open XML slide replacement.",
+      },
       shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide." },
       placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
       shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create." },
