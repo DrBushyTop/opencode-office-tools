@@ -1,13 +1,14 @@
 import * as React from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
 import type { OfficePermissionRequest } from "../../shared/office-permissions";
-import { isReadOnlyOfficeTool } from "../../shared/office-tool-registry";
+import { permissionKind, permissionTarget } from "../../shared/office-permissions";
 
 export type PermissionDecision = "allow" | "deny" | "always";
 
 interface PermissionDialogProps {
   request: OfficePermissionRequest;
   cwd: string | null;
+  sessionTitle?: string | null;
   onDecision: (decision: PermissionDecision) => void;
 }
 
@@ -15,7 +16,10 @@ const KIND_META: Record<string, { icon: string; label: string; color: string }> 
   shell: { icon: "⚡", label: "Run Shell Command", color: "#d13438" },
   write: { icon: "✏️", label: "Write File", color: "#ca5010" },
   read: { icon: "📖", label: "Read File", color: "#0078d4" },
+  subagent: { icon: "🧠", label: "Launch Subagent", color: "#5c2dbd" },
   mcp: { icon: "🔌", label: "MCP Server Call", color: "#8764b8" },
+  generic: { icon: "🔐", label: "Permission Request", color: "#4f6bed" },
+  danger: { icon: "🛑", label: "Repeated Tool Call", color: "#d13438" },
 };
 
 const useStyles = makeStyles({
@@ -97,24 +101,23 @@ const useStyles = makeStyles({
 function getDetail(request: OfficePermissionRequest): string {
   return JSON.stringify({
     permission: request.permission,
-    tool: request.metadata.tool || request.patterns[0],
+    target: permissionTarget(request),
     input: request.metadata.input,
     patterns: request.patterns,
+    metadata: request.metadata,
   }, null, 2);
 }
 
 export const PermissionDialog: React.FC<PermissionDialogProps> = ({
   request,
+  sessionTitle,
   onDecision,
 }) => {
   const styles = useStyles();
-  const requestedTool = String(request.metadata.tool || request.patterns[0] || "");
-  const meta = request.permission === "doom_loop"
-    ? { icon: "🛑", label: "Repeated Tool Call", color: "#d13438" }
-    : isReadOnlyOfficeTool(requestedTool)
-      ? KIND_META.read
-      : KIND_META.write;
+  const target = permissionTarget(request);
+  const meta = KIND_META[permissionKind(request)] || KIND_META.generic;
   const detail = getDetail(request);
+  const requester = sessionTitle && sessionTitle.trim() ? sessionTitle.trim() : null;
 
   return (
     <div className={styles.overlay}>
@@ -129,7 +132,8 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
         <div className={styles.intention}>
           {request.permission === "doom_loop"
             ? "OpenCode wants confirmation before repeating the same tool call again."
-            : `OpenCode wants permission to use ${String(request.metadata.tool || request.patterns[0] || "this tool")}.`}
+            : `OpenCode wants permission to use ${target || "this tool"}.`}
+          {requester ? ` Requested by ${requester}.` : ""}
         </div>
 
         {detail && (

@@ -235,6 +235,14 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.get('/opencode/session/:id/children', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}/children`));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.patch('/opencode/session/:id', async (req, res) => {
     try {
       res.json(await runtime.request(`/session/${req.params.id}`, {

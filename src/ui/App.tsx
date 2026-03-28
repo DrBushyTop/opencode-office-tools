@@ -12,7 +12,7 @@ import { SessionHistory } from "./components/SessionHistory";
 import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
 import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
-import { createOpencodeClient, ModelInfo } from "./lib/opencode-client";
+import { createOpencodeClient, ModelInfo, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge } from "./lib/office-tool-bridge";
 import { makeSessionTitle, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
@@ -117,6 +117,28 @@ function getEnabledTools(host: OfficeHost) {
   return tools;
 }
 
+async function getSessionFamily(client: ReturnType<typeof createOpencodeClient>, rootId: string) {
+  const ids = new Set<string>([rootId]);
+  const titles = new Map<string, string>();
+  const queue = [rootId];
+
+  const root = await client.getSession(rootId).catch(() => null);
+  if (root?.title) titles.set(root.id, root.title);
+
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const children = await client.getSessionChildren(id).catch(() => [] as SessionInfo[]);
+    for (const child of children) {
+      if (!child?.id || ids.has(child.id)) continue;
+      ids.add(child.id);
+      if (child.title) titles.set(child.id, child.title);
+      queue.push(child.id);
+    }
+  }
+
+  return { ids, titles };
+}
+
 function describeToolActivity(toolName: string, toolArgs: Record<string, unknown>) {
   if (toolName === "task") {
     const subagentType = typeof toolArgs.subagent_type === "string" ? toolArgs.subagent_type : "subagent";
@@ -207,6 +229,7 @@ export const App: React.FC = () => {
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
+  const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const isDarkMode = useIsDarkMode();
   const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
@@ -246,11 +269,24 @@ export const App: React.FC = () => {
   useEffect(() => {
     const poll = async () => {
       try {
+        if (!currentSessionId) {
+          setPermission(null);
+          setPermissionSessionTitle(null);
+          return;
+        }
+
         const response = await fetch("/api/opencode/permissions");
         if (!response.ok) return;
         const items = await response.json();
-        const next = items.find((item: OfficePermissionRequest) => item.sessionID === currentSessionId);
-        if (!next) return;
+        const family = await getSessionFamily(client, currentSessionId);
+        const next = items.find((item: OfficePermissionRequest) => family.ids.has(item.sessionID));
+
+        if (!next) {
+          setPermission(null);
+          setPermissionSessionTitle(null);
+          return;
+        }
+
         if (canAutoApprove(next)) {
           await fetch(`/api/opencode/permission/${next.id}/reply`, {
             method: "POST",
@@ -260,13 +296,14 @@ export const App: React.FC = () => {
           return;
         }
         setPermission((current) => current?.id === next.id ? current : next);
+        setPermissionSessionTitle(family.titles.get(next.sessionID) || null);
       } catch {}
     };
 
     const timer = window.setInterval(poll, 1000);
     void poll();
     return () => window.clearInterval(timer);
-  }, [currentSessionId]);
+  }, [client, currentSessionId]);
 
   const handlePermissionDecision = async (decision: PermissionDecision) => {
     if (!permission) return;
@@ -277,6 +314,7 @@ export const App: React.FC = () => {
       body: JSON.stringify({ reply }),
     }).catch(() => undefined);
     setPermission(null);
+    setPermissionSessionTitle(null);
   };
 
   const startNewSession = async (_modelKey: ModelType, restored?: SavedSession) => {
@@ -286,6 +324,8 @@ export const App: React.FC = () => {
     setCurrentActivity("");
     setDebugEvents([]);
     setIsTyping(false);
+    setPermission(null);
+    setPermissionSessionTitle(null);
 
     const host = Office.context.host;
     const office = getHostFromOfficeHost(host);
@@ -586,6 +626,7 @@ export const App: React.FC = () => {
             <PermissionDialog
               request={permission}
               cwd={null}
+              sessionTitle={permissionSessionTitle}
               onDecision={handlePermissionDecision}
             />
           )}
