@@ -1,9 +1,16 @@
 import type { ToolResultFailure } from "./types";
 
 export function toolFailure(error: unknown, hint?: string): ToolResultFailure {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = describeError(error);
   const fullMessage = hint ? `${message} ${hint}` : message;
   return { textResultForLlm: fullMessage, resultType: "failure", error: fullMessage, toolTelemetry: {} };
+}
+
+/** Extract a descriptive message from an error, including the Office.js error code when available. */
+export function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const code = (error as { code?: string }).code;
+  return code ? `${error.message} [${code}]` : error.message;
 }
 
 export function formatAvailableSlideIndexes(slideCount: number) {
@@ -49,14 +56,14 @@ export function roundTripSlideRefreshHint() {
 }
 
 export function shouldAddRoundTripRefreshHint(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /object can not be found here|object cannot be found here|invalidobjectpath|item.*does not exist/i.test(message);
+  const text = describeError(error);
+  return /object can not be found here|object cannot be found here|invalidobjectpath|invalidargument|item.*does not exist/i.test(text);
 }
 
 export function shouldAddRoundTripShapeTargetRefreshHint(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return shouldAddRoundTripRefreshHint(message)
-    || /^Shape .+ was not found on slide \d+\./i.test(message);
+  const text = describeError(error);
+  return shouldAddRoundTripRefreshHint(error)
+    || /^Shape .+ was not found on slide \d+\./i.test(text);
 }
 
 export function isPowerPointRequirementSetSupported(version: string) {
