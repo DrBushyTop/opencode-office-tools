@@ -4,3 +4,4 @@ build/
 .DS_Store
 opencode-repo
 .opencode/debug.log
+.development

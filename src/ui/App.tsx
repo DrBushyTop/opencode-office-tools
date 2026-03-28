@@ -103,31 +103,9 @@ function pickDefaultModel(models: { key: string }[]): ModelType {
   return models[0]?.key || FALLBACK_MODELS[0].key;
 }
 
-const POWERPOINT_SYSTEM_GUIDANCE = `For PowerPoint:
-- Use get_presentation_overview first to understand the deck before editing
-- Use get_presentation_content to inspect slide text and get_slide_image when visual layout, spacing, or styling matters
-- Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
-- Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
-- Use get_presentation_structure for master/layout/theme/footer-placeholder discovery and get_slide_shapes for precise shape targeting before editing
-- Use manage_slide for slide create/move/duplicate/delete/clear operations and manage_slide_shapes for most shape creation, deletion, text edits, and formatting changes
-- Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
-- When native PowerPoint APIs miss a feature such as speaker notes, prefer supported Open XML slide round-trips only if the tool explicitly implements them
-- Treat add_slide_from_code as an advanced fallback for cases the generic PowerPoint tools cannot express cleanly, not as the default way to add common shapes or text
-- For animations and transitions, inspect shape ids first and remember that Open XML fallback tools replace the slide and may change slide identity
-- For meaningful slide creation or major visual edits, treat visual QA as required, not optional
-- After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
-- Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content
-- If the reviewer finds issues, fix them and re-check the affected slides before declaring success
-- When launching the reviewer, clearly say it is a fresh-eyes pass so the user can see that subagent work is happening`;
-
-const VERIFICATION_SYSTEM_GUIDANCE = `Verification:
-- After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
-- Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
-- Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
-- Re-read the exact mutated surface during verification: the same Word address, Excel range/sheet, or PowerPoint slides you changed
-- If Task approval is denied or the tool is unavailable, do a manual readback verification with the host tools and explicitly say fresh-eyes review could not run
-- For read-only requests, skip the verification pass unless you had to infer or reconstruct missing structure
-- If the verifier finds problems, fix them and run the verification pass again on the affected areas`;
+// Per-host tool guidance and verification instructions are now defined in the
+// OpenCode agent prompts under .opencode/agents/{powerpoint,word,excel,onenote}.md.
+// The system message passed per-call is kept minimal; the agent prompt is primary.
 
 function getEnabledTools(host: OfficeHost) {
   const tools = Object.fromEntries(
@@ -194,39 +172,7 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
           ? "OneNote"
         : "Office";
 
-  return `You are a helpful AI assistant embedded inside Microsoft ${hostName} as an Office Add-in. The user's ${hostName} document is already open.
-
-Use the available ${hostName} tools to inspect or update the active document directly. Do not ask for file paths, exports, or saved files on disk.
-
-${host === Office.HostType.PowerPoint ? POWERPOINT_SYSTEM_GUIDANCE : ""}
-
-${VERIFICATION_SYSTEM_GUIDANCE}
-
-${host === Office.HostType.Word ? `For Word:
-- Use get_document_overview first to map the document structure
-- Use get_document_content to read the document
-- Use get_document_targets to discover tables, content controls, and bookmarks when you need precise targets
-- Use get_document_range, get_selection_html, or get_document_section for targeted reads
-- Use find_document_text before mutating replace operations when you need to locate text first
-- Use set_document_range for generic targeted edits against selection, bookmarks, content controls, tables, or table cells
-- Use mutation tools directly against the active document instead of asking the user to paste content
-- Use get_document_part and set_document_part for section headers, footers, section setup, and native table of contents work
-- Prefer addresses like section[1].header.primary, section[*], headers_footers, table_of_contents, selection, bookmark[Name], content_control[id=12], and table[1].cell[2,3]` : ""}
-
-${host === Office.HostType.Excel ? `For Excel:
-- Use get_workbook_overview first for sheets, tables, PivotTables, filters, protection, and frozen panes
-- Use get_workbook_content or get_selected_range with detail=true when number formats, validation, merged cells, or table overlap matter
-- Prefer manage_table, manage_range, manage_chart, manage_named_range, and manage_worksheet for real Excel structure changes instead of emulating them with raw cell edits
-- After mutations, use a verification pass to re-read the affected ranges, formulas, tables, charts, or named ranges` : ""}
-
-${host === Office.HostType.OneNote ? `For OneNote:
-- Use get_notebook_overview first to understand the active notebook, section tree, and page ids
-- Use get_page_content only for the active page; navigate_to_page first when the target page is not active
-- Prefer append_page_content, set_page_title, create_page, and set_note_selection over asking the user to paste content manually
-- OneNote page edits accept limited HTML and typically append into one outline; keep markup simple and semantic
-- Use get_note_selection for cursor-context reads and set_note_selection for text, HTML, or image insertion at the selection` : ""}
-
-Always operate on the open document through tools.`;
+  return `The user's Microsoft ${hostName} document is currently open. Always operate on the open document through the available tools.`;
 }
 
 function toPromptParts(text: string, images: Array<{ path: string; name: string; mime: string }>) {
@@ -447,6 +393,7 @@ export const App: React.FC = () => {
 
       for await (const event of client.query(currentSessionId, {
         model: { providerID: model.providerID, modelID: model.modelID },
+        agent: officeHost,
         system: getSystemMessage(Office.context.host),
         parts,
         tools,
