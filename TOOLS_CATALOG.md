@@ -136,6 +136,14 @@ slide.addText([
 ], { x: 0.5, y: 1.8, w: 9, h: 2.5, fontSize: 16 });
 ```
 
+### PowerPoint: Shape Design for Animation-Readiness
+When building slides that will later be animated, keep shapes structured so each animatable element is a **separate shape** with a **descriptive name**:
+
+- **One shape per animatable unit.** If bullet points should appear one by one, create each bullet as its own text box rather than a single multi-bullet shape. If a metric card has an icon and a label, keep them as separate shapes (or group them intentionally if they should animate together).
+- **Use descriptive shape names.** Name shapes semantically — `"Bullet 1 - Revenue"`, `"Hero Image"`, `"Key Metric: Users"` — so the animation model can understand what each shape represents and target them precisely with `add_slide_animation`. Avoid generic names like `"TextBox 5"`.
+- **Order shapes intentionally.** Shapes are animated by their index (creation order). Place shapes in the order they should naturally appear (e.g., title first, then subtitle, then content items top-to-bottom or left-to-right).
+- **Review after creation.** After building a slide, use `get_slide_shapes` to verify that the shape structure matches the intended animation plan. Check that separate elements are not accidentally merged into one shape and that names are descriptive.
+
 ### Excel: Formatting After Data
 When working with Excel data:
 1. Use `set_workbook_content` to write data
