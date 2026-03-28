@@ -9,7 +9,7 @@ import {
   toolFailure,
 } from "./powerpointShared";
 
-type ManageSlideShapesAction = "create" | "update" | "delete";
+type ManageSlideShapesAction = "create" | "update" | "delete" | "group" | "ungroup";
 type CreateShapeType = "textBox" | "geometricShape" | "line";
 type ConnectorType = "Straight" | "Elbow" | "Curve";
 type ParagraphAlignment = "Left" | "Center" | "Right" | "Justify" | "JustifyLow" | "Distributed" | "ThaiDistributed";
@@ -22,6 +22,7 @@ interface ManageSlideShapesArgs {
   slideIndex: number;
   shapeId?: string | number;
   shapeIndex?: number;
+  shapeIds?: (string | number)[];
   placeholderType?: string;
   shapeType?: CreateShapeType;
   geometricShapeType?: string;
@@ -274,13 +275,13 @@ async function applyShapeMutation(
 
 export const manageSlideShapes: Tool = {
   name: "manage_slide_shapes",
-  description: "Create, update, or delete PowerPoint shapes with generic geometry, styling, and text formatting controls.",
+  description: "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.",
   parameters: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["create", "update", "delete"],
+        enum: ["create", "update", "delete", "group", "ungroup"],
         description: "Shape operation to perform.",
       },
       slideIndex: { type: "number", description: "0-based slide index." },
@@ -289,6 +290,11 @@ export const manageSlideShapes: Tool = {
         description: "Existing Office shape id, or an exported XML p:cNvPr id after an Open XML slide replacement.",
       },
       shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide." },
+      shapeIds: {
+        type: "array",
+        items: { anyOf: [{ type: "string" }, { type: "number" }] },
+        description: "Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes.",
+      },
       placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
       shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create." },
       geometricShapeType: { type: "string", description: "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
@@ -371,8 +377,15 @@ export const manageSlideShapes: Tool = {
     if ((update.action === "update" || update.action === "delete") && !isPowerPointRequirementSetSupported("1.3")) {
       return toolFailure("Updating or deleting shapes requires PowerPointApi 1.3.");
     }
+    if ((update.action === "group" || update.action === "ungroup") && !isPowerPointRequirementSetSupported("1.8")) {
+      return toolFailure("Grouping and ungrouping shapes requires PowerPointApi 1.8.");
+    }
 
-    if (update.action === "create") {
+    if (update.action === "group") {
+      if (!update.shapeIds || !Array.isArray(update.shapeIds) || update.shapeIds.length < 2) {
+        return toolFailure("shapeIds must be an array of at least 2 shape ids for the group action.");
+      }
+    } else if (update.action === "create") {
       if (!update.shapeType) {
         return toolFailure("shapeType is required for create.");
       }
@@ -394,7 +407,9 @@ export const manageSlideShapes: Tool = {
           return toolFailure(dimensionError);
         }
       }
-    } else if (!hasTarget(update)) {
+    } else if (update.action === "ungroup" && !hasTarget(update)) {
+      return toolFailure("Provide shapeId or shapeIndex for the group shape to ungroup.");
+    } else if ((update.action === "update" || update.action === "delete") && !hasTarget(update)) {
       return toolFailure("Provide shapeId, shapeIndex, or placeholderType.");
     }
 
@@ -435,6 +450,48 @@ export const manageSlideShapes: Tool = {
 
           await context.sync();
           return `Created ${update.shapeType} ${created.id} on slide ${update.slideIndex + 1}.`;
+        }
+
+        if (update.action === "group") {
+          slide.shapes.load("items/id");
+          await context.sync();
+
+          // Resolve shape ids to their Office string ids
+          const shapeIdStrings = update.shapeIds!.map((id) => String(id));
+          const availableIds = slide.shapes.items.map((s) => s.id);
+          const missing = shapeIdStrings.filter((id) => !availableIds.includes(id));
+          if (missing.length > 0) {
+            return toolFailure(`Shape id(s) not found on slide ${update.slideIndex + 1}: ${missing.join(", ")}. ${formatAvailableShapeTargets(update.slideIndex, slide.shapes.items)}`);
+          }
+
+          const group = slide.shapes.addGroup(shapeIdStrings);
+          group.load(["id", "name"]);
+          await context.sync();
+
+          if (typeof update.name === "string") {
+            group.name = update.name;
+            await context.sync();
+          }
+
+          return `Grouped ${shapeIdStrings.length} shapes into group ${group.id}${update.name ? ` (${JSON.stringify(update.name)})` : ""} on slide ${update.slideIndex + 1}.`;
+        }
+
+        if (update.action === "ungroup") {
+          const resolved = await resolveTargetShape(context, slide, update);
+          if ("error" in resolved) {
+            return toolFailure(resolved.error);
+          }
+
+          resolved.load("type");
+          await context.sync();
+
+          if (resolved.type !== PowerPoint.ShapeType.group) {
+            return toolFailure(`Shape is not a group (type=${resolved.type}). Only group shapes can be ungrouped.`);
+          }
+
+          resolved.group.ungroup();
+          await context.sync();
+          return `Ungrouped shape on slide ${update.slideIndex + 1}.`;
         }
 
         const resolved = await resolveTargetShape(context, slide, update);

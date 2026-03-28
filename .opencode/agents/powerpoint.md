@@ -44,9 +44,17 @@ The `add_slide_from_code` tool automatically sizes its canvas to match the deck,
 
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
 - Use `manage_slide` for slide create/move/duplicate/delete/clear operations
-- Use `manage_slide_shapes` for most shape creation, deletion, text edits, and formatting changes
+- Use `manage_slide_shapes` for most shape creation, deletion, text edits, formatting changes, grouping, and ungrouping
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - Treat `add_slide_from_code` as an advanced fallback for cases the generic PowerPoint tools cannot express cleanly, not as the default way to add common shapes or text
+
+## Shape Grouping
+
+Use `manage_slide_shapes` with `action: "group"` to group related shapes that should move, resize, or animate as a unit. Pass `shapeIds` as an array of shape ids to group. Use `action: "ungroup"` with a `shapeId` pointing to the group shape to break it apart.
+
+- Group shapes that form a logical visual unit (e.g., an icon + label, a card background + its content)
+- Keep shapes separate when they need independent animation timing
+- After grouping, the group shape gets a new id — use `get_slide_shapes` to find it
 
 ## Shape Design for Animation-Readiness
 
@@ -75,14 +83,21 @@ When building slides that may later be animated, keep shapes structured so each 
 
 For meaningful slide creation or major visual edits, treat visual QA as required, not optional:
 
-- After creating or heavily revising slides, use the Task tool to launch a fresh-eyes subagent reviewer for visual inspection
-- Fresh-eyes review should check for overlap, truncation, awkward wrapping, uneven spacing, low contrast, misalignment, and leftover placeholder content
+- After creating or heavily revising slides, launch the **visual-qa** agent for each changed slide using the Task tool
+- When multiple slides were changed, launch **parallel** Task calls — one per slide — so the reviews run concurrently. Each Task prompt should specify which slide index to review and include the slide dimensions and theme colors from `get_presentation_structure` so the reviewer has context
 - If the reviewer finds issues, fix them and re-check the affected slides before declaring success
-- When launching the reviewer, clearly say it is a fresh-eyes pass so the user can see that subagent work is happening
+- Example Task prompt for a single slide review:
+  ```
+  Review slide 3 (index 2) of the PowerPoint deck for visual quality issues.
+  Slide dimensions: 13.33" x 7.5". Theme accent colors: Accent1=#156082, Accent2=#E97132.
+  Check layout, typography, consistency with the rest of the deck, and animation/shape structure.
+  Use get_slide_image, get_slide_shapes, and get_slide_animations as needed.
+  Return a structured list of issues or "No issues found."
+  ```
 
 ## Verification
 
-- After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
+- After any meaningful edit, run a second-pass adversarial check with the **visual-qa** agent via the Task tool before declaring success
 - Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
 - Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
 - Re-read the exact mutated surface during verification: the same slides you changed

@@ -1,11 +1,12 @@
 import { tool } from "@opencode-ai/plugin"
 import { powerpoint } from "../lib/office-powerpoint"
 
-export default powerpoint("manage_slide_shapes", "Create, update, or delete PowerPoint shapes with generic geometry, styling, and text formatting controls.", {
-  action: tool.schema.enum(["create", "update", "delete"]).describe("Shape operation to perform."),
+export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.", {
+  action: tool.schema.enum(["create", "update", "delete", "group", "ungroup"]).describe("Shape operation to perform."),
   slideIndex: tool.schema.number().describe("0-based slide index."),
   shapeId: tool.schema.string().optional().describe("Existing shape id. Preferred over shapeIndex when available."),
   shapeIndex: tool.schema.number().optional().describe("Existing 0-based shape index on the slide."),
+  shapeIds: tool.schema.array(tool.schema.union([tool.schema.string(), tool.schema.number()])).optional().describe("Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes."),
   placeholderType: tool.schema.string().optional().describe("Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content."),
   shapeType: tool.schema.enum(["textBox", "geometricShape", "line"]).optional().describe("Shape type to create."),
   geometricShapeType: tool.schema.string().optional().describe("Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow."),
