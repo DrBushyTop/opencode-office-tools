@@ -30,6 +30,10 @@ function getAssistantText(message: any): string {
     .trim();
 }
 
+function getAssistantParts(message: any): any[] {
+  return Array.isArray(message.parts) ? message.parts : [];
+}
+
 function getErrorMessage(event: any): string {
   return event.properties?.error?.message || event.properties?.error?.name || "Unknown session error";
 }
@@ -51,10 +55,18 @@ export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string
   if (event.type === "message.part.delta") {
     const type = partTypes.get(event.properties?.partID);
     if (type === "reasoning") {
-      return [{ type: "assistant.reasoning_delta", data: { deltaContent: event.properties?.delta || "" } }];
+      return [{
+        type: "assistant.reasoning_delta",
+        id: event.properties?.partID,
+        data: { deltaContent: event.properties?.delta || "" },
+      }];
     }
     if (type === "text") {
-      return [{ type: "assistant.message_delta", data: { deltaContent: event.properties?.delta || "" } }];
+      return [{
+        type: "assistant.message_delta",
+        id: event.properties?.partID,
+        data: { deltaContent: event.properties?.delta || "" },
+      }];
     }
     return [];
   }
@@ -118,12 +130,13 @@ export function getLatestAssistantMessage(messages: any[]): UiEvent | null {
   if (!latest) return null;
 
   const content = getAssistantText(latest);
-  if (!content) return null;
+  const parts = getAssistantParts(latest);
+  if (!content && parts.length === 0) return null;
 
   return {
     type: "assistant.message",
     id: latest.info.id,
     timestamp: new Date(latest.info.time.completed || latest.info.time.created || Date.now()).toISOString(),
-    data: { content },
+    data: { content, parts },
   };
 }

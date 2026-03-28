@@ -46,6 +46,44 @@ export const sessionHistoryInternals = {
   images,
 };
 
+export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Message[] {
+  return (parts || []).flatMap((part: any, index: number): Message[] => {
+    const id = String(part.id || `part-${index}`);
+    const time = new Date(part.state?.time?.start || part.time?.start || fallbackTime || Date.now());
+
+    if (part.type === "tool") {
+      return [{
+        id,
+        text: JSON.stringify(part.state?.input || {}, null, 2),
+        sender: "tool" as const,
+        toolName: part.tool,
+        toolArgs: part.state?.input || {},
+        timestamp: time,
+      }];
+    }
+
+    if (part.type === "reasoning" && part.text) {
+      return [{
+        id,
+        text: part.text,
+        sender: "thinking" as const,
+        timestamp: time,
+      }];
+    }
+
+    if (part.type === "text" && !part.synthetic && part.text) {
+      return [{
+        id,
+        text: part.text,
+        sender: "assistant" as const,
+        timestamp: time,
+      }];
+    }
+
+    return [];
+  });
+}
+
 export function mapMessages(items: any[]): Message[] {
   return items.flatMap((item) => {
     if (item.info?.role === "user") {
@@ -61,26 +99,7 @@ export function mapMessages(items: any[]): Message[] {
     }
 
     if (item.info?.role === "assistant") {
-      const body = text(item.parts);
-      const tools = (item.parts || [])
-        .filter((part: any) => part.type === "tool")
-        .map((part: any) => ({
-          id: part.id,
-          text: JSON.stringify(part.state?.input || {}, null, 2),
-          sender: "tool" as const,
-          toolName: part.tool,
-          toolArgs: part.state?.input || {},
-          timestamp: new Date(part.state?.time?.start || item.info.time.created),
-        }));
-      const assistant = body
-        ? [{
-            id: item.info.id,
-            text: body,
-            sender: "assistant" as const,
-            timestamp: new Date(item.info.time.completed || item.info.time.created),
-          }]
-        : [];
-      return [...tools, ...assistant];
+      return mapAssistantParts(item.parts, item.info.time.created);
     }
 
     return [];
