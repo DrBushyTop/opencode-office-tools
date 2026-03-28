@@ -27,9 +27,18 @@ Use the available PowerPoint tools to inspect or update the active deck directly
 - Use `get_presentation_overview` first to understand the deck before editing
 - Use `get_presentation_content` to inspect slide text
 - Use `get_slide_image` when visual layout, spacing, or styling matters
-- Use `get_presentation_structure` for master/layout/theme/footer-placeholder discovery
+- Use `get_presentation_structure` for master/layout/theme/footer-placeholder discovery and to learn the **slide dimensions** (width × height in inches and points)
 - Use `get_slide_shapes` for precise shape targeting before editing
 - Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
+
+## Slide Dimensions
+
+Always check the actual slide dimensions from `get_presentation_structure` before creating slides. Common sizes include:
+- **Standard (4:3)**: 10" × 7.5"
+- **Widescreen (16:9)**: 13.33" × 7.5"
+- **Custom**: any other dimensions
+
+The `add_slide_from_code` tool automatically sizes its canvas to match the deck, but you must still design your layout coordinates to fit the actual dimensions. Do not hardcode coordinates assuming a 10" or 13.33" wide canvas — always adapt to the reported size.
 
 ## Editing Slides
 
