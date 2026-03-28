@@ -66,9 +66,11 @@ Examples:
         table.load("rows");
         await context.sync();
 
-        // Apply styling
-        if (style === "grid" || style === "striped") {
-          table.setBorderColor("CCCCCC");
+        // Apply styling via built-in table styles
+        if (style === "grid") {
+          table.style = "TableStyleLight1";
+        } else if (style === "striped") {
+          table.style = "TableStyleLight3";
         }
 
         // Style header row

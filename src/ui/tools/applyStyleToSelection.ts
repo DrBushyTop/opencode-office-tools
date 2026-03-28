@@ -124,29 +124,30 @@ Examples:
           font.color = fontColor.startsWith("#") ? fontColor : `#${fontColor}`;
         }
         if (highlightColor !== undefined) {
-          // Map string to Word.HighlightColor
-          const colorMap: { [key: string]: Word.HighlightColor } = {
-            "yellow": Word.HighlightColor.yellow,
-            "green": Word.HighlightColor.green,
-            "cyan": Word.HighlightColor.turquoise,
-            "turquoise": Word.HighlightColor.turquoise,
-            "magenta": Word.HighlightColor.pink,
-            "pink": Word.HighlightColor.pink,
-            "blue": Word.HighlightColor.blue,
-            "red": Word.HighlightColor.red,
-            "darkblue": Word.HighlightColor.darkBlue,
-            "darkcyan": Word.HighlightColor.darkCyan,
-            "darkgreen": Word.HighlightColor.darkGreen,
-            "darkmagenta": Word.HighlightColor.darkMagenta,
-            "darkred": Word.HighlightColor.darkRed,
-            "darkyellow": Word.HighlightColor.darkYellow,
-            "gray25": Word.HighlightColor.lightGray,
-            "lightgray": Word.HighlightColor.lightGray,
-            "gray50": Word.HighlightColor.darkGray,
-            "darkgray": Word.HighlightColor.darkGray,
-            "black": Word.HighlightColor.black,
-            "nohighlight": Word.HighlightColor.noHighlight,
-            "none": Word.HighlightColor.noHighlight,
+          // Map user-friendly names to Word highlight color strings
+          const colorMap: { [key: string]: string } = {
+            "yellow": "Yellow",
+            "green": "Green",
+            "cyan": "Turquoise",
+            "turquoise": "Turquoise",
+            "magenta": "Pink",
+            "pink": "Pink",
+            "blue": "Blue",
+            "red": "Red",
+            "darkblue": "DarkBlue",
+            "darkcyan": "Teal",
+            "darkgreen": "Green",
+            "darkmagenta": "Violet",
+            "darkred": "DarkRed",
+            "darkyellow": "DarkYellow",
+            "gray25": "Gray25",
+            "lightgray": "Gray25",
+            "gray50": "Gray50",
+            "darkgray": "Gray50",
+            "black": "Black",
+            "white": "White",
+            "nohighlight": "NoHighlight",
+            "none": "NoHighlight",
           };
           const color = colorMap[highlightColor.toLowerCase()];
           if (color !== undefined) {

@@ -36,7 +36,7 @@ async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex
 
 export const addSlideAnimation: Tool = {
   name: "add_slide_animation",
-  description: "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with on-click, with-previous, or after-previous timing. This replaces the slide in the deck and may change slide identity.",
+  description: "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), and zoomIn (scale in). Entrance animations make shapes start hidden and reveal them. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
   parameters: {
     type: "object",
     properties: {
@@ -46,10 +46,10 @@ export const addSlideAnimation: Tool = {
         description: "Preferred Office shape id target, or an exported XML p:cNvPr id after an Open XML slide replacement.",
       },
       shapeIndex: { type: "number", description: "0-based shape index target if shapeId is unavailable." },
-      type: { type: "string", enum: ["motionPath", "scale", "rotate"], description: "Animation type." },
-      start: { type: "string", enum: ["onClick", "withPrevious", "afterPrevious"], description: "When the animation starts relative to the sequence." },
-      durationMs: { type: "number", description: "Optional animation duration in milliseconds. Default 1000." },
-      delayMs: { type: "number", description: "Optional start delay in milliseconds." },
+      type: { type: "string", enum: ["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn"], description: "Animation type. Entrance types (appear, fade, flyIn, wipe, zoomIn) start shapes hidden and reveal them." },
+      start: { type: "string", enum: ["onClick", "withPrevious", "afterPrevious"], description: "When the animation starts relative to the sequence. Use afterPrevious with delayMs for staggered reveals." },
+      durationMs: { type: "number", description: "Optional animation duration in milliseconds. Default 1000. For appear, this is effectively instant." },
+      delayMs: { type: "number", description: "Optional start delay in milliseconds. Useful for staggered entrance sequences." },
       repeatCount: { type: "number", description: "Optional repeat count." },
       path: { type: "string", description: "Motion path string such as 'M 0 0 L 0.25 0 E'. Required for motionPath." },
       pathOrigin: { type: "string", enum: ["parent", "layout"], description: "Optional motion-path origin." },
@@ -57,6 +57,7 @@ export const addSlideAnimation: Tool = {
       scaleXPercent: { type: "number", description: "Relative X scale change as a percentage. Example: 150 makes the shape 150% larger." },
       scaleYPercent: { type: "number", description: "Relative Y scale change as a percentage. Defaults to scaleXPercent." },
       angleDegrees: { type: "number", description: "Rotation amount in degrees for rotate animations." },
+      direction: { type: "string", enum: ["left", "right", "up", "down"], description: "Direction for flyIn (where the shape flies from) or wipe (reveal direction) entrance animations." },
     },
     required: ["slideIndex", "type", "start"],
   },
@@ -82,6 +83,12 @@ export const addSlideAnimation: Tool = {
     }
     if (animation.type === "rotate" && animation.angleDegrees === undefined) {
       return toolFailure("angleDegrees is required for rotate animations.");
+    }
+    if (animation.type === "flyIn" && animation.direction && !["left", "right", "up", "down"].includes(animation.direction)) {
+      return toolFailure("flyIn direction must be left, right, up, or down.");
+    }
+    if (animation.type === "wipe" && animation.direction && !["left", "right", "up", "down"].includes(animation.direction)) {
+      return toolFailure("wipe direction must be left, right, up, or down.");
     }
 
     try {

@@ -327,6 +327,161 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(cond?.hasAttribute("evt")).toBe(false);
   });
 
+  it("creates an appear entrance animation with visibility set", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "appear",
+      start: "onClick",
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const attrName = setNodes[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "attrName")[0];
+    expect(attrName?.textContent).toBe("style.visibility");
+    const strVal = setNodes[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "strVal")[0];
+    expect(strVal?.getAttribute("val")).toBe("visible");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn).toBeDefined();
+    expect(entrCtn?.getAttribute("presetID")).toBe("1");
+  });
+
+  it("creates a fade entrance animation with animEffect and visibility set", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "fade",
+      start: "afterPrevious",
+      durationMs: 500,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(1);
+    expect(animEffects[0].getAttribute("transition")).toBe("in");
+    expect(animEffects[0].getAttribute("filter")).toBe("fade");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("10");
+  });
+
+  it("creates a flyIn entrance animation with motion path and direction subtype", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "flyIn",
+      start: "withPrevious",
+      direction: "left",
+      durationMs: 700,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const animMotions = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animMotion");
+    expect(animMotions.length).toBe(1);
+    expect(animMotions[0].getAttribute("path")).toBe("M -1 0 L 0 0 E");
+    expect(animMotions[0].getAttribute("origin")).toBe("layout");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("2");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("4");
+  });
+
+  it("creates a wipe entrance animation with animEffect filter", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "wipe",
+      start: "onClick",
+      direction: "right",
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(1);
+    expect(animEffects[0].getAttribute("filter")).toBe("wipe(right)");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("22");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("4");
+  });
+
+  it("creates a zoomIn entrance animation with animScale from/to", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "zoomIn",
+      start: "afterPrevious",
+      durationMs: 400,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const animScales = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animScale");
+    expect(animScales.length).toBe(1);
+    const from = animScales[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "from")[0];
+    const to = animScales[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "to")[0];
+    expect(from?.getAttribute("x")).toBe("0");
+    expect(from?.getAttribute("y")).toBe("0");
+    expect(to?.getAttribute("x")).toBe("100000");
+    expect(to?.getAttribute("y")).toBe("100000");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("23");
+  });
+
+  it("supports staggered entrance animations with afterPrevious and delayMs", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const first = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "fade",
+      start: "onClick",
+      durationMs: 300,
+    }, 0);
+    const second = addSlideAnimationInBase64Presentation(first, {
+      shapeId: "shape-2",
+      type: "fade",
+      start: "afterPrevious",
+      delayMs: 200,
+      durationMs: 300,
+    }, 1);
+
+    const slideDoc = parseXml(new OpenXmlPackage(second).readText("ppt/slides/slide1.xml"));
+    const conds = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond");
+    const delayCond = Array.from(conds).find((c) => c.getAttribute("delay") === "200" && !c.hasAttribute("evt"));
+    expect(delayCond).toBeDefined();
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(2);
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(2);
+  });
+
   it("creates notes slide relationships back to the slide and notes master", () => {
     const base64 = createPresentationBase64({
       "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
