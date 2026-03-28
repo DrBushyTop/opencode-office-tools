@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAutoApprove } from "./office-permissions";
+import { canAutoApprove, permissionKind, permissionTarget } from "./office-permissions";
 
 describe("office permissions", () => {
   it("auto-approves read-only Office tools", () => {
@@ -85,5 +85,25 @@ describe("office permissions", () => {
       metadata: { tool: "append_page_content" },
       always: [],
     })).toBe(false);
+  });
+
+  it("describes non-office permission requests with the right kind and target", () => {
+    expect(permissionKind({
+      id: "7",
+      sessionID: "s",
+      permission: "read",
+      patterns: ["/tmp/file.txt"],
+      metadata: {},
+      always: [],
+    })).toBe("read");
+
+    expect(permissionTarget({
+      id: "8",
+      sessionID: "s",
+      permission: "task",
+      patterns: ["subagents/code/reviewer"],
+      metadata: { subagent_type: "subagents/code/reviewer" },
+      always: [],
+    })).toBe("subagents/code/reviewer");
   });
 });

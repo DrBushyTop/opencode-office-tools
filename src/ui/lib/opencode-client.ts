@@ -7,6 +7,12 @@ export interface ModelInfo {
   modelID: string;
 }
 
+export interface SessionInfo {
+  id: string;
+  title?: string | null;
+  parentID?: string | null;
+}
+
 interface PromptPart {
   type: "text" | "file";
   text?: string;
@@ -51,6 +57,14 @@ export class OpencodeClient {
 
   async getMessages(sessionId: string) {
     return readJson<any[]>(`/api/opencode/session/${sessionId}/messages`);
+  }
+
+  async getSession(sessionId: string) {
+    return readJson<SessionInfo>(`/api/opencode/session/${sessionId}`);
+  }
+
+  async getSessionChildren(sessionId: string) {
+    return readJson<SessionInfo[]>(`/api/opencode/session/${sessionId}/children`);
   }
 
   async abortSession(sessionId: string) {

@@ -7,13 +7,47 @@ export interface OfficePermissionRequest {
   patterns: string[];
   metadata: Record<string, unknown>;
   always: string[];
+  tool?: {
+    messageID: string;
+    callID: string;
+  };
 }
 
 export function toolName(request: OfficePermissionRequest) {
   return String(request.metadata.tool || request.patterns[0] || "")
 }
 
+export function permissionTarget(request: OfficePermissionRequest) {
+  if (request.permission === "task") {
+    return String(request.metadata.subagent_type || request.metadata.description || request.patterns[0] || "subagent")
+  }
+
+  if (request.permission === "edit") {
+    return String(request.metadata.filepath || request.patterns[0] || "file")
+  }
+
+  if (request.permission === "read") {
+    return String(request.metadata.filepath || request.patterns[0] || "file")
+  }
+
+  return String(request.metadata.tool || request.patterns[0] || "")
+}
+
+export function permissionKind(request: OfficePermissionRequest) {
+  if (request.permission === "doom_loop") return "danger"
+  if (request.permission === "task") return "subagent"
+  if (["read", "glob", "grep", "list", "todoread"].includes(request.permission)) return "read"
+  if (["edit", "write", "todowrite"].includes(request.permission)) return "write"
+  if (request.permission === "bash") return "shell"
+  if (request.permission === "mcp") return "mcp"
+  if (request.permission === "tool") {
+    return isReadOnlyOfficeTool(toolName(request)) ? "read" : "write"
+  }
+  return "generic"
+}
+
 export function canAutoApprove(request: OfficePermissionRequest) {
   if (request.permission === "doom_loop") return false
+  if (request.permission !== "tool") return false
   return isReadOnlyOfficeTool(toolName(request))
 }
