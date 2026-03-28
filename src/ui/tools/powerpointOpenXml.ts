@@ -39,8 +39,16 @@ export interface SlideTransitionDefinition {
   throughBlack?: boolean;
 }
 
+export type AnimationType =
+  // Entrance animations (shapes start hidden, are revealed)
+  | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn" | "floatIn" | "riseUp"
+  // Emphasis animations (change existing shape properties)
+  | "complementaryColor" | "changeFillColor" | "changeLineColor"
+  // Emphasis motion/transform animations
+  | "motionPath" | "scale" | "rotate";
+
 export interface SlideAnimationDefinition {
-  type: "motionPath" | "scale" | "rotate" | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn";
+  type: AnimationType;
   start: "onClick" | "withPrevious" | "afterPrevious";
   durationMs?: number;
   delayMs?: number;
@@ -53,9 +61,15 @@ export interface SlideAnimationDefinition {
   scaleYPercent?: number;
   angleDegrees?: number;
   direction?: "left" | "right" | "up" | "down";
+  /** Target color for emphasis color animations (hex like "FF0000" or scheme like "accent2"). */
+  toColor?: string;
+  /** Color space for emphasis color animations: "hsl" (default, smooth) or "rgb". */
+  colorSpace?: "hsl" | "rgb";
 }
 
-const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn"]);
+const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp"]);
+
+const EMPHASIS_COLOR_TYPES = new Set(["complementaryColor", "changeFillColor", "changeLineColor"]);
 
 const ENTRANCE_PRESET_IDS: Record<string, number> = {
   appear: 1,
@@ -63,6 +77,14 @@ const ENTRANCE_PRESET_IDS: Record<string, number> = {
   flyIn: 2,
   wipe: 22,
   zoomIn: 23,
+  floatIn: 30,
+  riseUp: 34,
+};
+
+const EMPHASIS_PRESET_IDS: Record<string, number> = {
+  complementaryColor: 70,
+  changeFillColor: 54,
+  changeLineColor: 60,
 };
 
 const FLY_IN_DIRECTION_SUBTYPES: Record<string, number> = {
@@ -81,6 +103,14 @@ const WIPE_DIRECTION_SUBTYPES: Record<string, number> = {
 
 interface SlideAnimationMutationDefinition extends Omit<SlideAnimationDefinition, "shapeId"> {
   targetXmlShapeId: string;
+}
+
+function isEmphasisColorAnimation(animation: SlideAnimationMutationDefinition) {
+  return EMPHASIS_COLOR_TYPES.has(animation.type);
+}
+
+function getEmphasisPresetId(animation: SlideAnimationMutationDefinition) {
+  return EMPHASIS_PRESET_IDS[animation.type];
 }
 
 function getFirstSlidePath(pkg: OpenXmlPackage) {
@@ -660,6 +690,49 @@ function buildEntranceAnimationNodes(doc: XMLDocument, animation: SlideAnimation
     return [visibilitySet, node];
   }
 
+  if (animation.type === "floatIn") {
+    // Float In = upward motion + fade-in (combines animMotion up + animEffect fade)
+    const motionNode = doc.createElementNS(NS_P, "p:animMotion");
+    motionNode.setAttribute("origin", "layout");
+    motionNode.setAttribute("path", "M 0 0.1 L 0 0 E");
+    motionNode.setAttribute("pathEditMode", "relative");
+    const motionCBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    const motionAttrNameList = doc.createElementNS(NS_P, "p:attrNameLst");
+    const motionAttrX = doc.createElementNS(NS_P, "p:attrName");
+    motionAttrX.textContent = "ppt_x";
+    const motionAttrY = doc.createElementNS(NS_P, "p:attrName");
+    motionAttrY.textContent = "ppt_y";
+    motionAttrNameList.appendChild(motionAttrX);
+    motionAttrNameList.appendChild(motionAttrY);
+    motionCBhvr.appendChild(motionAttrNameList);
+    motionNode.appendChild(motionCBhvr);
+    const fadeNode = doc.createElementNS(NS_P, "p:animEffect");
+    fadeNode.setAttribute("transition", "in");
+    fadeNode.setAttribute("filter", "fade");
+    const fadeCBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    fadeNode.appendChild(fadeCBhvr);
+    return [visibilitySet, motionNode, fadeNode];
+  }
+
+  if (animation.type === "riseUp") {
+    // Rise Up = upward fly entrance (presetID 34, similar to flyIn up but steeper motion)
+    const node = doc.createElementNS(NS_P, "p:animMotion");
+    node.setAttribute("origin", "layout");
+    node.setAttribute("path", "M 0 1 L 0 0 E");
+    node.setAttribute("pathEditMode", "relative");
+    const cBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    const attrNameList = doc.createElementNS(NS_P, "p:attrNameLst");
+    const attrX = doc.createElementNS(NS_P, "p:attrName");
+    attrX.textContent = "ppt_x";
+    const attrY = doc.createElementNS(NS_P, "p:attrName");
+    attrY.textContent = "ppt_y";
+    attrNameList.appendChild(attrX);
+    attrNameList.appendChild(attrY);
+    cBhvr.appendChild(attrNameList);
+    node.appendChild(cBhvr);
+    return [visibilitySet, node];
+  }
+
   return [visibilitySet];
 }
 
@@ -674,12 +747,17 @@ function getEntrancePresetId(animation: SlideAnimationMutationDefinition) {
 function getEntrancePresetSubtype(animation: SlideAnimationMutationDefinition): number | undefined {
   if (animation.type === "flyIn") return FLY_IN_DIRECTION_SUBTYPES[animation.direction || "down"];
   if (animation.type === "wipe") return WIPE_DIRECTION_SUBTYPES[animation.direction || "left"];
+  if (animation.type === "floatIn") return 16; // float up
+  if (animation.type === "riseUp") return 0;
   return undefined;
 }
 
 function buildAnimationNodes(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string): Element[] {
   if (isEntranceAnimation(animation)) {
     return buildEntranceAnimationNodes(doc, animation, allocTimeNodeId);
+  }
+  if (isEmphasisColorAnimation(animation)) {
+    return [buildEmphasisColorAnimationNode(doc, animation, allocTimeNodeId)];
   }
   return [buildEmphasisAnimationNode(doc, animation, allocTimeNodeId)];
 }
@@ -719,16 +797,87 @@ function buildEmphasisAnimationNode(doc: XMLDocument, animation: SlideAnimationM
   return node;
 }
 
-function applyEntrancePresetAttributes(cTn: Element, animation: SlideAnimationMutationDefinition) {
-  if (!isEntranceAnimation(animation)) return;
-  const presetId = getEntrancePresetId(animation);
-  if (presetId !== undefined) {
-    cTn.setAttribute("presetClass", "entr");
-    cTn.setAttribute("presetID", String(presetId));
+/**
+ * Build an emphasis color animation node (p:animClr).
+ *
+ * Structure:
+ *   <p:animClr clrSpc="hsl|rgb">
+ *     <p:cBhvr>
+ *       <p:cTn id="X" dur="500" fill="hold"/>
+ *       <p:tgtEl><p:spTgt spid="SHAPE_ID"/></p:tgtEl>
+ *       <p:attrNameLst><p:attrName>fillcolor|style.color|linecolor</p:attrName></p:attrNameLst>
+ *     </p:cBhvr>
+ *     <p:to><a:srgbClr val="FF0000"/> | <a:schemeClr val="accent2"/></p:to>
+ *   </p:animClr>
+ */
+function buildEmphasisColorAnimationNode(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
+  const EMPHASIS_ATTR_NAMES: Record<string, string> = {
+    complementaryColor: "fillcolor",
+    changeFillColor: "fillcolor",
+    changeLineColor: "linecolor",
+  };
+
+  const node = doc.createElementNS(NS_P, "p:animClr");
+  node.setAttribute("clrSpc", animation.colorSpace || "hsl");
+
+  // Build cBhvr with attrNameLst for the property being animated
+  const cBhvr = doc.createElementNS(NS_P, "p:cBhvr");
+  const cTn = doc.createElementNS(NS_P, "p:cTn");
+  cTn.setAttribute("id", allocTimeNodeId());
+  cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
+  cTn.setAttribute("fill", "hold");
+  if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
+    cTn.setAttribute("repeatCount", String(animation.repeatCount));
   }
-  const subtype = getEntrancePresetSubtype(animation);
-  cTn.setAttribute("presetSubtype", subtype !== undefined ? String(subtype) : "0");
-  cTn.setAttribute("grpId", "0");
+  cBhvr.appendChild(cTn);
+  cBhvr.appendChild(buildTargetElement(doc, animation.targetXmlShapeId));
+  const attrNameLst = doc.createElementNS(NS_P, "p:attrNameLst");
+  const attrName = doc.createElementNS(NS_P, "p:attrName");
+  attrName.textContent = EMPHASIS_ATTR_NAMES[animation.type] || "fillcolor";
+  attrNameLst.appendChild(attrName);
+  cBhvr.appendChild(attrNameLst);
+  node.appendChild(cBhvr);
+
+  // Build the <p:to> color element
+  const toEl = doc.createElementNS(NS_P, "p:to");
+  const colorVal = animation.toColor || "FF0000";
+  if (colorVal.length === 6 && /^[0-9A-Fa-f]{6}$/.test(colorVal)) {
+    // Hex color
+    const srgbClr = doc.createElementNS(NS_A, "a:srgbClr");
+    srgbClr.setAttribute("val", colorVal.toUpperCase());
+    toEl.appendChild(srgbClr);
+  } else {
+    // Scheme color (e.g., "accent2", "dk1", "lt1")
+    const schemeClr = doc.createElementNS(NS_A, "a:schemeClr");
+    schemeClr.setAttribute("val", colorVal);
+    toEl.appendChild(schemeClr);
+  }
+  node.appendChild(toEl);
+
+  return node;
+}
+
+function applyPresetAttributes(cTn: Element, animation: SlideAnimationMutationDefinition) {
+  if (isEntranceAnimation(animation)) {
+    const presetId = getEntrancePresetId(animation);
+    if (presetId !== undefined) {
+      cTn.setAttribute("presetClass", "entr");
+      cTn.setAttribute("presetID", String(presetId));
+    }
+    const subtype = getEntrancePresetSubtype(animation);
+    cTn.setAttribute("presetSubtype", subtype !== undefined ? String(subtype) : "0");
+    cTn.setAttribute("grpId", "0");
+    return;
+  }
+  if (isEmphasisColorAnimation(animation)) {
+    const presetId = getEmphasisPresetId(animation);
+    if (presetId !== undefined) {
+      cTn.setAttribute("presetClass", "emph");
+      cTn.setAttribute("presetID", String(presetId));
+    }
+    cTn.setAttribute("presetSubtype", "0");
+    cTn.setAttribute("grpId", "0");
+  }
 }
 
 /**
@@ -759,7 +908,7 @@ function buildShapeAnimationPar(
   cTn.setAttribute("id", allocTimeNodeId());
   cTn.setAttribute("fill", "hold");
 
-  applyEntrancePresetAttributes(cTn, animation);
+  applyPresetAttributes(cTn, animation);
 
   // For emphasis/motion animations that don't set presetClass, set dur directly
   if (!isEntranceAnimation(animation)) {
@@ -1235,5 +1384,60 @@ export async function exportSlideAsBase64(context: PowerPoint.RequestContext, sl
   const exported = slides.items[slideIndex].exportAsBase64();
   await context.sync();
   return exported.value;
+}
+
+/**
+ * Extract the raw timing XML (`<p:timing>`) from a base64-encoded single-slide
+ * PPTX, formatted for human inspection. Useful for debugging animation structures.
+ * Returns the serialized XML string, or null if the slide has no timing element.
+ */
+export function extractTimingXmlFromBase64Presentation(base64: string): string | null {
+  const pkg = new OpenXmlPackage(base64);
+  const slidePath = getFirstSlidePath(pkg);
+  const slideXml = pkg.readText(slidePath);
+
+  const doc = parseXml(slideXml);
+  const slideEl = doc.documentElement;
+  const timing = getDirectChildByTagName(slideEl, NS_P, "timing");
+  if (!timing) return null;
+
+  return new XMLSerializer().serializeToString(timing);
+}
+
+/**
+ * Extract the raw build-list XML (`<p:bldLst>`) from a base64-encoded single-slide
+ * PPTX. Returns the serialized XML string, or null if there is no build list.
+ */
+export function extractBuildListXmlFromBase64Presentation(base64: string): string | null {
+  const pkg = new OpenXmlPackage(base64);
+  const slidePath = getFirstSlidePath(pkg);
+  const slideXml = pkg.readText(slidePath);
+
+  const doc = parseXml(slideXml);
+  const slideEl = doc.documentElement;
+
+  // bldLst can be at the slide level (p:sld/p:bldLst) — though typically it's
+  // under the timing element. Search both locations.
+  const timing = getDirectChildByTagName(slideEl, NS_P, "timing");
+  if (timing) {
+    const bldLst = getDirectChildByTagName(timing, NS_P, "bldLst");
+    if (bldLst) return new XMLSerializer().serializeToString(bldLst);
+  }
+
+  // Fallback: directly under the slide element (rare but valid)
+  const topBldLst = getDirectChildByTagName(slideEl, NS_P, "bldLst");
+  if (topBldLst) return new XMLSerializer().serializeToString(topBldLst);
+
+  return null;
+}
+
+/**
+ * Extract the full slide XML from a base64-encoded single-slide PPTX.
+ * Useful for comprehensive debugging of slide structure.
+ */
+export function extractFullSlideXmlFromBase64Presentation(base64: string): string | null {
+  const pkg = new OpenXmlPackage(base64);
+  const slidePath = getFirstSlidePath(pkg);
+  return pkg.readText(slidePath);
 }
 

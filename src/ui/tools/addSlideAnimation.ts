@@ -36,7 +36,7 @@ async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex
 
 export const addSlideAnimation: Tool = {
   name: "add_slide_animation",
-  description: "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), and zoomIn (scale in). Entrance animations make shapes start hidden and reveal them. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
+  description: "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), zoomIn (scale in), floatIn (float up with fade), and riseUp (rise from bottom). Entrance animations make shapes start hidden and reveal them. Emphasis color animations (complementaryColor, changeFillColor, changeLineColor) smoothly transition a shape's fill or line color. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
   parameters: {
     type: "object",
     properties: {
@@ -46,7 +46,7 @@ export const addSlideAnimation: Tool = {
         description: "Preferred Office shape id target, or an exported XML p:cNvPr id after an Open XML slide replacement.",
       },
       shapeIndex: { type: "number", description: "0-based shape index target if shapeId is unavailable." },
-      type: { type: "string", enum: ["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn"], description: "Animation type. Entrance types (appear, fade, flyIn, wipe, zoomIn) start shapes hidden and reveal them." },
+      type: { type: "string", enum: ["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "complementaryColor", "changeFillColor", "changeLineColor"], description: "Animation type. Entrance types (appear, fade, flyIn, wipe, zoomIn, floatIn, riseUp) start shapes hidden and reveal them. Emphasis color types (complementaryColor, changeFillColor, changeLineColor) animate a shape's color." },
       start: { type: "string", enum: ["onClick", "withPrevious", "afterPrevious"], description: "When the animation starts relative to the sequence. Use afterPrevious with delayMs for staggered reveals." },
       durationMs: { type: "number", description: "Optional animation duration in milliseconds. Default 1000. For appear, this is effectively instant." },
       delayMs: { type: "number", description: "Optional start delay in milliseconds. Useful for staggered entrance sequences." },
@@ -58,6 +58,8 @@ export const addSlideAnimation: Tool = {
       scaleYPercent: { type: "number", description: "Relative Y scale change as a percentage. Defaults to scaleXPercent." },
       angleDegrees: { type: "number", description: "Rotation amount in degrees for rotate animations." },
       direction: { type: "string", enum: ["left", "right", "up", "down"], description: "Direction for flyIn (where the shape flies from) or wipe (reveal direction) entrance animations." },
+      toColor: { type: "string", description: "Target color for emphasis color animations. Hex without # (e.g. 'FF0000') or theme scheme name (e.g. 'accent2', 'dk1'). Required for complementaryColor, changeFillColor, changeLineColor." },
+      colorSpace: { type: "string", enum: ["hsl", "rgb"], description: "Color interpolation space for emphasis color animations. 'hsl' (default) gives smoother transitions." },
     },
     required: ["slideIndex", "type", "start"],
   },
@@ -89,6 +91,9 @@ export const addSlideAnimation: Tool = {
     }
     if (animation.type === "wipe" && animation.direction && !["left", "right", "up", "down"].includes(animation.direction)) {
       return toolFailure("wipe direction must be left, right, up, or down.");
+    }
+    if ((animation.type === "complementaryColor" || animation.type === "changeFillColor" || animation.type === "changeLineColor") && !animation.toColor) {
+      return toolFailure("toColor is required for emphasis color animations (complementaryColor, changeFillColor, changeLineColor).");
     }
 
     try {

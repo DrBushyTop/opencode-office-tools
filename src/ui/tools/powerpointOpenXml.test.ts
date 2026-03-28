@@ -493,6 +493,159 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(animEffects.length).toBe(2);
   });
 
+  it("creates a floatIn entrance animation with motion path and fade", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "floatIn",
+      start: "onClick",
+      durationMs: 500,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    // Should have visibility set, animMotion (float up), and animEffect (fade)
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const animMotions = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animMotion");
+    expect(animMotions.length).toBe(1);
+    expect(animMotions[0].getAttribute("path")).toBe("M 0 0.1 L 0 0 E");
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(1);
+    expect(animEffects[0].getAttribute("filter")).toBe("fade");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("30");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("16");
+    // Should have bldLst entry (entrance animation)
+    const bldPs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "bldP");
+    expect(bldPs.length).toBe(1);
+  });
+
+  it("creates a riseUp entrance animation with upward motion path", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "riseUp",
+      start: "afterPrevious",
+      durationMs: 600,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const animMotions = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animMotion");
+    expect(animMotions.length).toBe(1);
+    expect(animMotions[0].getAttribute("path")).toBe("M 0 1 L 0 0 E");
+    // No animEffect (riseUp is motion-only, unlike floatIn)
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(0);
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("34");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("0");
+  });
+
+  it("creates a changeFillColor emphasis animation with animClr and hex color", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "changeFillColor",
+      start: "onClick",
+      durationMs: 500,
+      toColor: "FF0000",
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    // Should have animClr, not visibility set
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(0);
+    const animClrs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animClr");
+    expect(animClrs.length).toBe(1);
+    expect(animClrs[0].getAttribute("clrSpc")).toBe("hsl");
+    // Check attrName is "fillcolor"
+    const attrNames = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "attrName");
+    expect(attrNames[0]?.textContent).toBe("fillcolor");
+    // Check target color
+    const srgbClrs = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "srgbClr");
+    expect(srgbClrs.length).toBe(1);
+    expect(srgbClrs[0].getAttribute("val")).toBe("FF0000");
+    // Check presetClass is "emph"
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const emphCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "emph");
+    expect(emphCtn).toBeDefined();
+    expect(emphCtn?.getAttribute("presetID")).toBe("54");
+    // Should NOT have bldLst entry (emphasis animation, not entrance)
+    const bldPs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "bldP");
+    expect(bldPs.length).toBe(0);
+  });
+
+  it("creates a changeLineColor emphasis animation with scheme color", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "changeLineColor",
+      start: "withPrevious",
+      durationMs: 800,
+      toColor: "accent2",
+      colorSpace: "rgb",
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const animClrs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animClr");
+    expect(animClrs.length).toBe(1);
+    expect(animClrs[0].getAttribute("clrSpc")).toBe("rgb");
+    const attrNames = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "attrName");
+    expect(attrNames[0]?.textContent).toBe("linecolor");
+    // Check scheme color
+    const schemeClrs = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "schemeClr");
+    expect(schemeClrs.length).toBe(1);
+    expect(schemeClrs[0].getAttribute("val")).toBe("accent2");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const emphCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "emph");
+    expect(emphCtn?.getAttribute("presetID")).toBe("60");
+  });
+
+  it("creates a complementaryColor emphasis animation", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "complementaryColor",
+      start: "onClick",
+      toColor: "00FF00",
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const animClrs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animClr");
+    expect(animClrs.length).toBe(1);
+    const attrNames = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "attrName");
+    expect(attrNames[0]?.textContent).toBe("fillcolor");
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const emphCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "emph");
+    expect(emphCtn?.getAttribute("presetID")).toBe("70");
+    expect(emphCtn?.getAttribute("presetSubtype")).toBe("0");
+    expect(emphCtn?.getAttribute("grpId")).toBe("0");
+  });
+
   it("creates notes slide relationships back to the slide and notes master", () => {
     const base64 = createPresentationBase64({
       "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
