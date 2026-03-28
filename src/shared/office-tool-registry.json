@@ -687,15 +687,20 @@
   },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
-    "description": "Create, update, or delete PowerPoint shapes with generic geometry, styling, and text formatting controls.",
+    "description": "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["create", "update", "delete"], "description": "Shape operation to perform." },
+        "action": { "type": "string", "enum": ["create", "update", "delete", "group", "ungroup"], "description": "Shape operation to perform." },
         "slideIndex": { "type": "number", "description": "0-based slide index." },
         "shapeId": { "type": "string", "description": "Existing shape id. Preferred over shapeIndex when available." },
         "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide." },
+        "shapeIds": {
+          "type": "array",
+          "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+          "description": "Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes."
+        },
         "placeholderType": { "type": "string", "description": "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
         "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create." },
         "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
