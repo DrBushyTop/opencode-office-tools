@@ -1,10 +1,15 @@
 import type { Tool } from "./types";
-import { addSlideAnimationInBase64Presentation, replaceSlideWithMutatedOpenXml, type SlideAnimationDefinition } from "./powerpointOpenXml";
-import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
+import {
+  addSlideAnimationInBase64Presentation,
+  replaceSlideWithMutatedOpenXml,
+  type SlideAnimationDefinition,
+} from "./powerpointOpenXml";
+import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
+import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
 
-type AnimationArgs = SlideAnimationDefinition & { slideIndex: number; shapeIndex?: number; shapeId?: string };
+type AnimationArgs = SlideAnimationDefinition & { slideIndex: number; shapeIndex?: number; shapeId?: string | number };
 
-async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string, shapeIndex?: number) {
+async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string | number, shapeIndex?: number) {
   const slides = context.presentation.slides;
   slides.load("items");
   await context.sync();
@@ -13,17 +18,14 @@ async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex
   }
 
   const slide = slides.items[slideIndex];
+
+  if (shapeId !== undefined) {
+    const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, shapeId);
+    return { shapeId: resolved.shapeId, shapeIndex: resolved.shapeIndex };
+  }
+
   slide.shapes.load("items/id,name");
   await context.sync();
-
-  if (shapeId) {
-    const matchIndex = slide.shapes.items.findIndex((shape) => shape.id === shapeId);
-    const match = matchIndex >= 0 ? slide.shapes.items[matchIndex] : undefined;
-    if (!match) {
-      throw new Error(`Shape ${shapeId} was not found on slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
-    }
-    return { shapeId, shapeIndex: matchIndex };
-  }
 
   if (shapeIndex === undefined || !Number.isInteger(shapeIndex) || shapeIndex < 0 || shapeIndex >= slide.shapes.items.length) {
     throw new Error(`Provide a valid shapeId or shapeIndex for slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
@@ -39,7 +41,10 @@ export const addSlideAnimation: Tool = {
     type: "object",
     properties: {
       slideIndex: { type: "number", description: "0-based slide index." },
-      shapeId: { type: "string", description: "Preferred shape id target." },
+      shapeId: {
+        anyOf: [{ type: "string" }, { type: "number" }],
+        description: "Preferred Office shape id target, or an exported XML p:cNvPr id after an Open XML slide replacement.",
+      },
       shapeIndex: { type: "number", description: "0-based shape index target if shapeId is unavailable." },
       type: { type: "string", enum: ["motionPath", "scale", "rotate"], description: "Animation type." },
       start: { type: "string", enum: ["onClick", "withPrevious", "afterPrevious"], description: "When the animation starts relative to the sequence." },
@@ -89,7 +94,7 @@ export const addSlideAnimation: Tool = {
         return `Added a ${animation.type} animation to slide ${animation.slideIndex + 1} targeting shape ${resolvedTarget.shapeId} via an Open XML slide round-trip.`;
       });
     } catch (error: unknown) {
-      return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripRefreshHint() : undefined);
+      return toolFailure(error, shouldAddRoundTripShapeTargetRefreshHint(error) ? roundTripRefreshHint() : undefined);
     }
   },
 };

@@ -53,6 +53,12 @@ export function shouldAddRoundTripRefreshHint(error: unknown) {
   return /object can not be found here|object cannot be found here|invalidobjectpath|item.*does not exist/i.test(message);
 }
 
+export function shouldAddRoundTripShapeTargetRefreshHint(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return shouldAddRoundTripRefreshHint(message)
+    || /^Shape .+ was not found on slide \d+\./i.test(message);
+}
+
 export function isPowerPointRequirementSetSupported(version: string) {
   return Office.context.requirements.isSetSupported("PowerPointApi", version);
 }
