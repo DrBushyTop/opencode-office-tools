@@ -17,6 +17,7 @@ interface PromptPart {
 
 interface PromptInput {
   model: { providerID: string; modelID: string };
+  agent?: string;
   system: string;
   parts: PromptPart[];
   tools?: Record<string, boolean>;
