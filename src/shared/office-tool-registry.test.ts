@@ -38,7 +38,7 @@ describe("office tool registry", () => {
     expect(manageSlideWrapper).toContain('export default powerpoint("manage_slide"');
     expect(manageSlideWrapper).toContain('tool.schema.enum(["create", "duplicate", "delete", "move", "clear"])');
     expect(manageSlideShapesWrapper).toContain('export default powerpoint("manage_slide_shapes"');
-    expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["create", "update", "delete"])');
+    expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["create", "update", "delete", "group", "ungroup"])');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["textBox", "geometricShape", "line"])');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["Straight", "Elbow", "Curve"])');
     expect(getNotebookOverviewWrapper).toContain('export default onenote("get_notebook_overview"');

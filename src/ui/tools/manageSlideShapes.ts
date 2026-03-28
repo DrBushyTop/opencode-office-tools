@@ -456,7 +456,7 @@ export const manageSlideShapes: Tool = {
           slide.shapes.load("items/id");
           await context.sync();
 
-          // Resolve shape ids to their Office string ids
+          // Resolve shape ids to Shape objects (not strings) to avoid Mac crash in addGroup
           const shapeIdStrings = update.shapeIds!.map((id) => String(id));
           const availableIds = slide.shapes.items.map((s) => s.id);
           const missing = shapeIdStrings.filter((id) => !availableIds.includes(id));
@@ -464,7 +464,10 @@ export const manageSlideShapes: Tool = {
             return toolFailure(`Shape id(s) not found on slide ${update.slideIndex + 1}: ${missing.join(", ")}. ${formatAvailableShapeTargets(update.slideIndex, slide.shapes.items)}`);
           }
 
-          const group = slide.shapes.addGroup(shapeIdStrings);
+          // Pass Shape objects rather than string IDs — passing strings crashes PowerPoint on Mac
+          // (BUG_IN_CLIENT_OF_LIBMALLOC / POINTER_BEING_FREED_WAS_NOT_ALLOCATED in OLEAutomation)
+          const shapeObjects = slide.shapes.items.filter((s) => shapeIdStrings.includes(s.id));
+          const group = slide.shapes.addGroup(shapeObjects);
           group.load(["id", "name"]);
           await context.sync();
 
