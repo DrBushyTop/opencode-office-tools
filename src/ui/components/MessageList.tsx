@@ -9,7 +9,7 @@ import { getOfficeToolUi } from "../../shared/office-tool-registry";
 export interface Message {
   id: string;
   text: string;
-  sender: "user" | "assistant" | "tool";
+  sender: "user" | "assistant" | "tool" | "thinking";
   timestamp: Date;
   toolName?: string;
   toolArgs?: Record<string, unknown>;
@@ -31,12 +31,13 @@ function summarizeTaskTool(args: Record<string, unknown>) {
 
 interface MessageListProps {
   messages: Message[];
+  liveMessages?: Message[];
   isTyping: boolean;
   isConnecting?: boolean;
   currentActivity?: string;
-  streamingText?: string;
   debugEvents?: DebugEvent[];
   hostLabel?: string;
+  showThinking?: boolean;
 }
 
 const toolConfig: Record<string, { icon: string; format: (args: Record<string, unknown>) => string }> = {
@@ -148,6 +149,53 @@ const useStyles = makeStyles({
     minWidth: 0,
     lineHeight: "1.6",
     color: "var(--oc-text)",
+    "& pre": {
+      background: "var(--oc-bg-strong)",
+      border: "1px solid var(--oc-border)",
+      borderRadius: "10px",
+      padding: "10px 12px",
+      overflowX: "auto",
+    },
+    "& code": {
+      background: "var(--oc-bg-soft)",
+      borderRadius: "6px",
+      padding: "1px 4px",
+    },
+  },
+  messageThinking: {
+    alignSelf: "flex-start",
+    width: "100%",
+    maxWidth: "100%",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    border: "1px solid rgba(130, 118, 255, 0.18)",
+    background: "linear-gradient(180deg, rgba(130, 118, 255, 0.08), rgba(130, 118, 255, 0.03))",
+    color: "var(--oc-text-muted)",
+    fontSize: "13px",
+  },
+  thinkingHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "8px",
+    fontSize: "12px",
+    color: "#9b7b67",
+    fontStyle: "italic",
+  },
+  thinkingTitle: {
+    fontWeight: 600,
+    fontStyle: "normal",
+    color: "#b28b63",
+  },
+  thinkingBody: {
+    lineHeight: "1.6",
+    color: "var(--oc-text-muted)",
+    "& p:first-child": {
+      marginTop: 0,
+    },
+    "& p:last-child": {
+      marginBottom: 0,
+    },
     "& pre": {
       background: "var(--oc-bg-strong)",
       border: "1px solid var(--oc-border)",
@@ -292,6 +340,39 @@ function formatBytes(b: number): string {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function cleanThinking(value: string) {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/[*_~]+/g, "")
+    .trim();
+}
+
+function thinkingHeading(text: string) {
+  const markdown = text.replace(/\r\n?/g, "\n");
+  const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+  if (html?.[1]) {
+    const value = cleanThinking(html[1].replace(/<[^>]+>/g, " "));
+    if (value) return value;
+  }
+  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
+  if (atx?.[1]) {
+    const value = cleanThinking(atx[1]);
+    if (value) return value;
+  }
+  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*$/m);
+  if (setext?.[1]) {
+    const value = cleanThinking(setext[1]);
+    if (value) return value;
+  }
+  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/m);
+  if (strong?.[1]) {
+    const value = cleanThinking(strong[1]);
+    if (value) return value;
+  }
+  return "";
+}
+
 // Live traffic counter that polls trafficStats (reset by App before each query)
 const TrafficCounter: React.FC = () => {
   const [stats, setStats] = useState({ bytesIn: 0, bytesOut: 0 });
@@ -331,12 +412,13 @@ const TrafficCounter: React.FC = () => {
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
+  liveMessages = [],
   isTyping,
   isConnecting,
   currentActivity,
-  streamingText,
   debugEvents,
   hostLabel,
+  showThinking = true,
 }) => {
   const styles = useStyles();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -344,7 +426,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText]);
+  }, [liveMessages, messages]);
 
   const toggleTool = (id: string) => {
     setExpandedTools(prev => {
@@ -354,6 +436,15 @@ export const MessageList: React.FC<MessageListProps> = ({
       return next;
     });
   };
+
+  const visibleHistory = React.useMemo(
+    () => messages.filter((message) => showThinking || message.sender !== "thinking"),
+    [messages, showThinking],
+  );
+  const visibleLive = React.useMemo(
+    () => liveMessages.filter((message) => showThinking || message.sender !== "thinking"),
+    [liveMessages, showThinking],
+  );
 
   return (
     <div className={styles.chatContainer}>
@@ -371,7 +462,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {messages.map((message) => {
+        {[...visibleHistory, ...visibleLive].map((message) => {
         // Format tool calls nicely
         const toolDisplay = message.toolName 
           ? formatToolCall(message.toolName, message.toolArgs || {})
@@ -382,9 +473,10 @@ export const MessageList: React.FC<MessageListProps> = ({
           key={message.id}
           className={
             message.sender === "user" ? styles.messageUser : 
-            message.sender === "tool" ? styles.messageTool :
-            styles.messageAssistant
-          }
+             message.sender === "tool" ? styles.messageTool :
+             message.sender === "thinking" ? styles.messageThinking :
+             styles.messageAssistant
+           }
           onClick={message.toolName ? () => toggleTool(message.id) : undefined}
           title={message.toolName ? "Click to show details" : undefined}
         >
@@ -400,6 +492,14 @@ export const MessageList: React.FC<MessageListProps> = ({
             <>
               <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
               <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
+            </>
+          ) : message.sender === "thinking" ? (
+            <>
+              <div className={styles.thinkingHeader}>
+                <span>Thinking:</span>
+                <span className={styles.thinkingTitle}>{thinkingHeading(message.text) || currentActivity || "Reasoning"}</span>
+              </div>
+              <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
             </>
           ) : (
             <>
@@ -420,22 +520,18 @@ export const MessageList: React.FC<MessageListProps> = ({
       );
         })}
 
-        {isTyping && (
+        {isTyping && visibleLive.length === 0 && (
           <div className={styles.messageAssistant}>
             <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
             <div className={styles.assistantBody}>
-              {streamingText ? (
-                <Markdown remarkPlugins={[remarkGfm]}>{streamingText}</Markdown>
-              ) : (
-                <>
-                  <span className={styles.streamingIndicator}>
-                    {currentActivity || "Thinking"}
-                    <StreamingDots />
-                    <ElapsedTime />
-                  </span>
-                  <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
-                </>
-              )}
+              <>
+                <span className={styles.streamingIndicator}>
+                  {currentActivity || "Thinking"}
+                  <StreamingDots />
+                  <ElapsedTime />
+                </span>
+                <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
+              </>
               <TrafficCounter />
               {debugEvents && debugEvents.length > 0 && (
                 <div style={{

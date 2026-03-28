@@ -14,7 +14,7 @@ import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge } from "./lib/office-tool-bridge";
-import { makeSessionTitle, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
+import { makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
@@ -166,6 +166,15 @@ function redactSensitiveFields(value: unknown): unknown {
   );
 }
 
+function mergeLiveMessages(
+  previous: Message[],
+  next: Message,
+) {
+  const index = previous.findIndex((item) => item.id === next.id);
+  if (index === -1) return [...previous, next];
+  return previous.map((item, current) => current === index ? { ...item, ...next } : item);
+}
+
 function previewEvent(eventType: string, data: Record<string, unknown>) {
   if (eventType === "assistant.message_delta") return String(data.deltaContent || "").slice(0, 80);
   if (eventType === "assistant.message") return String(data.content || "").slice(0, 80);
@@ -218,7 +227,6 @@ export const App: React.FC = () => {
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [currentActivity, setCurrentActivity] = useState<string>("");
-  const [streamingText, setStreamingText] = useState<string>("");
   const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
   const [error, setError] = useState("");
   const [selectedModel, setSelectedModel] = useLocalStorage<ModelType>("word-addin-selected-model", "");
@@ -226,10 +234,12 @@ export const App: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [officeHost, setOfficeHost] = useState<OfficeHost>("word");
   const [debugEnabled, setDebugEnabled] = useLocalStorage<boolean>("opencode-debug", false);
+  const [showThinking, setShowThinking] = useLocalStorage<boolean>("opencode-show-thinking", true);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
+  const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const isDarkMode = useIsDarkMode();
   const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
@@ -320,12 +330,12 @@ export const App: React.FC = () => {
   const startNewSession = async (_modelKey: ModelType, restored?: SavedSession) => {
     setError("");
     setShowHistory(false);
-    setStreamingText("");
     setCurrentActivity("");
     setDebugEvents([]);
     setIsTyping(false);
     setPermission(null);
     setPermissionSessionTitle(null);
+    setLiveMessages([]);
 
     const host = Office.context.host;
     const office = getHostFromOfficeHost(host);
@@ -396,7 +406,7 @@ export const App: React.FC = () => {
     setImages([]);
     setIsTyping(true);
     setCurrentActivity("Processing...");
-    setStreamingText("");
+    setLiveMessages([]);
     setDebugEvents([]);
     setError("");
     trafficStats.reset();
@@ -445,15 +455,26 @@ export const App: React.FC = () => {
         setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
 
         if (event.type === "assistant.message_delta") {
-          setStreamingText((prev) => prev + String(data.deltaContent || ""));
+          setLiveMessages((prev) => mergeLiveMessages(prev, {
+            id: String(event.id || `assistant-${Date.now()}`),
+            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+            sender: "assistant",
+            timestamp: new Date(),
+          }));
           setCurrentActivity("");
           continue;
         }
 
         if (event.type === "assistant.message") {
-          const text = String(data.content || "");
-          setStreamingText("");
+          const parts = Array.isArray(data.parts) ? data.parts : [];
+          const mapped = mapAssistantParts(parts, Date.now());
+          setLiveMessages([]);
           setCurrentActivity("");
+          if (mapped.length > 0) {
+            setMessages((prev) => [...prev, ...mapped]);
+            continue;
+          }
+          const text = String(data.content || "");
           if (text) {
             setMessages((prev) => [...prev, {
               id: String(event.id || crypto.randomUUID()),
@@ -470,14 +491,14 @@ export const App: React.FC = () => {
           const toolArgs = (data.arguments || {}) as Record<string, unknown>;
           const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
           setCurrentActivity(describeToolActivity(toolName, toolArgs));
-          setMessages((prev) => [...prev, {
+          setLiveMessages((prev) => mergeLiveMessages(prev, {
             id: String(event.id || crypto.randomUUID()),
             text: JSON.stringify(safeToolArgs, null, 2),
             sender: "tool",
             toolName,
             toolArgs: safeToolArgs,
             timestamp: new Date(),
-          }]);
+          }));
           continue;
         }
 
@@ -485,12 +506,12 @@ export const App: React.FC = () => {
           if (data.error) {
             const text = String(data.error);
             setCurrentActivity("");
-            setMessages((prev) => [...prev, {
-              id: `tool-error-${Date.now()}`,
+            setLiveMessages((prev) => mergeLiveMessages(prev, {
+              id: String(event.id || `tool-error-${Date.now()}`),
               text: `Tool failed: ${text}`,
               sender: "assistant",
               timestamp: new Date(),
-            }]);
+            }));
             continue;
           }
           setCurrentActivity("Processing result...");
@@ -498,18 +519,23 @@ export const App: React.FC = () => {
         }
 
         if (event.type === "assistant.reasoning_delta") {
+          setLiveMessages((prev) => mergeLiveMessages(prev, {
+            id: String(event.id || `thinking-${Date.now()}`),
+            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+            sender: "thinking",
+            timestamp: new Date(),
+          }));
           setCurrentActivity("Thinking...");
           continue;
         }
 
         if (event.type === "assistant.turn_start") {
-          setCurrentActivity("Starting response...");
+          setCurrentActivity((current) => current || "Starting response...");
           continue;
         }
 
         if (event.type === "assistant.turn_end") {
           setCurrentActivity("");
-          setStreamingText("");
           continue;
         }
 
@@ -544,6 +570,7 @@ export const App: React.FC = () => {
       run.current = null;
       setIsTyping(false);
       setCurrentActivity("");
+      setLiveMessages([]);
     }
   };
 
@@ -554,7 +581,7 @@ export const App: React.FC = () => {
     try {
       await client.abortSession(currentSessionId);
       run.current?.abort();
-      setStreamingText("");
+      setLiveMessages([]);
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, {
@@ -598,17 +625,20 @@ export const App: React.FC = () => {
             models={availableModels}
             debugEnabled={debugEnabled}
             onDebugChange={setDebugEnabled}
+            showThinking={showThinking}
+            onShowThinkingChange={setShowThinking}
             subtitle={runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`}
           />
 
           <MessageList
             messages={messages}
+            liveMessages={liveMessages}
             isTyping={isTyping}
             isConnecting={!currentSessionId && !error}
             currentActivity={currentActivity}
-            streamingText={streamingText}
             debugEvents={debugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}
+            showThinking={showThinking}
           />
 
           {error && <div className={styles.error}>{error}</div>}

@@ -14,6 +14,8 @@ interface HeaderBarProps {
   models: ModelInfo[];
   debugEnabled: boolean;
   onDebugChange: (v: boolean) => void;
+  showThinking: boolean;
+  onShowThinkingChange: (v: boolean) => void;
   subtitle?: string;
 }
 
@@ -118,6 +120,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   models,
   debugEnabled,
   onDebugChange,
+  showThinking,
+  onShowThinkingChange,
   subtitle,
 }) => {
   const styles = useStyles();
@@ -175,6 +179,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             />
           </div>
         )}
+        <div className={styles.debugRow}>
+          <Switch
+            checked={showThinking}
+            onChange={(_, data) => onShowThinkingChange(data.checked)}
+            label="Thinking"
+            style={{ fontSize: "11px" }}
+          />
+        </div>
         {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
       </div>
       <div className={styles.buttonGroup}>

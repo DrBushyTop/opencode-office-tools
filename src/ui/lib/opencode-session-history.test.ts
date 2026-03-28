@@ -19,16 +19,18 @@ describe("opencode session history", () => {
       {
         info: { id: "a1", role: "assistant", time: { created: 2, completed: 3 } },
         parts: [
+          { type: "reasoning", id: "r1", text: "**Inspecting** issue", time: { start: 2 } },
           { type: "tool", id: "t1", tool: "get_document_content", state: { input: { section: "intro" }, time: { start: 2 } } },
-          { type: "text", text: "Done" },
+          { type: "text", id: "m1", text: "Done", time: { start: 3 } },
         ],
       },
     ]);
 
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4);
     expect(items[0]).toMatchObject({ sender: "user", text: "Hello" });
-    expect(items[1]).toMatchObject({ sender: "tool", toolName: "get_document_content" });
-    expect(items[2]).toMatchObject({ sender: "assistant", text: "Done" });
+    expect(items[1]).toMatchObject({ sender: "thinking", text: "**Inspecting** issue" });
+    expect(items[2]).toMatchObject({ sender: "tool", toolName: "get_document_content" });
+    expect(items[3]).toMatchObject({ sender: "assistant", text: "Done" });
   });
 
   it("keeps only image file parts", () => {
