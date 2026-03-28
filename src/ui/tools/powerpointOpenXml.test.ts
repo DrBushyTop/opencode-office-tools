@@ -69,7 +69,7 @@ function baseSlideXml() {
 }
 
 describe("replaceSlideWithMutatedOpenXml", () => {
-  it("inserts relative to the source slide and deletes the original by id", async () => {
+  it("inserts before the source slide position and deletes the original by id", async () => {
     const sourceSlide = {
       id: "slide-2",
       load: vi.fn(),
@@ -117,12 +117,12 @@ describe("replaceSlideWithMutatedOpenXml", () => {
 
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
-      targetSlideId: "slide-2",
+      targetSlideId: "slide-1",
     });
     expect(originalSlide.delete).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the source slide id for first-slide replacement and deletes the original by id", async () => {
+  it("omits targetSlideId for first-slide replacement and deletes the original by id", async () => {
     const sourceSlide = {
       id: "slide-1",
       load: vi.fn(),
@@ -169,7 +169,6 @@ describe("replaceSlideWithMutatedOpenXml", () => {
 
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
-      targetSlideId: "slide-1",
     });
     expect(originalSlide.delete).toHaveBeenCalledTimes(1);
   });
