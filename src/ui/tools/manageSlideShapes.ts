@@ -1,6 +1,12 @@
 import type { Tool } from "./types";
 import { loadTextFrames } from "./powerpointText";
-import { isPowerPointRequirementSetSupported, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
+import {
+  formatAvailableShapeTargets,
+  invalidSlideIndexMessage,
+  isPowerPointRequirementSetSupported,
+  supportsPowerPointPlaceholders,
+  toolFailure,
+} from "./powerpointShared";
 
 type ManageSlideShapesAction = "create" | "update" | "delete";
 type CreateShapeType = "textBox" | "geometricShape" | "line";
@@ -134,7 +140,7 @@ async function resolveTargetShape(
   slide: PowerPoint.Slide,
   args: ManageSlideShapesArgs,
 ): Promise<PowerPoint.Shape | { error: string }> {
-  slide.shapes.load("items");
+  slide.shapes.load("items/id,name,type");
   await context.sync();
 
   if (args.shapeId) {
@@ -142,7 +148,7 @@ async function resolveTargetShape(
     byId.load("isNullObject");
     await context.sync();
     if (byId.isNullObject) {
-      return { error: `Shape ${args.shapeId} was not found on slide ${args.slideIndex + 1}.` };
+      return { error: `Shape ${args.shapeId} was not found on slide ${args.slideIndex + 1}. ${formatAvailableShapeTargets(args.slideIndex, slide.shapes.items)}` };
     }
     return byId;
   }
@@ -150,7 +156,7 @@ async function resolveTargetShape(
   if (args.shapeIndex !== undefined) {
     const shape = slide.shapes.items[args.shapeIndex];
     if (!shape) {
-      return { error: `Invalid shapeIndex ${args.shapeIndex}. Slide ${args.slideIndex + 1} has ${slide.shapes.items.length} shape(s).` };
+      return { error: `Invalid shapeIndex ${args.shapeIndex}. ${formatAvailableShapeTargets(args.slideIndex, slide.shapes.items)}` };
     }
     return shape;
   }
@@ -172,7 +178,11 @@ async function resolveTargetShape(
 
     const target = placeholders.find((shape) => String(shape.placeholderFormat.type) === args.placeholderType) || null;
     if (!target) {
-      return { error: `Placeholder type ${args.placeholderType} was not found on slide ${args.slideIndex + 1}.` };
+      const placeholderTypes = placeholders.map((shape) => String(shape.placeholderFormat.type));
+      const available = placeholderTypes.length > 0
+        ? `Available placeholder types on slide ${args.slideIndex + 1}: ${placeholderTypes.join(", ")}.`
+        : `Slide ${args.slideIndex + 1} has no placeholder shapes.`;
+      return { error: `Placeholder type ${args.placeholderType} was not found on slide ${args.slideIndex + 1}. ${available}` };
     }
     return target;
   }
@@ -391,10 +401,10 @@ export const manageSlideShapes: Tool = {
         slides.load("items");
         await context.sync();
 
-        const slide = slides.items[update.slideIndex];
-        if (!slide) {
-          return toolFailure(`Invalid slideIndex ${update.slideIndex}.`);
-        }
+          const slide = slides.items[update.slideIndex];
+          if (!slide) {
+            return toolFailure(invalidSlideIndexMessage(update.slideIndex, slides.items.length));
+          }
 
         if (update.action === "create") {
           const options = {
