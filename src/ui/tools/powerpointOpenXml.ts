@@ -22,6 +22,12 @@ const ELEMENT_NODE = 1;
 
 const EXCLUDED_NOTE_PLACEHOLDER_TYPES = new Set(["sldImg", "hdr", "dt", "ftr", "sldNum"]);
 
+function getDirectChildByTagName(parent: Element, namespace: string, localName: string) {
+  return Array.from(parent.childNodes).find(
+    (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === namespace && (node as Element).localName === localName,
+  ) as Element | undefined;
+}
+
 export interface SlideTransitionDefinition {
   effect: "none" | "cut" | "fade" | "dissolve" | "random" | "randomBar" | "push" | "wipe" | "split" | "cover" | "pull" | "zoom";
   speed?: "slow" | "medium" | "fast";
@@ -456,9 +462,9 @@ function buildTimingRoot(doc: XMLDocument) {
 }
 
 function getOrCreateTimingRoot(slideDoc: XMLDocument) {
-  const timing = slideDoc.documentElement.getElementsByTagNameNS(NS_P, "timing")[0] || buildTimingRoot(slideDoc);
+  const timing = getDirectChildByTagName(slideDoc.documentElement, NS_P, "timing") || buildTimingRoot(slideDoc);
   if (!timing.parentNode) {
-    const extLst = slideDoc.documentElement.getElementsByTagNameNS(NS_P, "extLst")[0] || null;
+    const extLst = getDirectChildByTagName(slideDoc.documentElement, NS_P, "extLst") || null;
     slideDoc.documentElement.insertBefore(timing, extLst);
   }
   return timing;
@@ -631,7 +637,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
 }
 
 function clearSlideAnimationsInDocument(slideDoc: XMLDocument) {
-  const timing = slideDoc.documentElement.getElementsByTagNameNS(NS_P, "timing")[0];
+  const timing = getDirectChildByTagName(slideDoc.documentElement, NS_P, "timing");
   if (timing) {
     timing.parentNode?.removeChild(timing);
   }
@@ -654,8 +660,8 @@ function setSlideTransitionInDocument(slideDoc: XMLDocument, definition: SlideTr
   }
 
   const transitionNode = buildTransitionNode(slideDoc, definition);
-  const timing = slideDoc.documentElement.getElementsByTagNameNS(NS_P, "timing")[0];
-  const extLst = slideDoc.documentElement.getElementsByTagNameNS(NS_P, "extLst")[0] || null;
+  const timing = getDirectChildByTagName(slideDoc.documentElement, NS_P, "timing");
+  const extLst = getDirectChildByTagName(slideDoc.documentElement, NS_P, "extLst") || null;
   slideDoc.documentElement.insertBefore(transitionNode, timing || extLst);
 }
 
@@ -772,7 +778,8 @@ export function addSlideAnimationInBase64Presentation(base64: string, animation:
     ...animation,
     targetXmlShapeId: resolveAnimationTargetXmlShapeId(slideDoc, shapeIndex),
   });
-  pkg.writeText(slidePath, serializeXml(slideDoc));
+  const serialized = serializeXml(slideDoc);
+  pkg.writeText(slidePath, serialized);
   return pkg.toBase64();
 }
 
@@ -822,14 +829,23 @@ export async function replaceSlideWithMutatedOpenXml(
   await context.sync();
 
   const sourceSlideId = sourceSlide.id;
+  let targetSlideId: string | undefined;
+
+  if (slideIndex > 0) {
+    const previousSlide = slides.items[slideIndex - 1];
+    previousSlide.load("id");
+    await context.sync();
+    targetSlideId = previousSlide.id;
+  }
 
   const exported = sourceSlide.exportAsBase64();
   await context.sync();
+
   const mutated = mutate(exported.value);
 
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
-    targetSlideId: sourceSlideId,
+    ...(targetSlideId ? { targetSlideId } : {}),
   });
   await context.sync();
 

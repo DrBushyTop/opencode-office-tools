@@ -50,7 +50,9 @@ export const setSlideTransition: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        await replaceSlideWithMutatedOpenXml(context, definition.slideIndex, (base64) => setSlideTransitionInBase64Presentation(base64, definition));
+        await replaceSlideWithMutatedOpenXml(context, definition.slideIndex, (base64) =>
+          setSlideTransitionInBase64Presentation(base64, definition),
+        );
         return definition.effect === "none"
           ? `Cleared the transition on slide ${definition.slideIndex + 1} via an Open XML slide round-trip.`
           : `Set the ${definition.effect} transition on slide ${definition.slideIndex + 1} via an Open XML slide round-trip.`;
