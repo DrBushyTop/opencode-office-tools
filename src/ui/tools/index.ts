@@ -30,6 +30,7 @@ import { getDocumentTargets } from "./getDocumentTargets";
 // New PowerPoint tools
 import { addSlideAnimation } from "./addSlideAnimation";
 import { clearSlideAnimations } from "./clearSlideAnimations";
+import { getSlideAnimations } from "./getSlideAnimations";
 import { getSlideNotes } from "./getSlideNotes";
 import { getSlideTransition } from "./getSlideTransition";
 import { setSlideNotes } from "./setSlideNotes";
@@ -104,6 +105,7 @@ const officeToolHandlers = {
   [getSlideShapes.name]: getSlideShapes,
   [addSlideAnimation.name]: addSlideAnimation,
   [clearSlideAnimations.name]: clearSlideAnimations,
+  [getSlideAnimations.name]: getSlideAnimations,
   [getSlideNotes.name]: getSlideNotes,
   [getSlideTransition.name]: getSlideTransition,
   [manageSlide.name]: manageSlide,
@@ -143,6 +145,7 @@ export const powerpointTools = [
   getSlideShapes,
   addSlideAnimation,
   clearSlideAnimations,
+  getSlideAnimations,
   getSlideNotes,
   getSlideTransition,
   manageSlide,

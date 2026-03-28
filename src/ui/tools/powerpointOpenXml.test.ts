@@ -3,6 +3,7 @@ import { DOMParser as XmldomParser, XMLSerializer as XmldomSerializer } from "@x
 import { describe, expect, it, vi } from "vitest";
 import { OpenXmlPackage, parseXml } from "./openXmlPackage";
 import {
+  addSlideAnimationBatchInBase64Presentation,
   addSlideAnimationInBase64Presentation,
   extractSpeakerNotesFromBase64Presentation,
   extractSlideTransitionFromBase64Presentation,
@@ -553,6 +554,68 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(entrCtn?.getAttribute("presetSubtype")).toBe("0");
   });
 
+  it("creates a peekIn entrance animation with fade and vertical slide", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "peekIn",
+      start: "onClick",
+      durationMs: 1000,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    // Should have visibility set, animEffect (fade), and two p:anim (ppt_x, ppt_y)
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(1);
+    expect(animEffects[0].getAttribute("filter")).toBe("fade");
+    const anims = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "anim");
+    expect(anims.length).toBe(2); // ppt_x and ppt_y property animations
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("42");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("0");
+    // Should have bldLst entry
+    const bldPs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "bldP");
+    expect(bldPs.length).toBe(1);
+  });
+
+  it("creates a growAndTurn entrance animation with fade and bounce motion", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationInBase64Presentation(base64, {
+      shapeId: "shape-1",
+      type: "growAndTurn",
+      start: "withPrevious",
+      durationMs: 1000,
+    }, 0);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    // Should have visibility set, animEffect (fade), and three p:anim (ppt_x + two ppt_y for bounce)
+    const setNodes = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "set");
+    expect(setNodes.length).toBe(1);
+    const animEffects = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animEffect");
+    expect(animEffects.length).toBe(1);
+    expect(animEffects[0].getAttribute("filter")).toBe("fade");
+    const anims = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "anim");
+    expect(anims.length).toBe(3); // ppt_x + two ppt_y (main + bounce)
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const entrCtn = Array.from(cTns).find((n) => n.getAttribute("presetClass") === "entr");
+    expect(entrCtn?.getAttribute("presetID")).toBe("37");
+    expect(entrCtn?.getAttribute("presetSubtype")).toBe("0");
+    // Should have bldLst entry
+    const bldPs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "bldP");
+    expect(bldPs.length).toBe(1);
+  });
+
   it("creates a changeFillColor emphasis animation with animClr and hex color", () => {
     const base64 = createPresentationBase64({
       "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
@@ -611,7 +674,7 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(animClrs.length).toBe(1);
     expect(animClrs[0].getAttribute("clrSpc")).toBe("rgb");
     const attrNames = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "attrName");
-    expect(attrNames[0]?.textContent).toBe("linecolor");
+    expect(attrNames[0]?.textContent).toBe("stroke.color");
     // Check scheme color
     const schemeClrs = animClrs[0].getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "schemeClr");
     expect(schemeClrs.length).toBe(1);
@@ -644,6 +707,38 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(emphCtn?.getAttribute("presetID")).toBe("70");
     expect(emphCtn?.getAttribute("presetSubtype")).toBe("0");
     expect(emphCtn?.getAttribute("grpId")).toBe("0");
+  });
+
+  it("batch-adds the same animation to multiple shapes in one round-trip", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationBatchInBase64Presentation(base64, {
+      shapeId: "shape-0",
+      type: "fade",
+      start: "onClick",
+      durationMs: 500,
+    }, [0, 1]);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    // Find all per-shape animation cTns (those with nodeType clickEffect/withEffect/afterEffect)
+    const SHAPE_NODE_TYPES = new Set(["clickEffect", "withEffect", "afterEffect"]);
+    const shapeCTns = Array.from(cTns).filter((n) => SHAPE_NODE_TYPES.has(n.getAttribute("nodeType") || ""));
+    expect(shapeCTns.length).toBe(2);
+    // First shape: onClick (clickEffect)
+    expect(shapeCTns[0].getAttribute("nodeType")).toBe("clickEffect");
+    expect(shapeCTns[0].getAttribute("presetClass")).toBe("entr");
+    expect(shapeCTns[0].getAttribute("presetID")).toBe("10");
+    // Second shape: withPrevious (withEffect)
+    expect(shapeCTns[1].getAttribute("nodeType")).toBe("withEffect");
+    expect(shapeCTns[1].getAttribute("presetClass")).toBe("entr");
+    expect(shapeCTns[1].getAttribute("presetID")).toBe("10");
+    // Both should be in the build list
+    const bldPs = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "bldP");
+    expect(bldPs.length).toBe(2);
   });
 
   it("creates notes slide relationships back to the slide and notes master", () => {
