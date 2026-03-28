@@ -693,7 +693,13 @@
       "type": "object",
       "properties": {
         "action": { "type": "string", "enum": ["create", "update", "delete", "group", "ungroup"], "description": "Shape operation to perform." },
-        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "slideIndex": {
+          "anyOf": [
+            { "type": "number" },
+            { "type": "array", "items": { "type": "number" } }
+          ],
+          "description": "0-based slide index or array of slide indexes. When an array is provided, the same transition is applied to each slide in sequence."
+        },
         "shapeId": { "type": "string", "description": "Existing shape id. Preferred over shapeIndex when available." },
         "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide." },
         "shapeIds": {
@@ -770,7 +776,13 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "slideIndex": { "type": "number", "description": "0-based slide index." },
+        "slideIndex": {
+          "anyOf": [
+            { "type": "number" },
+            { "type": "array", "items": { "type": "number" } }
+          ],
+          "description": "0-based slide index or array of slide indexes. When an array is provided, the same transition is applied to each slide in sequence."
+        },
         "effect": { "type": "string", "enum": ["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"], "description": "Transition effect to apply. Use none to clear the transition." },
         "speed": { "type": "string", "enum": ["slow", "medium", "fast"], "description": "Optional transition speed." },
         "advanceOnClick": { "type": "boolean", "description": "Whether a click advances the slide." },
@@ -782,7 +794,7 @@
       },
       "required": ["slideIndex", "effect"]
     },
-    "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Updating transition on slide ", "suffix": "" } }
+    "ui": { "icon": "🎬", "activity": { "type": "static", "text": "Updating slide transitions" } }
   },
   "get_notebook_overview": {
     "hosts": ["onenote"],
