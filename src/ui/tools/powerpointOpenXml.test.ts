@@ -272,7 +272,7 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(findSlideShapeIndexByXmlShapeIdInBase64Presentation(base64, "999")).toBe(-1);
   });
 
-  it("extends merged withPrevious parent duration to avoid truncating longer animations", () => {
+  it("places withPrevious animations in the same timing group", () => {
     const base64 = createPresentationBase64({
       "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
       "ppt/slides/slide1.xml": baseSlideXml(),
@@ -295,13 +295,20 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     }, 1);
 
     const slideDoc = parseXml(new OpenXmlPackage(withLongAnimation).readText("ppt/slides/slide1.xml"));
-    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
-    const mergedCtn = Array.from(cTns).find((node) => node.getAttribute("dur") === "1600") as Element | undefined;
-    const animationPar = mergedCtn?.parentNode as Element | undefined;
+    // Both animations should be separate per-shape p:par nodes inside the same timing group
+    const animScales = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animScale");
+    const animRots = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animRot");
+    expect(animScales.length).toBe(1);
+    expect(animRots.length).toBe(1);
 
-    expect(mergedCtn?.getAttribute("dur")).toBe("1600");
-    expect(animationPar?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animScale").length).toBe(1);
-    expect(animationPar?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "animRot").length).toBe(1);
+    // Both should have their own per-shape p:par with nodeType="withEffect"
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const withEffectCTns = Array.from(cTns).filter((n) => n.getAttribute("nodeType") === "withEffect");
+    expect(withEffectCTns.length).toBe(2);
+
+    // Each should have its own duration
+    expect(withEffectCTns[0].getAttribute("dur")).toBe("500");
+    expect(withEffectCTns[1].getAttribute("dur")).toBe("1600");
   });
 
   it("serializes delay for afterPrevious animations", () => {
@@ -321,8 +328,12 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     }, 0);
 
     const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
-    const cond = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
-
+    // The delay should be on the per-shape animation cTn's stCondLst, which has nodeType="afterEffect"
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const afterEffectCTn = Array.from(cTns).find((n) => n.getAttribute("nodeType") === "afterEffect");
+    expect(afterEffectCTn).toBeDefined();
+    const stCondLst = afterEffectCTn?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "stCondLst")[0];
+    const cond = stCondLst?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
     expect(cond?.getAttribute("delay")).toBe("250");
     expect(cond?.hasAttribute("evt")).toBe(false);
   });

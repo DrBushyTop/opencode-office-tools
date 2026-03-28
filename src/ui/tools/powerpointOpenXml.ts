@@ -442,23 +442,6 @@ function getAnimationDurationMs(animation: SlideAnimationMutationDefinition) {
   return animation.durationMs ?? 1000;
 }
 
-function getNumericDurationAttribute(element: Element) {
-  const value = element.getAttribute("dur");
-  if (!value || value === "indefinite") {
-    return null;
-  }
-
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
-}
-
-function ensureContainerDurationAtLeast(element: Element, durationMs: number) {
-  const currentDurationMs = getNumericDurationAttribute(element);
-  if (currentDurationMs === null || currentDurationMs < durationMs) {
-    element.setAttribute("dur", String(durationMs));
-  }
-}
-
 function getOrCreateChild(parent: Element, namespace: string, qualifiedName: string) {
   const localName = qualifiedName.split(":").pop() || qualifiedName;
   const existing = Array.from(parent.childNodes).find(
@@ -495,6 +478,36 @@ function getOrCreateTimingRoot(slideDoc: XMLDocument) {
   return timing;
 }
 
+function ensureSeqAttributes(seq: Element) {
+  if (!seq.getAttribute("concurrent")) seq.setAttribute("concurrent", "1");
+  if (!seq.getAttribute("nextAc")) seq.setAttribute("nextAc", "seek");
+
+  const doc = seq.ownerDocument;
+  if (!getDirectChildByTagName(seq, NS_P, "prevCondLst")) {
+    const prevCondLst = doc.createElementNS(NS_P, "p:prevCondLst");
+    const cond = doc.createElementNS(NS_P, "p:cond");
+    cond.setAttribute("evt", "onPrev");
+    cond.setAttribute("delay", "0");
+    const tgtEl = doc.createElementNS(NS_P, "p:tgtEl");
+    tgtEl.appendChild(doc.createElementNS(NS_P, "p:sldTgt"));
+    cond.appendChild(tgtEl);
+    prevCondLst.appendChild(cond);
+    seq.appendChild(prevCondLst);
+  }
+
+  if (!getDirectChildByTagName(seq, NS_P, "nextCondLst")) {
+    const nextCondLst = doc.createElementNS(NS_P, "p:nextCondLst");
+    const cond = doc.createElementNS(NS_P, "p:cond");
+    cond.setAttribute("evt", "onNext");
+    cond.setAttribute("delay", "0");
+    const tgtEl = doc.createElementNS(NS_P, "p:tgtEl");
+    tgtEl.appendChild(doc.createElementNS(NS_P, "p:sldTgt"));
+    cond.appendChild(tgtEl);
+    nextCondLst.appendChild(cond);
+    seq.appendChild(nextCondLst);
+  }
+}
+
 function getOrCreateMainSequence(slideDoc: XMLDocument) {
   const timing = getOrCreateTimingRoot(slideDoc);
   const tnLst = getOrCreateChild(timing, NS_P, "p:tnLst");
@@ -502,6 +515,7 @@ function getOrCreateMainSequence(slideDoc: XMLDocument) {
   const rootCtn = getOrCreateChild(rootPar, NS_P, "p:cTn");
   if (!rootCtn.getAttribute("id")) rootCtn.setAttribute("id", "1");
   if (!rootCtn.getAttribute("dur")) rootCtn.setAttribute("dur", "indefinite");
+  if (!rootCtn.getAttribute("restart")) rootCtn.setAttribute("restart", "never");
   if (!rootCtn.getAttribute("nodeType")) rootCtn.setAttribute("nodeType", "tmRoot");
   const rootChildTnLst = getOrCreateChild(rootCtn, NS_P, "p:childTnLst");
   let mainSeq = Array.from(rootChildTnLst.childNodes).find(
@@ -519,20 +533,9 @@ function getOrCreateMainSequence(slideDoc: XMLDocument) {
     rootChildTnLst.appendChild(mainSeq);
   }
 
-  return mainSeq;
-}
+  ensureSeqAttributes(mainSeq);
 
-function buildStartConditions(doc: XMLDocument, start: SlideAnimationDefinition["start"], delayMs?: number) {
-  const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
-  const cond = doc.createElementNS(NS_P, "p:cond");
-  if (start === "onClick") {
-    cond.setAttribute("evt", "onClick");
-  }
-  if (delayMs && delayMs > 0) {
-    cond.setAttribute("delay", String(delayMs));
-  }
-  stCondLst.appendChild(cond);
-  return stCondLst;
+  return mainSeq;
 }
 
 function buildTargetElement(doc: XMLDocument, xmlShapeId: string) {
@@ -724,50 +727,57 @@ function applyEntrancePresetAttributes(cTn: Element, animation: SlideAnimationMu
     cTn.setAttribute("presetID", String(presetId));
   }
   const subtype = getEntrancePresetSubtype(animation);
-  if (subtype !== undefined) {
-    cTn.setAttribute("presetSubtype", String(subtype));
-  }
+  cTn.setAttribute("presetSubtype", subtype !== undefined ? String(subtype) : "0");
+  cTn.setAttribute("grpId", "0");
 }
 
-function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
+/**
+ * Build the per-shape animation p:par node.
+ * This is the innermost wrapper in the 3-level hierarchy.
+ *
+ * Structure:
+ *   <p:par>
+ *     <p:cTn presetID="..." presetClass="entr" presetSubtype="0" grpId="0"
+ *            fill="hold" nodeType="clickEffect|withEffect|afterEffect"
+ *            [dur="...for emphasis"]>
+ *       <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+ *       <p:childTnLst>
+ *         <!-- animation effect nodes (set, animEffect, animMotion, etc.) -->
+ *       </p:childTnLst>
+ *     </p:cTn>
+ *   </p:par>
+ */
+function buildShapeAnimationPar(
+  doc: XMLDocument,
+  animation: SlideAnimationMutationDefinition,
+  allocTimeNodeId: () => string,
+  nodeType: "clickEffect" | "withEffect" | "afterEffect",
+) {
   const nodes = buildAnimationNodes(doc, animation, allocTimeNodeId);
-
-  if (animation.start === "onClick") {
-    const seq = doc.createElementNS(NS_P, "p:seq");
-    const cTn = doc.createElementNS(NS_P, "p:cTn");
-    cTn.setAttribute("id", allocTimeNodeId());
-    cTn.setAttribute("dur", "indefinite");
-    cTn.setAttribute("nodeType", "clickEffect");
-    cTn.appendChild(buildStartConditions(doc, animation.start, animation.delayMs));
-    const childTnLst = doc.createElementNS(NS_P, "p:childTnLst");
-    const par = doc.createElementNS(NS_P, "p:par");
-    const parCtn = doc.createElementNS(NS_P, "p:cTn");
-    parCtn.setAttribute("id", allocTimeNodeId());
-    parCtn.setAttribute("dur", String(getAnimationDurationMs(animation)));
-    parCtn.setAttribute("fill", "hold");
-    applyEntrancePresetAttributes(parCtn, animation);
-    const parChildren = doc.createElementNS(NS_P, "p:childTnLst");
-    for (const node of nodes) parChildren.appendChild(node);
-    parCtn.appendChild(parChildren);
-    par.appendChild(parCtn);
-    childTnLst.appendChild(par);
-    cTn.appendChild(childTnLst);
-    seq.appendChild(cTn);
-    return seq;
-  }
-
   const par = doc.createElementNS(NS_P, "p:par");
   const cTn = doc.createElementNS(NS_P, "p:cTn");
   cTn.setAttribute("id", allocTimeNodeId());
-  cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
   cTn.setAttribute("fill", "hold");
+
   applyEntrancePresetAttributes(cTn, animation);
-  if ((animation.start === "withPrevious" || animation.start === "afterPrevious") && animation.delayMs && animation.delayMs > 0) {
-    cTn.appendChild(buildStartConditions(doc, animation.start, animation.delayMs));
+
+  // For emphasis/motion animations that don't set presetClass, set dur directly
+  if (!isEntranceAnimation(animation)) {
+    cTn.setAttribute("dur", String(getAnimationDurationMs(animation)));
+    if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
+      cTn.setAttribute("repeatCount", String(animation.repeatCount));
+    }
   }
-  if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
-    cTn.setAttribute("repeatCount", String(animation.repeatCount));
-  }
+
+  cTn.setAttribute("nodeType", nodeType);
+
+  // Always add stCondLst with delay="0" (or the animation's delay for afterPrevious)
+  const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
+  const cond = doc.createElementNS(NS_P, "p:cond");
+  cond.setAttribute("delay", nodeType === "afterEffect" && animation.delayMs ? String(animation.delayMs) : "0");
+  stCondLst.appendChild(cond);
+  cTn.appendChild(stCondLst);
+
   const childTnLst = doc.createElementNS(NS_P, "p:childTnLst");
   for (const node of nodes) childTnLst.appendChild(node);
   cTn.appendChild(childTnLst);
@@ -775,33 +785,193 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMuta
   return par;
 }
 
+/**
+ * Build a timing-group p:par (the second level in the 3-level hierarchy).
+ *
+ * Structure:
+ *   <p:par>
+ *     <p:cTn fill="hold">
+ *       <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+ *       <p:childTnLst>
+ *         <!-- per-shape p:par nodes -->
+ *       </p:childTnLst>
+ *     </p:cTn>
+ *   </p:par>
+ */
+function buildTimingGroupPar(doc: XMLDocument, allocTimeNodeId: () => string, delayStr = "0") {
+  const par = doc.createElementNS(NS_P, "p:par");
+  const cTn = doc.createElementNS(NS_P, "p:cTn");
+  cTn.setAttribute("id", allocTimeNodeId());
+  cTn.setAttribute("fill", "hold");
+  const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
+  const cond = doc.createElementNS(NS_P, "p:cond");
+  cond.setAttribute("delay", delayStr);
+  stCondLst.appendChild(cond);
+  cTn.appendChild(stCondLst);
+  cTn.appendChild(doc.createElementNS(NS_P, "p:childTnLst"));
+  par.appendChild(cTn);
+  return par;
+}
+
+/**
+ * Build a click-group p:par (the outermost level in the 3-level hierarchy).
+ *
+ * Structure:
+ *   <p:par>
+ *     <p:cTn fill="hold">
+ *       <p:stCondLst><p:cond delay="indefinite"/></p:stCondLst>
+ *       <p:childTnLst>
+ *         <!-- timing-group p:par nodes -->
+ *       </p:childTnLst>
+ *     </p:cTn>
+ *   </p:par>
+ */
+function buildClickGroupPar(doc: XMLDocument, allocTimeNodeId: () => string) {
+  const par = doc.createElementNS(NS_P, "p:par");
+  const cTn = doc.createElementNS(NS_P, "p:cTn");
+  cTn.setAttribute("id", allocTimeNodeId());
+  cTn.setAttribute("fill", "hold");
+  const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
+  const cond = doc.createElementNS(NS_P, "p:cond");
+  cond.setAttribute("delay", "indefinite");
+  stCondLst.appendChild(cond);
+  cTn.appendChild(stCondLst);
+  cTn.appendChild(doc.createElementNS(NS_P, "p:childTnLst"));
+  par.appendChild(cTn);
+  return par;
+}
+
+/**
+ * Ensure a p:bldLst exists in the timing element and add an entry for the animated shape.
+ * The bldLst sits as a direct child of p:timing, after p:tnLst.
+ */
+function addBldLstEntry(slideDoc: XMLDocument, xmlShapeId: string) {
+  const timing = getDirectChildByTagName(slideDoc.documentElement, NS_P, "timing");
+  if (!timing) return;
+
+  let bldLst = getDirectChildByTagName(timing, NS_P, "bldLst");
+  if (!bldLst) {
+    bldLst = slideDoc.createElementNS(NS_P, "p:bldLst");
+    timing.appendChild(bldLst);
+  }
+
+  // Check if entry already exists for this shape + grpId
+  const existing = Array.from(bldLst.childNodes).find(
+    (node) =>
+      node.nodeType === ELEMENT_NODE &&
+      (node as Element).localName === "bldP" &&
+      (node as Element).getAttribute("spid") === xmlShapeId &&
+      (node as Element).getAttribute("grpId") === "0",
+  );
+  if (existing) return;
+
+  const bldP = slideDoc.createElementNS(NS_P, "p:bldP");
+  bldP.setAttribute("spid", xmlShapeId);
+  bldP.setAttribute("grpId", "0");
+  bldP.setAttribute("animBg", "1");
+  bldLst.appendChild(bldP);
+}
+
 function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnimationMutationDefinition) {
   const allocTimeNodeId = createTimeNodeIdAllocator(slideDoc);
   const mainSeq = getOrCreateMainSequence(slideDoc);
-  const rootChildTnLst = mainSeq.parentElement || mainSeq.parentNode as Element;
-  if (animation.start === "onClick") {
-    rootChildTnLst.appendChild(buildAnimationContainer(slideDoc, animation, allocTimeNodeId));
-    return;
-  }
-
   const mainCtn = mainSeq.getElementsByTagNameNS(NS_P, "cTn")[0];
   const mainChildren = getOrCreateChild(mainCtn, NS_P, "p:childTnLst");
-  if (animation.start === "withPrevious" && !animation.delayMs) {
-    const lastPar = Array.from(mainChildren.childNodes)
-      .reverse()
-      .find((node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "par") as Element | undefined;
-    if (lastPar) {
-      const lastParCtn = getOrCreateChild(lastPar, NS_P, "p:cTn");
-      const lastParChildren = getOrCreateChild(lastParCtn, NS_P, "p:childTnLst");
-      for (const node of buildAnimationNodes(slideDoc, animation, allocTimeNodeId)) {
-        lastParChildren.appendChild(node);
+
+  const isEntrance = isEntranceAnimation(animation);
+
+  if (animation.start === "onClick") {
+    // Create a new click group with a timing group containing the shape animation
+    const clickGroup = buildClickGroupPar(slideDoc, allocTimeNodeId);
+    const clickGroupChildren = clickGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+    const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId);
+    const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+    const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "clickEffect");
+    timingGroupChildren.appendChild(shapePar);
+    clickGroupChildren.appendChild(timingGroup);
+    mainChildren.appendChild(clickGroup);
+  } else if (animation.start === "withPrevious") {
+    // Add to the last click group's last timing group
+    const lastClickGroup = getLastClickGroup(mainChildren);
+    if (lastClickGroup && !animation.delayMs) {
+      const lastTimingGroup = getLastTimingGroup(lastClickGroup);
+      if (lastTimingGroup) {
+        const timingGroupChildren = getOrCreateChild(
+          lastTimingGroup.getElementsByTagNameNS(NS_P, "cTn")[0],
+          NS_P,
+          "p:childTnLst",
+        );
+        const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "withEffect");
+        timingGroupChildren.appendChild(shapePar);
+      } else {
+        // No timing group yet — create one
+        const clickGroupCtn = lastClickGroup.getElementsByTagNameNS(NS_P, "cTn")[0];
+        const clickGroupChildren = getOrCreateChild(clickGroupCtn, NS_P, "p:childTnLst");
+        const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId);
+        const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+        const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "withEffect");
+        timingGroupChildren.appendChild(shapePar);
+        clickGroupChildren.appendChild(timingGroup);
       }
-      ensureContainerDurationAtLeast(lastParCtn, getAnimationDurationMs(animation));
-      return;
+    } else {
+      // No existing click group or has delay — create new click group
+      const clickGroup = buildClickGroupPar(slideDoc, allocTimeNodeId);
+      const clickGroupChildren = clickGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, animation.delayMs ? String(animation.delayMs) : "0");
+      const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+      const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "withEffect");
+      timingGroupChildren.appendChild(shapePar);
+      clickGroupChildren.appendChild(timingGroup);
+      mainChildren.appendChild(clickGroup);
+    }
+  } else {
+    // afterPrevious — add a new timing group in the last click group (or create a new click group)
+    const lastClickGroup = getLastClickGroup(mainChildren);
+    if (lastClickGroup) {
+      const clickGroupCtn = lastClickGroup.getElementsByTagNameNS(NS_P, "cTn")[0];
+      const clickGroupChildren = getOrCreateChild(clickGroupCtn, NS_P, "p:childTnLst");
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, "0");
+      const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+      const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
+      timingGroupChildren.appendChild(shapePar);
+      clickGroupChildren.appendChild(timingGroup);
+    } else {
+      // No click group — create one
+      const clickGroup = buildClickGroupPar(slideDoc, allocTimeNodeId);
+      const clickGroupChildren = clickGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId);
+      const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
+      const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
+      timingGroupChildren.appendChild(shapePar);
+      clickGroupChildren.appendChild(timingGroup);
+      mainChildren.appendChild(clickGroup);
     }
   }
 
-  mainChildren.appendChild(buildAnimationContainer(slideDoc, animation, allocTimeNodeId));
+  // Add bldLst entry for entrance animations
+  if (isEntrance) {
+    addBldLstEntry(slideDoc, animation.targetXmlShapeId);
+  }
+}
+
+function getLastClickGroup(mainChildren: Element): Element | undefined {
+  return Array.from(mainChildren.childNodes)
+    .reverse()
+    .find(
+      (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "par",
+    ) as Element | undefined;
+}
+
+function getLastTimingGroup(clickGroup: Element): Element | undefined {
+  const clickGroupCtn = clickGroup.getElementsByTagNameNS(NS_P, "cTn")[0];
+  if (!clickGroupCtn) return undefined;
+  const childTnLst = getDirectChildByTagName(clickGroupCtn, NS_P, "childTnLst");
+  if (!childTnLst) return undefined;
+  return Array.from(childTnLst.childNodes)
+    .reverse()
+    .find(
+      (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "par",
+    ) as Element | undefined;
 }
 
 function clearSlideAnimationsInDocument(slideDoc: XMLDocument) {
@@ -975,6 +1145,14 @@ export function setSpeakerNotesInBase64Presentation(base64: string, notes: strin
   return pkg.toBase64();
 }
 
+/** Wraps an Office.js error thrown during the slide round-trip with context about which step failed. */
+function wrapRoundTripError(error: unknown, step: string, slideIndex: number): Error {
+  const code = error instanceof Error ? (error as { code?: string }).code : undefined;
+  const msg = error instanceof Error ? error.message : String(error);
+  const codeLabel = code ? ` [${code}]` : "";
+  return new Error(`Slide ${slideIndex + 1} round-trip failed while ${step} slide: ${msg}${codeLabel}`);
+}
+
 export async function replaceSlideWithMutatedOpenXml(
   context: PowerPoint.RequestContext,
   slideIndex: number,
@@ -1007,7 +1185,11 @@ export async function replaceSlideWithMutatedOpenXml(
   }
 
   const exported = sourceSlide.exportAsBase64();
-  await context.sync();
+  try {
+    await context.sync();
+  } catch (e) {
+    throw wrapRoundTripError(e, "exporting", slideIndex);
+  }
 
   const mutated = mutate(exported.value);
 
@@ -1015,7 +1197,11 @@ export async function replaceSlideWithMutatedOpenXml(
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
     ...(targetSlideId ? { targetSlideId } : {}),
   });
-  await context.sync();
+  try {
+    await context.sync();
+  } catch (e) {
+    throw wrapRoundTripError(e, "inserting mutated", slideIndex);
+  }
 
   const updatedSlides = context.presentation.slides;
   updatedSlides.load("items/id");
@@ -1027,7 +1213,11 @@ export async function replaceSlideWithMutatedOpenXml(
   }
 
   originalSlide.delete();
-  await context.sync();
+  try {
+    await context.sync();
+  } catch (e) {
+    throw wrapRoundTripError(e, "deleting original", slideIndex);
+  }
 }
 
 export async function exportSlideAsBase64(context: PowerPoint.RequestContext, slideIndex: number) {
@@ -1046,3 +1236,4 @@ export async function exportSlideAsBase64(context: PowerPoint.RequestContext, sl
   await context.sync();
   return exported.value;
 }
+
