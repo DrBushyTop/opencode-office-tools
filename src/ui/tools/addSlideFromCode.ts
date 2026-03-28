@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import pptxgen from "pptxgenjs";
+import { isPowerPointRequirementSetSupported } from "./powerpointShared";
 
 export function normalizeAddSlideCode(input: string) {
   return String(input || "")
@@ -34,6 +35,7 @@ Your code can be either:
 - a fuller PptxGenJS snippet that references 'pptx', 'pptxgen', or 'pptx.ShapeType'.
 
 The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
+The slide canvas is automatically sized to match the active deck's dimensions. Use get_presentation_structure to learn the actual slide width and height before designing layouts.
 
 Available in scope:
   - slide
@@ -113,8 +115,30 @@ PptxGenJS API Examples:
     const { code, replaceSlideIndex } = args as { code: string; replaceSlideIndex?: number };
 
     try {
-      // Create presentation and slide
+      // Read the actual deck's slide dimensions so PptxGenJS generates
+      // a matching canvas. Without this, backgrounds and full-bleed shapes
+      // may overshoot or undershoot the visible slide area.
+      let slideWidthInches = 13.333; // PptxGenJS LAYOUT_WIDE default
+      let slideHeightInches = 7.5;
+
+      if (isPowerPointRequirementSetSupported("1.10")) {
+        try {
+          await PowerPoint.run(async (context) => {
+            const pageSetup = context.presentation.pageSetup;
+            pageSetup.load(["slideWidth", "slideHeight"]);
+            await context.sync();
+            slideWidthInches = pageSetup.slideWidth / 72;
+            slideHeightInches = pageSetup.slideHeight / 72;
+          });
+        } catch {
+          // Fall through to default dimensions
+        }
+      }
+
+      // Create presentation and slide with matching dimensions
       const pptx = new pptxgen();
+      pptx.defineLayout({ name: "DECK_MATCH", width: slideWidthInches, height: slideHeightInches });
+      pptx.layout = "DECK_MATCH";
       const slide = pptx.addSlide();
 
         // Execute the provided code with slide/pptx in scope

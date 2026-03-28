@@ -64,8 +64,20 @@ Returns:
         }
         await context.sync();
 
+        // Read slide dimensions if supported (PowerPointApi 1.10)
+        let slideDimensions = "";
+        if (supportsThemes) {
+          const pageSetup = presentation.pageSetup;
+          pageSetup.load(["slideWidth", "slideHeight"]);
+          await context.sync();
+          const widthInches = pageSetup.slideWidth / 72;
+          const heightInches = pageSetup.slideHeight / 72;
+          slideDimensions = `Slide dimensions: ${widthInches.toFixed(2)}" × ${heightInches.toFixed(2)}" (${pageSetup.slideWidth}pt × ${pageSetup.slideHeight}pt)`;
+        }
+
         const lines: string[] = [
           `Slides: ${slides.items.length}`,
+          ...(slideDimensions ? [slideDimensions] : []),
           `Slide masters: ${slideMasters.items.length}`,
           `Placeholder metadata: ${supportsPlaceholders ? "supported" : "not supported on this host"}`,
         ];
