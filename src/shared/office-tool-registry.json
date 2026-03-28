@@ -568,15 +568,21 @@
   },
   "add_slide_animation": {
     "hosts": ["powerpoint"],
-    "description": "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), zoomIn (scale in), floatIn (float up with fade), and riseUp (rise from bottom). Entrance animations make shapes start hidden and reveal them. Emphasis color animations (complementaryColor, changeFillColor, changeLineColor) smoothly transition a shape's fill or line color. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
+    "description": "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), zoomIn (scale in), floatIn (float up with fade), riseUp (rise from bottom), peekIn (fade with slight upward slide), and growAndTurn (fade with bounce from below). Entrance animations make shapes start hidden and reveal them. Emphasis color animations (complementaryColor, changeFillColor, changeLineColor) smoothly transition a shape's fill or line color. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
         "slideIndex": { "type": "number", "description": "0-based slide index." },
-        "shapeId": { "type": "string", "description": "Preferred shape id target." },
-        "shapeIndex": { "type": "number", "description": "0-based shape index target if shapeId is unavailable." },
-        "type": { "type": "string", "enum": ["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "complementaryColor", "changeFillColor", "changeLineColor"], "description": "Animation type. Entrance types (appear, fade, flyIn, wipe, zoomIn, floatIn, riseUp) start shapes hidden and reveal them. Emphasis color types (complementaryColor, changeFillColor, changeLineColor) animate a shape's color." },
+        "shapeId": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] } }
+          ],
+          "description": "Shape id target(s). Pass a single id or an array of ids to animate multiple shapes in one call. When an array is provided, the first shape uses the specified start trigger and the rest use withPrevious."
+        },
+        "shapeIndex": { "type": "number", "description": "0-based shape index target if shapeId is unavailable. Only for single-shape animations." },
+        "type": { "type": "string", "enum": ["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "peekIn", "growAndTurn", "complementaryColor", "changeFillColor", "changeLineColor"], "description": "Animation type. Entrance types (appear, fade, flyIn, wipe, zoomIn, floatIn, riseUp, peekIn, growAndTurn) start shapes hidden and reveal them. Emphasis color types (complementaryColor, changeFillColor, changeLineColor) animate a shape's color." },
         "start": { "type": "string", "enum": ["onClick", "withPrevious", "afterPrevious"], "description": "When the animation starts relative to the sequence. Use afterPrevious with delayMs for staggered reveals." },
         "durationMs": { "type": "number", "description": "Optional animation duration in milliseconds. Default 1000. For appear, this is effectively instant." },
         "delayMs": { "type": "number", "description": "Optional start delay in milliseconds. Useful for staggered entrance sequences." },
@@ -607,6 +613,19 @@
       "required": ["slideIndex"]
     },
     "ui": { "icon": "🧹", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Clearing animations on slide ", "suffix": "" } }
+  },
+  "get_slide_animations": {
+    "hosts": ["powerpoint"],
+    "description": "Inspect animations on a PowerPoint slide by exporting through Open XML and parsing the timing tree. Returns a structured summary of all animations including their type, target shapes, timing, and sequence order.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based slide index." }
+      },
+      "required": ["slideIndex"]
+    },
+    "ui": { "icon": "🔍", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Inspecting animations on slide ", "suffix": "" } }
   },
   "get_slide_notes": {
     "hosts": ["powerpoint"],

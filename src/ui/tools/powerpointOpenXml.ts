@@ -41,7 +41,7 @@ export interface SlideTransitionDefinition {
 
 export type AnimationType =
   // Entrance animations (shapes start hidden, are revealed)
-  | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn" | "floatIn" | "riseUp"
+  | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn" | "floatIn" | "riseUp" | "peekIn" | "growAndTurn"
   // Emphasis animations (change existing shape properties)
   | "complementaryColor" | "changeFillColor" | "changeLineColor"
   // Emphasis motion/transform animations
@@ -67,7 +67,7 @@ export interface SlideAnimationDefinition {
   colorSpace?: "hsl" | "rgb";
 }
 
-const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp"]);
+const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "peekIn", "growAndTurn"]);
 
 const EMPHASIS_COLOR_TYPES = new Set(["complementaryColor", "changeFillColor", "changeLineColor"]);
 
@@ -79,6 +79,8 @@ const ENTRANCE_PRESET_IDS: Record<string, number> = {
   zoomIn: 23,
   floatIn: 30,
   riseUp: 34,
+  peekIn: 42,
+  growAndTurn: 37,
 };
 
 const EMPHASIS_PRESET_IDS: Record<string, number> = {
@@ -618,6 +620,72 @@ function buildVisibilitySet(doc: XMLDocument, targetShapeId: string, allocTimeNo
   return set;
 }
 
+/**
+ * Build a `p:anim` property animation element with a time-value list.
+ * Used by entrance animations like peekIn and growAndTurn that animate ppt_x/ppt_y
+ * with explicit keyframe values rather than motion paths.
+ */
+function buildPropertyAnimation(
+  doc: XMLDocument,
+  targetShapeId: string,
+  attrName: string,
+  timeValues: Array<{ time: number; value: string }>,
+  allocTimeNodeId: () => string,
+  opts?: {
+    durationMs?: number;
+    fill?: string;
+    decel?: string;
+    accel?: string;
+    delayMs?: number;
+    additive?: string;
+  },
+): Element {
+  const anim = doc.createElementNS(NS_P, "p:anim");
+  anim.setAttribute("calcmode", "lin");
+  anim.setAttribute("valueType", "num");
+
+  const cBhvr = doc.createElementNS(NS_P, "p:cBhvr");
+  if (opts?.additive) cBhvr.setAttribute("additive", opts.additive);
+  const cTn = doc.createElementNS(NS_P, "p:cTn");
+  cTn.setAttribute("id", allocTimeNodeId());
+  cTn.setAttribute("dur", String(opts?.durationMs || 1000));
+  if (opts?.fill !== undefined) cTn.setAttribute("fill", opts.fill);
+  else cTn.setAttribute("fill", "hold");
+  if (opts?.decel) cTn.setAttribute("decel", opts.decel);
+  if (opts?.accel) cTn.setAttribute("accel", opts.accel);
+  if (opts?.delayMs) {
+    const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
+    const cond = doc.createElementNS(NS_P, "p:cond");
+    cond.setAttribute("delay", String(opts.delayMs));
+    stCondLst.appendChild(cond);
+    cTn.appendChild(stCondLst);
+  }
+  cBhvr.appendChild(cTn);
+  cBhvr.appendChild(buildTargetElement(doc, targetShapeId));
+
+  const attrNameLst = doc.createElementNS(NS_P, "p:attrNameLst");
+  const attrNameEl = doc.createElementNS(NS_P, "p:attrName");
+  attrNameEl.textContent = attrName;
+  attrNameLst.appendChild(attrNameEl);
+  cBhvr.appendChild(attrNameLst);
+  anim.appendChild(cBhvr);
+
+  const tavLst = doc.createElementNS(NS_P, "p:tavLst");
+  for (const tv of timeValues) {
+    const tav = doc.createElementNS(NS_P, "p:tav");
+    tav.setAttribute("tm", String(tv.time));
+    const val = doc.createElementNS(NS_P, "p:val");
+    const strVal = doc.createElementNS(NS_P, "p:strVal");
+    strVal.setAttribute("val", tv.value);
+    val.appendChild(strVal);
+    tav.appendChild(val);
+    tavLst.appendChild(tav);
+  }
+  anim.appendChild(tavLst);
+
+  return anim;
+}
+
 function buildEntranceAnimationNodes(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string): Element[] {
   const visibilitySet = buildVisibilitySet(doc, animation.targetXmlShapeId, allocTimeNodeId);
 
@@ -733,6 +801,64 @@ function buildEntranceAnimationNodes(doc: XMLDocument, animation: SlideAnimation
     return [visibilitySet, node];
   }
 
+  if (animation.type === "peekIn") {
+    // Peek In = fade in + slight vertical slide from below (#ppt_y+.1 → #ppt_y)
+    // Ref: presetID 42, presetSubtype 0
+    const dur = getAnimationDurationMs(animation);
+    const animEffect = doc.createElementNS(NS_P, "p:animEffect");
+    animEffect.setAttribute("transition", "in");
+    animEffect.setAttribute("filter", "fade");
+    const fadeCBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    animEffect.appendChild(fadeCBhvr);
+
+    const animX = buildPropertyAnimation(doc, animation.targetXmlShapeId, "ppt_x", [
+      { time: 0, value: "#ppt_x" },
+      { time: 100000, value: "#ppt_x" },
+    ], allocTimeNodeId, { durationMs: dur });
+
+    const animY = buildPropertyAnimation(doc, animation.targetXmlShapeId, "ppt_y", [
+      { time: 0, value: "#ppt_y+.1" },
+      { time: 100000, value: "#ppt_y" },
+    ], allocTimeNodeId, { durationMs: dur });
+
+    return [visibilitySet, animEffect, animX, animY];
+  }
+
+  if (animation.type === "growAndTurn") {
+    // Grow & Turn = fade in + big vertical slide from below with bounce
+    // Main motion: 90% of duration, decelerating, from #ppt_y+1 to #ppt_y-.03
+    // Bounce: final 10% of duration, accelerating, from #ppt_y-.03 to #ppt_y
+    // Ref: presetID 37, presetSubtype 0
+    const dur = getAnimationDurationMs(animation);
+    const mainDur = Math.round(dur * 0.9);
+    const bounceDur = dur - mainDur;
+
+    const animEffect = doc.createElementNS(NS_P, "p:animEffect");
+    animEffect.setAttribute("transition", "in");
+    animEffect.setAttribute("filter", "fade");
+    const fadeCBhvr = buildCommonBehavior(doc, animation, allocTimeNodeId);
+    animEffect.appendChild(fadeCBhvr);
+
+    const animX = buildPropertyAnimation(doc, animation.targetXmlShapeId, "ppt_x", [
+      { time: 0, value: "#ppt_x" },
+      { time: 100000, value: "#ppt_x" },
+    ], allocTimeNodeId, { durationMs: dur });
+
+    // Main upward motion with deceleration
+    const animYMain = buildPropertyAnimation(doc, animation.targetXmlShapeId, "ppt_y", [
+      { time: 0, value: "#ppt_y+1" },
+      { time: 100000, value: "#ppt_y-.03" },
+    ], allocTimeNodeId, { durationMs: mainDur, decel: "100000" });
+
+    // Bounce back (delayed by mainDur)
+    const animYBounce = buildPropertyAnimation(doc, animation.targetXmlShapeId, "ppt_y", [
+      { time: 0, value: "#ppt_y-.03" },
+      { time: 100000, value: "#ppt_y" },
+    ], allocTimeNodeId, { durationMs: bounceDur, accel: "100000", delayMs: mainDur });
+
+    return [visibilitySet, animEffect, animX, animYMain, animYBounce];
+  }
+
   return [visibilitySet];
 }
 
@@ -749,6 +875,8 @@ function getEntrancePresetSubtype(animation: SlideAnimationMutationDefinition): 
   if (animation.type === "wipe") return WIPE_DIRECTION_SUBTYPES[animation.direction || "left"];
   if (animation.type === "floatIn") return 16; // float up
   if (animation.type === "riseUp") return 0;
+  if (animation.type === "peekIn") return 0;
+  if (animation.type === "growAndTurn") return 0;
   return undefined;
 }
 
@@ -805,7 +933,7 @@ function buildEmphasisAnimationNode(doc: XMLDocument, animation: SlideAnimationM
  *     <p:cBhvr>
  *       <p:cTn id="X" dur="500" fill="hold"/>
  *       <p:tgtEl><p:spTgt spid="SHAPE_ID"/></p:tgtEl>
- *       <p:attrNameLst><p:attrName>fillcolor|style.color|linecolor</p:attrName></p:attrNameLst>
+ *       <p:attrNameLst><p:attrName>fillcolor|style.color|stroke.color</p:attrName></p:attrNameLst>
  *     </p:cBhvr>
  *     <p:to><a:srgbClr val="FF0000"/> | <a:schemeClr val="accent2"/></p:to>
  *   </p:animClr>
@@ -814,7 +942,7 @@ function buildEmphasisColorAnimationNode(doc: XMLDocument, animation: SlideAnima
   const EMPHASIS_ATTR_NAMES: Record<string, string> = {
     complementaryColor: "fillcolor",
     changeFillColor: "fillcolor",
-    changeLineColor: "linecolor",
+    changeLineColor: "stroke.color",
   };
 
   const node = doc.createElementNS(NS_P, "p:animClr");
@@ -1270,6 +1398,30 @@ export function addSlideAnimationInBase64Presentation(base64: string, animation:
   return pkg.toBase64();
 }
 
+/**
+ * Batch-add the same animation to multiple shapes in a single Open XML round-trip.
+ * The first shape uses the specified `start` trigger; all subsequent shapes use `withPrevious`.
+ */
+export function addSlideAnimationBatchInBase64Presentation(
+  base64: string,
+  animation: SlideAnimationDefinition,
+  shapeIndexes: number[],
+) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
+  for (let i = 0; i < shapeIndexes.length; i++) {
+    const anim: SlideAnimationDefinition = i === 0
+      ? animation
+      : { ...animation, start: "withPrevious" };
+    addSlideAnimationInDocument(slideDoc, {
+      ...anim,
+      targetXmlShapeId: resolveAnimationTargetXmlShapeId(slideDoc, shapeIndexes[i]),
+    });
+  }
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+  return pkg.toBase64();
+}
+
 export function clearSlideAnimationsInBase64Presentation(base64: string) {
   const pkg = new OpenXmlPackage(base64);
   const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
@@ -1439,5 +1591,178 @@ export function extractFullSlideXmlFromBase64Presentation(base64: string): strin
   const pkg = new OpenXmlPackage(base64);
   const slidePath = getFirstSlidePath(pkg);
   return pkg.readText(slidePath);
+}
+
+// ── Animation summary extraction ──────────────────────────────────────────
+
+interface AnimationSummaryEntry {
+  /** Position in the sequence (1-based) */
+  order: number;
+  /** Start trigger: "onClick", "withPrevious", or "afterPrevious" */
+  start: string;
+  /** Preset class: "entr", "emph", "exit", "path", or null for custom */
+  presetClass: string | null;
+  /** Preset ID number */
+  presetID: number | null;
+  /** Preset subtype number */
+  presetSubtype: number | null;
+  /** Readable animation type name (e.g. "appear", "fade", "flyIn") */
+  typeName: string | null;
+  /** Target shape XML id (spid) */
+  targetShapeId: string | null;
+  /** Duration in ms */
+  durationMs: number | null;
+  /** Delay in ms */
+  delayMs: number | null;
+  /** Group ID */
+  grpId: string | null;
+}
+
+interface AnimationSummary {
+  /** Total number of animations */
+  animationCount: number;
+  /** The animation entries in sequence order */
+  animations: AnimationSummaryEntry[];
+  /** Shape IDs in the build list (entrance-animated shapes that start hidden) */
+  buildListShapeIds: string[];
+}
+
+const PRESET_ID_TO_NAME: Record<number, Record<string, string>> = {
+  // entrance
+  1: { entr: "appear" },
+  2: { entr: "flyIn" },
+  10: { entr: "fade" },
+  22: { entr: "wipe" },
+  23: { entr: "zoomIn" },
+  30: { entr: "floatIn" },
+  34: { entr: "riseUp" },
+  37: { entr: "growAndTurn" },
+  42: { entr: "peekIn" },
+  // emphasis
+  54: { emph: "changeFillColor" },
+  60: { emph: "changeLineColor" },
+  70: { emph: "complementaryColor" },
+};
+
+function resolveAnimationTypeName(presetClass: string | null, presetID: number | null): string | null {
+  if (presetClass === null || presetID === null) return null;
+  const classMap = PRESET_ID_TO_NAME[presetID];
+  if (!classMap) return null;
+  return classMap[presetClass] || null;
+}
+
+const NODE_TYPE_TO_START: Record<string, string> = {
+  clickEffect: "onClick",
+  withEffect: "withPrevious",
+  afterEffect: "afterPrevious",
+};
+
+export function extractSlideAnimationSummaryFromBase64Presentation(base64: string): AnimationSummary {
+  const pkg = new OpenXmlPackage(base64);
+  const slidePath = getFirstSlidePath(pkg);
+  const slideXml = pkg.readText(slidePath);
+  const doc = parseXml(slideXml);
+
+  const animations: AnimationSummaryEntry[] = [];
+
+  // Find all cTn elements with a nodeType attribute (these are per-shape animation wrappers)
+  const allCTns = doc.getElementsByTagNameNS(NS_P, "cTn");
+  let order = 0;
+  for (let i = 0; i < allCTns.length; i++) {
+    const cTn = allCTns[i];
+    const nodeType = cTn.getAttribute("nodeType");
+    if (!nodeType || !NODE_TYPE_TO_START[nodeType]) continue;
+
+    order++;
+    const presetClass = cTn.getAttribute("presetClass");
+    const presetIDStr = cTn.getAttribute("presetID");
+    const presetSubtypeStr = cTn.getAttribute("presetSubtype");
+    const grpId = cTn.getAttribute("grpId");
+    const presetID = presetIDStr ? Number.parseInt(presetIDStr, 10) : null;
+    const presetSubtype = presetSubtypeStr ? Number.parseInt(presetSubtypeStr, 10) : null;
+
+    // Find target shape ID — look for spTgt under this cTn's subtree
+    let targetShapeId: string | null = null;
+    const spTgts = cTn.getElementsByTagNameNS(NS_P, "spTgt");
+    if (spTgts.length > 0) {
+      targetShapeId = spTgts[0].getAttribute("spid");
+    }
+
+    // Get duration from the cTn itself (emphasis/motion) or from an inner cBhvr cTn
+    let durationMs: number | null = null;
+    const durStr = cTn.getAttribute("dur");
+    if (durStr && durStr !== "indefinite") {
+      durationMs = Number.parseInt(durStr, 10);
+    }
+    // If no dur on outer cTn, check first inner cBhvr's cTn (for entrance animations)
+    if (durationMs === null) {
+      const childTnLst = getDirectChildByTagName(cTn, NS_P, "childTnLst");
+      if (childTnLst) {
+        const children = Array.from(childTnLst.childNodes).filter(
+          (n) => n.nodeType === ELEMENT_NODE,
+        ) as Element[];
+        for (const child of children) {
+          const innerCBhvrs = child.getElementsByTagNameNS(NS_P, "cBhvr");
+          for (let j = 0; j < innerCBhvrs.length; j++) {
+            const innerCTn = getDirectChildByTagName(innerCBhvrs[j], NS_P, "cTn");
+            if (innerCTn) {
+              const innerDur = innerCTn.getAttribute("dur");
+              if (innerDur && innerDur !== "1" && innerDur !== "indefinite") {
+                durationMs = Number.parseInt(innerDur, 10);
+                break;
+              }
+            }
+          }
+          if (durationMs !== null) break;
+        }
+      }
+    }
+
+    // Get delay from stCondLst
+    let delayMs: number | null = null;
+    const stCondLst = getDirectChildByTagName(cTn, NS_P, "stCondLst");
+    if (stCondLst) {
+      const conds = stCondLst.getElementsByTagNameNS(NS_P, "cond");
+      for (let j = 0; j < conds.length; j++) {
+        const delay = conds[j].getAttribute("delay");
+        if (delay && delay !== "0" && delay !== "indefinite" && !conds[j].hasAttribute("evt")) {
+          delayMs = Number.parseInt(delay, 10);
+        }
+      }
+    }
+
+    animations.push({
+      order,
+      start: NODE_TYPE_TO_START[nodeType],
+      presetClass,
+      presetID,
+      presetSubtype,
+      typeName: resolveAnimationTypeName(presetClass, presetID),
+      targetShapeId,
+      durationMs,
+      delayMs,
+      grpId,
+    });
+  }
+
+  // Extract build list
+  const buildListShapeIds: string[] = [];
+  const timing = getDirectChildByTagName(doc.documentElement, NS_P, "timing");
+  if (timing) {
+    const bldLst = getDirectChildByTagName(timing, NS_P, "bldLst");
+    if (bldLst) {
+      const bldPs = bldLst.getElementsByTagNameNS(NS_P, "bldP");
+      for (let i = 0; i < bldPs.length; i++) {
+        const spid = bldPs[i].getAttribute("spid");
+        if (spid) buildListShapeIds.push(spid);
+      }
+    }
+  }
+
+  return {
+    animationCount: animations.length,
+    animations,
+    buildListShapeIds,
+  };
 }
 
