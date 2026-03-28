@@ -1,6 +1,6 @@
 import type { Tool } from "./types";
 import { replaceSlideWithMutatedOpenXml, setSlideTransitionInBase64Presentation, type SlideTransitionDefinition } from "./powerpointOpenXml";
-import { toolFailure } from "./powerpointShared";
+import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 const EFFECTS = ["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"] as const;
 
@@ -56,7 +56,7 @@ export const setSlideTransition: Tool = {
           : `Set the ${definition.effect} transition on slide ${definition.slideIndex + 1} via an Open XML slide round-trip.`;
       });
     } catch (error: unknown) {
-      return toolFailure(error);
+      return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripSlideRefreshHint() : undefined);
     }
   },
 };

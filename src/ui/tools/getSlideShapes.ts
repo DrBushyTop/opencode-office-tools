@@ -1,5 +1,5 @@
 import type { Tool } from "./types";
-import { formatShapeSummary, loadShapeSummaries, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
+import { formatShapeSummary, invalidSlideIndexMessage, loadShapeSummaries, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
 
 export const getSlideShapes: Tool = {
   name: "get_slide_shapes",
@@ -51,7 +51,7 @@ Returns shape indices, ids, names, types, positions, placeholder types, text pre
           : [slides.items[slideIndex]].filter(Boolean);
 
         if (targetSlides.length === 0) {
-          return toolFailure(`Invalid slideIndex ${slideIndex}.`);
+          return toolFailure(invalidSlideIndexMessage(Number(slideIndex), slides.items.length));
         }
 
         for (const slide of targetSlides) {

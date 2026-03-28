@@ -7,15 +7,18 @@ import {
   resolveTargetPath,
   serializeXml,
 } from "./openXmlPackage";
-import { isPowerPointRequirementSetSupported } from "./powerpointShared";
+import { invalidSlideIndexMessage, isPowerPointRequirementSetSupported } from "./powerpointShared";
 
 const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const NS_P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main";
+const RELATIONSHIP_TYPE_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
 const RELATIONSHIP_TYPE_NOTES_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 const RELATIONSHIP_TYPE_NOTES_MASTER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster";
 const CONTENT_TYPE_NOTES_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
+const ANIMATABLE_SHAPE_LOCAL_NAMES = new Set(["sp", "cxnSp", "pic", "graphicFrame", "grpSp", "contentPart"]);
+const ELEMENT_NODE = 1;
 
 const EXCLUDED_NOTE_PLACEHOLDER_TYPES = new Set(["sldImg", "hdr", "dt", "ftr", "sldNum"]);
 
@@ -43,6 +46,10 @@ export interface SlideAnimationDefinition {
   scaleXPercent?: number;
   scaleYPercent?: number;
   angleDegrees?: number;
+}
+
+interface SlideAnimationMutationDefinition extends Omit<SlideAnimationDefinition, "shapeId"> {
+  targetXmlShapeId: string;
 }
 
 function getFirstSlidePath(pkg: OpenXmlPackage) {
@@ -101,6 +108,35 @@ function getPlaceholderType(shape: Element) {
 
 function getTextBody(shape: Element) {
   return shape.getElementsByTagNameNS(NS_P, "txBody")[0] || null;
+}
+
+function getSlideShapeElementsInOrder(slideDoc: XMLDocument) {
+  const spTree = slideDoc.getElementsByTagNameNS(NS_P, "spTree")[0];
+  if (!spTree) {
+    throw new Error("The slide XML is missing its shape tree.");
+  }
+
+  return Array.from(spTree.childNodes).filter(
+    (node) => node.nodeType === ELEMENT_NODE
+      && (node as Element).namespaceURI === NS_P
+      && ANIMATABLE_SHAPE_LOCAL_NAMES.has((node as Element).localName),
+  ) as Element[];
+}
+
+function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: number) {
+  const shapes = getSlideShapeElementsInOrder(slideDoc);
+  const shape = shapes[shapeIndex];
+  if (!shape) {
+    throw new Error(`The exported slide XML does not contain shapeIndex ${shapeIndex}. Available shape indexes: 0-${Math.max(shapes.length - 1, 0)}.`);
+  }
+
+  const cNvPr = shape.getElementsByTagNameNS(NS_P, "cNvPr")[0];
+  const xmlShapeId = cNvPr?.getAttribute("id");
+  if (!xmlShapeId) {
+    throw new Error(`The exported slide XML is missing a non-visual shape id for shapeIndex ${shapeIndex}.`);
+  }
+
+  return xmlShapeId;
 }
 
 function extractTextBody(textBody: Element | null) {
@@ -179,13 +215,17 @@ function ensureSpeakerNotesShape(notesDoc: XMLDocument) {
   ph.setAttribute("type", "body");
   ph.setAttribute("idx", "1");
   nvPr.appendChild(ph);
-  nvSpPr.append(cNvPr, cNvSpPr, nvPr);
+  nvSpPr.appendChild(cNvPr);
+  nvSpPr.appendChild(cNvSpPr);
+  nvSpPr.appendChild(nvPr);
 
   const spPr = notesDoc.createElementNS(NS_P, "p:spPr");
   const txBody = notesDoc.createElementNS(NS_P, "p:txBody");
   writeTextBody(txBody, "");
 
-  shape.append(nvSpPr, spPr, txBody);
+  shape.appendChild(nvSpPr);
+  shape.appendChild(spPr);
+  shape.appendChild(txBody);
   spTree.appendChild(shape);
   return shape;
 }
@@ -228,7 +268,7 @@ function buildNotesSlideXml() {
 }
 
 function getTransitionEffectDetails(transition: Element) {
-  const effect = Array.from(transition.childNodes).find((node) => node.nodeType === Node.ELEMENT_NODE) as Element | undefined;
+  const effect = Array.from(transition.childNodes).find((node) => node.nodeType === ELEMENT_NODE) as Element | undefined;
   if (!effect) return { effect: "none" as const };
 
   const localName = effect.localName;
@@ -326,7 +366,8 @@ function buildTransitionNode(doc: XMLDocument, definition: SlideTransitionDefini
 
   choice.appendChild(choiceTransition);
   fallback.appendChild(fallbackTransition);
-  alternateContent.append(choice, fallback);
+  alternateContent.appendChild(choice);
+  alternateContent.appendChild(fallback);
   return alternateContent;
 }
 
@@ -359,7 +400,7 @@ function createTimeNodeIdAllocator(slideDoc: XMLDocument) {
 function getOrCreateChild(parent: Element, namespace: string, qualifiedName: string) {
   const localName = qualifiedName.split(":").pop() || qualifiedName;
   const existing = Array.from(parent.childNodes).find(
-    (node) => node.nodeType === Node.ELEMENT_NODE && (node as Element).namespaceURI === namespace && (node as Element).localName === localName,
+    (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === namespace && (node as Element).localName === localName,
   ) as Element | undefined;
   if (existing) return existing;
   const created = parent.ownerDocument.createElementNS(namespace, qualifiedName);
@@ -402,7 +443,7 @@ function getOrCreateMainSequence(slideDoc: XMLDocument) {
   if (!rootCtn.getAttribute("nodeType")) rootCtn.setAttribute("nodeType", "tmRoot");
   const rootChildTnLst = getOrCreateChild(rootCtn, NS_P, "p:childTnLst");
   let mainSeq = Array.from(rootChildTnLst.childNodes).find(
-    (node) => node.nodeType === Node.ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "seq" && (node as Element).getElementsByTagNameNS(NS_P, "cTn")[0]?.getAttribute("nodeType") === "mainSeq",
+    (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "seq" && (node as Element).getElementsByTagNameNS(NS_P, "cTn")[0]?.getAttribute("nodeType") === "mainSeq",
   ) as Element | undefined;
 
   if (!mainSeq) {
@@ -432,15 +473,15 @@ function buildStartConditions(doc: XMLDocument, start: SlideAnimationDefinition[
   return stCondLst;
 }
 
-function buildTargetElement(doc: XMLDocument, shapeId: string) {
+function buildTargetElement(doc: XMLDocument, xmlShapeId: string) {
   const target = doc.createElementNS(NS_P, "p:tgtEl");
   const spTarget = doc.createElementNS(NS_P, "p:spTgt");
-  spTarget.setAttribute("spid", shapeId);
+  spTarget.setAttribute("spid", xmlShapeId);
   target.appendChild(spTarget);
   return target;
 }
 
-function buildCommonBehavior(doc: XMLDocument, animation: SlideAnimationDefinition, allocTimeNodeId: () => string) {
+function buildCommonBehavior(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
   const cBhvr = doc.createElementNS(NS_P, "p:cBhvr");
   const cTn = doc.createElementNS(NS_P, "p:cTn");
   cTn.setAttribute("id", allocTimeNodeId());
@@ -449,11 +490,12 @@ function buildCommonBehavior(doc: XMLDocument, animation: SlideAnimationDefiniti
   if (animation.repeatCount !== undefined && animation.repeatCount > 0) {
     cTn.setAttribute("repeatCount", String(animation.repeatCount));
   }
-  cBhvr.append(cTn, buildTargetElement(doc, animation.shapeId));
+  cBhvr.appendChild(cTn);
+  cBhvr.appendChild(buildTargetElement(doc, animation.targetXmlShapeId));
   return cBhvr;
 }
 
-function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationDefinition, allocTimeNodeId: () => string) {
+function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
   if (animation.type === "motionPath") {
     const node = doc.createElementNS(NS_P, "p:animMotion");
     node.setAttribute("origin", animation.pathOrigin || "parent");
@@ -465,7 +507,8 @@ function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationDefinitio
     attrX.textContent = "ppt_x";
     const attrY = doc.createElementNS(NS_P, "p:attrName");
     attrY.textContent = "ppt_y";
-    attrNameList.append(attrX, attrY);
+    attrNameList.appendChild(attrX);
+    attrNameList.appendChild(attrY);
     cBhvr.appendChild(attrNameList);
     node.appendChild(cBhvr);
     return node;
@@ -487,7 +530,7 @@ function buildAnimationNode(doc: XMLDocument, animation: SlideAnimationDefinitio
   return node;
 }
 
-function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationDefinition, allocTimeNodeId: () => string) {
+function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationMutationDefinition, allocTimeNodeId: () => string) {
   if (animation.start === "onClick") {
     const seq = doc.createElementNS(NS_P, "p:seq");
     const cTn = doc.createElementNS(NS_P, "p:cTn");
@@ -529,7 +572,7 @@ function buildAnimationContainer(doc: XMLDocument, animation: SlideAnimationDefi
   return par;
 }
 
-function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnimationDefinition) {
+function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnimationMutationDefinition) {
   const allocTimeNodeId = createTimeNodeIdAllocator(slideDoc);
   const mainSeq = getOrCreateMainSequence(slideDoc);
   const rootChildTnLst = mainSeq.parentElement || mainSeq.parentNode as Element;
@@ -543,7 +586,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
   if (animation.start === "withPrevious" && !animation.delayMs) {
     const lastPar = Array.from(mainChildren.childNodes)
       .reverse()
-      .find((node) => node.nodeType === Node.ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "par") as Element | undefined;
+      .find((node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "par") as Element | undefined;
     if (lastPar) {
       const lastParCtn = getOrCreateChild(lastPar, NS_P, "p:cTn");
       const lastParChildren = getOrCreateChild(lastParCtn, NS_P, "p:childTnLst");
@@ -611,7 +654,7 @@ function ensureNotesSlide(pkg: OpenXmlPackage, slidePath: string) {
   const notesMasterRelativeTarget = `../notesMasters/${notesMasterFilename}`;
 
   pkg.writeText(notesSlidePath, buildNotesSlideXml());
-  pkg.writeText(notesSlideRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPE_NOTES_MASTER}" Target="${notesMasterRelativeTarget}"/></Relationships>`);
+  pkg.writeText(notesSlideRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIP_TYPE_NOTES_MASTER}" Target="${notesMasterRelativeTarget}"/><Relationship Id="rId2" Type="${RELATIONSHIP_TYPE_SLIDE}" Target="../slides/slide${slideNumber}.xml"/></Relationships>`);
 
   const relationship = slideRelsDoc.createElementNS(slideRelsDoc.documentElement.namespaceURI, "Relationship");
   relationship.setAttribute("Id", nextRelationshipId(slideRelsDoc));
@@ -657,7 +700,7 @@ export function extractSlideTransitionFromBase64Presentation(base64: string): Sl
   const { slideDoc } = getFirstSlideDocument(pkg);
 
   const directTransition = Array.from(slideDoc.documentElement.childNodes).find(
-    (node) => node.nodeType === Node.ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "transition",
+    (node) => node.nodeType === ELEMENT_NODE && (node as Element).namespaceURI === NS_P && (node as Element).localName === "transition",
   ) as Element | undefined;
   const alternateTransition = getAlternateContentTransitionNodes(slideDoc)[0] || null;
   const transition = directTransition || alternateTransition;
@@ -685,10 +728,13 @@ export function setSlideTransitionInBase64Presentation(base64: string, definitio
   return pkg.toBase64();
 }
 
-export function addSlideAnimationInBase64Presentation(base64: string, animation: SlideAnimationDefinition) {
+export function addSlideAnimationInBase64Presentation(base64: string, animation: SlideAnimationDefinition, shapeIndex: number) {
   const pkg = new OpenXmlPackage(base64);
   const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
-  addSlideAnimationInDocument(slideDoc, animation);
+  addSlideAnimationInDocument(slideDoc, {
+    ...animation,
+    targetXmlShapeId: resolveAnimationTargetXmlShapeId(slideDoc, shapeIndex),
+  });
   pkg.writeText(slidePath, serializeXml(slideDoc));
   return pkg.toBase64();
 }
@@ -731,22 +777,14 @@ export async function replaceSlideWithMutatedOpenXml(
   await context.sync();
 
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
-    throw new Error(`Invalid slideIndex ${slideIndex}. Must be 0-${slides.items.length - 1}.`);
+    throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
   const sourceSlide = slides.items[slideIndex];
   sourceSlide.load("id");
-
-  let previousSlideId: string | undefined;
-  if (slideIndex > 0) {
-    const previousSlide = slides.items[slideIndex - 1];
-    previousSlide.load("id");
-  }
   await context.sync();
 
-  if (slideIndex > 0) {
-    previousSlideId = slides.items[slideIndex - 1].id;
-  }
+  const sourceSlideId = sourceSlide.id;
 
   const exported = sourceSlide.exportAsBase64();
   await context.sync();
@@ -754,17 +792,20 @@ export async function replaceSlideWithMutatedOpenXml(
 
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
-    ...(previousSlideId ? { targetSlideId: previousSlideId } : {}),
+    targetSlideId: sourceSlideId,
   });
   await context.sync();
 
-  slides.load("items");
+  const updatedSlides = context.presentation.slides;
+  updatedSlides.load("items/id");
   await context.sync();
-  const originalSlideAfterInsert = slides.items[slideIndex + 1];
-  if (!originalSlideAfterInsert) {
+
+  const originalSlide = updatedSlides.items.find((slide) => slide.id === sourceSlideId);
+  if (!originalSlide) {
     throw new Error("Failed to locate the original slide after Open XML round-trip insertion.");
   }
-  originalSlideAfterInsert.delete();
+
+  originalSlide.delete();
   await context.sync();
 }
 
@@ -777,7 +818,7 @@ export async function exportSlideAsBase64(context: PowerPoint.RequestContext, sl
   slides.load("items");
   await context.sync();
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
-    throw new Error(`Invalid slideIndex ${slideIndex}. Must be 0-${slides.items.length - 1}.`);
+    throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
   const exported = slides.items[slideIndex].exportAsBase64();

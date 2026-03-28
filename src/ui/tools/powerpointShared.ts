@@ -1,8 +1,56 @@
 import type { ToolResultFailure } from "./types";
 
-export function toolFailure(error: unknown): ToolResultFailure {
+export function toolFailure(error: unknown, hint?: string): ToolResultFailure {
   const message = error instanceof Error ? error.message : String(error);
-  return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+  const fullMessage = hint ? `${message} ${hint}` : message;
+  return { textResultForLlm: fullMessage, resultType: "failure", error: fullMessage, toolTelemetry: {} };
+}
+
+export function formatAvailableSlideIndexes(slideCount: number) {
+  if (slideCount <= 0) return "Presentation has no slides.";
+
+  const preview = Array.from({ length: Math.min(slideCount, 8) }, (_, index) => String(index)).join(", ");
+  return slideCount <= 8
+    ? `Available slideIndex values: ${preview}.`
+    : `Available slideIndex values: ${preview}, ... ${slideCount - 1}.`;
+}
+
+export function invalidSlideIndexMessage(slideIndex: number, slideCount: number) {
+  return `Invalid slideIndex ${slideIndex}. ${formatAvailableSlideIndexes(slideCount)}`;
+}
+
+export function formatAvailableShapeTargets(
+  slideIndex: number,
+  shapes: Array<{ id?: string | null; name?: string | null }>,
+) {
+  if (shapes.length === 0) {
+    return `Slide ${slideIndex + 1} has no shapes.`;
+  }
+
+  const preview = shapes
+    .slice(0, 6)
+    .map((shape, index) => {
+      const id = readOfficeValue(() => shape.id, "(missing)");
+      const name = readOfficeValue(() => shape.name, "");
+      return `shapeIndex ${index}: id=${id || "(missing)"}, name=${JSON.stringify(name || "")}`;
+    })
+    .join("; ");
+  const suffix = shapes.length > 6 ? "; ..." : "";
+
+  return `Available shapes on slide ${slideIndex + 1}: ${preview}${suffix}`;
+}
+
+export function roundTripRefreshHint() {
+  return "Hint: this can happen after an Open XML round-trip replaces a slide. Re-run get_presentation_overview or get_slide_shapes to refresh current slideIndex and shapeId values, then retry.";
+}
+
+export function roundTripSlideRefreshHint() {
+  return "Hint: this can happen after an Open XML round-trip replaces a slide. Re-run get_presentation_overview to refresh current slideIndex values, then retry.";
+}
+
+export function shouldAddRoundTripRefreshHint(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /object can not be found here|object cannot be found here|invalidobjectpath|item.*does not exist/i.test(message);
 }
 
 export function isPowerPointRequirementSetSupported(version: string) {
@@ -21,6 +69,15 @@ export function parseColor(value: string | null | undefined) {
   if (!value) return "(none)";
   if (value.startsWith("#")) return value;
   return /^[0-9A-Fa-f]{6}$/.test(value) ? `#${value}` : value;
+}
+
+export function readOfficeValue<T>(read: () => T, fallback: T): T {
+  try {
+    const value = read();
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export interface PowerPointShapeSummary {
@@ -62,7 +119,10 @@ export async function loadShapeSummaries(
   await context.sync();
 
   const placeholderFormats = includePlaceholders
-    ? shapes.map((shape) => shape.type === PowerPoint.ShapeType.placeholder ? shape.placeholderFormat : null)
+    ? shapes.map((shape) => readOfficeValue(
+      () => (shape.type === PowerPoint.ShapeType.placeholder ? shape.placeholderFormat : null),
+      null,
+    ))
     : shapes.map(() => null);
   if (includePlaceholders) {
     for (const placeholder of placeholderFormats) {
@@ -84,7 +144,10 @@ export async function loadShapeSummaries(
     line.load(["color", "weight", "dashStyle", "visible"]);
   }
 
-  const tables = shapes.map((shape) => shape.type === PowerPoint.ShapeType.table ? shape.getTable() : null);
+  const tables = shapes.map((shape) => readOfficeValue(
+    () => (shape.type === PowerPoint.ShapeType.table ? shape.getTable() : null),
+    null,
+  ));
   for (const table of tables) {
     table?.load(includeTableValues ? ["rowCount", "columnCount", "values"] : ["rowCount", "columnCount"]);
   }
@@ -99,31 +162,36 @@ export async function loadShapeSummaries(
 
   return shapes.map<PowerPointShapeSummary>((shape, index) => ({
     index,
-    id: shape.id,
-    name: shape.name || `(unnamed ${index})`,
-    type: String(shape.type),
-    left: shape.left,
-    top: shape.top,
-    width: shape.width,
-    height: shape.height,
-    rotation: shape.rotation,
-    zOrderPosition: shape.zOrderPosition,
-    visible: shape.visible,
-    text: includeText && textFrames[index] && !textFrames[index].isNullObject && textFrames[index].hasText ? textFrames[index].textRange.text || "" : undefined,
-    placeholderType: placeholderFormats[index]?.type ? String(placeholderFormats[index]?.type) : undefined,
-    placeholderContainedType: placeholderFormats[index]?.containedType ? String(placeholderFormats[index]?.containedType) : placeholderFormats[index] ? null : undefined,
-    altTextTitle: shape.altTextTitle || "",
-    altTextDescription: shape.altTextDescription || "",
-    fillColor: includeFormatting ? parseColor(fills[index]?.foregroundColor) : undefined,
-    fillType: includeFormatting && fills[index]?.type ? String(fills[index]?.type) : undefined,
-    lineColor: includeFormatting ? parseColor(lines[index]?.color) : undefined,
-    lineWeight: includeFormatting ? lines[index]?.weight : undefined,
-    lineDashStyle: includeFormatting && lines[index]?.dashStyle ? String(lines[index]?.dashStyle) : undefined,
+    id: readOfficeValue(() => shape.id, `(missing ${index})`),
+    name: readOfficeValue(() => shape.name, "") || `(unnamed ${index})`,
+    type: readOfficeValue(() => String(shape.type), "Unknown"),
+    left: readOfficeValue(() => shape.left, 0),
+    top: readOfficeValue(() => shape.top, 0),
+    width: readOfficeValue(() => shape.width, 0),
+    height: readOfficeValue(() => shape.height, 0),
+    rotation: readOfficeValue(() => shape.rotation, undefined),
+    zOrderPosition: readOfficeValue(() => shape.zOrderPosition, undefined),
+    visible: readOfficeValue(() => shape.visible, undefined),
+    text: includeText && textFrames[index] && !textFrames[index].isNullObject && textFrames[index].hasText
+      ? readOfficeValue(() => textFrames[index].textRange.text, "")
+      : undefined,
+    placeholderType: readOfficeValue(() => (placeholderFormats[index]?.type ? String(placeholderFormats[index]?.type) : undefined), undefined),
+    placeholderContainedType: readOfficeValue(
+      () => (placeholderFormats[index]?.containedType ? String(placeholderFormats[index]?.containedType) : placeholderFormats[index] ? null : undefined),
+      undefined,
+    ),
+    altTextTitle: readOfficeValue(() => shape.altTextTitle, ""),
+    altTextDescription: readOfficeValue(() => shape.altTextDescription, ""),
+    fillColor: includeFormatting ? parseColor(readOfficeValue(() => fills[index]?.foregroundColor, undefined)) : undefined,
+    fillType: includeFormatting ? readOfficeValue(() => (fills[index]?.type ? String(fills[index]?.type) : undefined), undefined) : undefined,
+    lineColor: includeFormatting ? parseColor(readOfficeValue(() => lines[index]?.color, undefined)) : undefined,
+    lineWeight: includeFormatting ? readOfficeValue(() => lines[index]?.weight, undefined) : undefined,
+    lineDashStyle: includeFormatting ? readOfficeValue(() => (lines[index]?.dashStyle ? String(lines[index]?.dashStyle) : undefined), undefined) : undefined,
     tableInfo: tables[index]
       ? {
-          rowCount: tables[index]!.rowCount,
-          columnCount: tables[index]!.columnCount,
-          values: includeTableValues ? tables[index]!.values : undefined,
+          rowCount: readOfficeValue(() => tables[index]!.rowCount, 0),
+          columnCount: readOfficeValue(() => tables[index]!.columnCount, 0),
+          values: includeTableValues ? readOfficeValue(() => tables[index]!.values, undefined) : undefined,
         }
       : undefined,
   }));

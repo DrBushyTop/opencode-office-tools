@@ -1,6 +1,6 @@
 import type { Tool } from "./types";
 import { clearSlideAnimationsInBase64Presentation, replaceSlideWithMutatedOpenXml } from "./powerpointOpenXml";
-import { toolFailure } from "./powerpointShared";
+import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 export const clearSlideAnimations: Tool = {
   name: "clear_slide_animations",
@@ -24,7 +24,7 @@ export const clearSlideAnimations: Tool = {
         return `Cleared all animations from slide ${slideIndex + 1} via an Open XML slide round-trip.`;
       });
     } catch (error: unknown) {
-      return toolFailure(error);
+      return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripSlideRefreshHint() : undefined);
     }
   },
 };

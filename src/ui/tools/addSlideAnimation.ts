@@ -1,34 +1,35 @@
 import type { Tool } from "./types";
 import { addSlideAnimationInBase64Presentation, replaceSlideWithMutatedOpenXml, type SlideAnimationDefinition } from "./powerpointOpenXml";
-import { toolFailure } from "./powerpointShared";
+import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 type AnimationArgs = SlideAnimationDefinition & { slideIndex: number; shapeIndex?: number; shapeId?: string };
 
-async function resolveShapeId(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string, shapeIndex?: number) {
+async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string, shapeIndex?: number) {
   const slides = context.presentation.slides;
   slides.load("items");
   await context.sync();
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
-    throw new Error(`Invalid slideIndex ${slideIndex}. Must be 0-${slides.items.length - 1}.`);
+    throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
   const slide = slides.items[slideIndex];
-  slide.shapes.load("items/id");
+  slide.shapes.load("items/id,name");
   await context.sync();
 
   if (shapeId) {
-    const match = slide.shapes.items.find((shape) => shape.id === shapeId);
+    const matchIndex = slide.shapes.items.findIndex((shape) => shape.id === shapeId);
+    const match = matchIndex >= 0 ? slide.shapes.items[matchIndex] : undefined;
     if (!match) {
-      throw new Error(`Shape ${shapeId} was not found on slide ${slideIndex + 1}.`);
+      throw new Error(`Shape ${shapeId} was not found on slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
     }
-    return shapeId;
+    return { shapeId, shapeIndex: matchIndex };
   }
 
   if (shapeIndex === undefined || !Number.isInteger(shapeIndex) || shapeIndex < 0 || shapeIndex >= slide.shapes.items.length) {
-    throw new Error(`Provide a valid shapeId or shapeIndex for slide ${slideIndex + 1}.`);
+    throw new Error(`Provide a valid shapeId or shapeIndex for slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
   }
 
-  return slide.shapes.items[shapeIndex].id;
+  return { shapeId: slide.shapes.items[shapeIndex].id, shapeIndex };
 }
 
 export const addSlideAnimation: Tool = {
@@ -80,15 +81,15 @@ export const addSlideAnimation: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        const resolvedShapeId = await resolveShapeId(context, animation.slideIndex, animation.shapeId, animation.shapeIndex);
+        const resolvedTarget = await resolveShapeTarget(context, animation.slideIndex, animation.shapeId, animation.shapeIndex);
         await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
           ...animation,
-          shapeId: resolvedShapeId,
-        }));
-        return `Added a ${animation.type} animation to slide ${animation.slideIndex + 1} targeting shape ${resolvedShapeId} via an Open XML slide round-trip.`;
+          shapeId: resolvedTarget.shapeId,
+        }, resolvedTarget.shapeIndex));
+        return `Added a ${animation.type} animation to slide ${animation.slideIndex + 1} targeting shape ${resolvedTarget.shapeId} via an Open XML slide round-trip.`;
       });
     } catch (error: unknown) {
-      return toolFailure(error);
+      return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripRefreshHint() : undefined);
     }
   },
 };
