@@ -17,6 +17,8 @@ const MessageSchema = z.object({
   text: z.string(),
   sender: z.enum(["user", "assistant", "tool", "thinking"]),
   timestamp: z.date(),
+  startedAt: z.date().optional(),
+  finishedAt: z.date().optional(),
   toolName: z.string().optional(),
   toolArgs: RecordValueSchema.optional(),
   toolResult: z.unknown().optional(),
@@ -37,6 +39,15 @@ const TaskToolArgsSchema = z.object({
 }).catchall(z.unknown());
 const SessionMessagePartSchema = z.object({
   type: z.string().optional(),
+  tool: z.string().optional(),
+  state: z.object({
+    status: z.string().optional(),
+    input: RecordValueSchema.optional(),
+    time: z.object({
+      start: z.number().optional(),
+      end: z.number().optional(),
+    }).partial().optional(),
+  }).passthrough().optional(),
 }).passthrough();
 const SessionMessageItemSchema = z.object({
   info: z.object({
@@ -75,18 +86,41 @@ function countTools(items: z.infer<typeof SessionMessageItemSchema>[]) {
   }, 0);
 }
 
+function lastDoneTool(items: z.infer<typeof SessionMessageItemSchema>[]) {
+  return items
+    .flatMap((item) => item.info?.role === "assistant" && Array.isArray(item.parts) ? item.parts : [])
+    .filter((part) => part.type === "tool" && !!part.tool)
+    .filter((part) => part.state?.status === "completed" || part.state?.status === "error")
+    .sort((a, b) => (a.state?.time?.end || a.state?.time?.start || 0) - (b.state?.time?.end || b.state?.time?.start || 0))
+    .at(-1);
+}
+
+function durationText(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function toolLine(toolName: string, args: Record<string, unknown>) {
+  return formatToolCall(toolName, args).description;
+}
+
 function toolCountText(count: number, running: boolean) {
   if (count === 0) return running ? "Waiting for first tool call" : "No tool calls used";
   const label = `${count} tool call${count === 1 ? "" : "s"}`;
   return running ? `${label} so far` : label;
 }
 
-function useTaskToolCount(sessionId: string, active: boolean) {
-  const [count, setCount] = useState<number | null>(null);
+function useTaskInfo(sessionId: string, active: boolean) {
+  const [state, setState] = useState<{ count: number | null; last: string }>({ count: null, last: "" });
 
   useEffect(() => {
     if (!sessionId) {
-      setCount(null);
+      setState({ count: null, last: "" });
       return;
     }
 
@@ -97,9 +131,15 @@ function useTaskToolCount(sessionId: string, active: boolean) {
         const response = await fetch(`/api/opencode/session/${encodeURIComponent(sessionId)}/messages`);
         if (!response.ok) return;
         const items = z.array(SessionMessageItemSchema).catch([]).parse(await response.json());
-        if (!cancelled) setCount(countTools(items));
+        const part = lastDoneTool(items);
+        if (!cancelled) {
+          setState({
+            count: countTools(items),
+            last: part?.tool ? toolLine(part.tool, part.state?.input || {}) : "",
+          });
+        }
       } catch {
-        if (!cancelled) setCount(null);
+        if (!cancelled) setState({ count: null, last: "" });
       }
     };
 
@@ -120,7 +160,7 @@ function useTaskToolCount(sessionId: string, active: boolean) {
     };
   }, [sessionId, active]);
 
-  return count;
+  return state;
 }
 
 interface MessageListProps {
@@ -225,7 +265,9 @@ const useStyles = makeStyles({
   messageAssistant: {
     alignSelf: "flex-start",
     maxWidth: "100%",
+    minWidth: 0,
     wordWrap: "break-word",
+    overflowWrap: "anywhere",
     display: "grid",
     gridTemplateColumns: "24px 1fr",
     gap: "10px",
@@ -261,6 +303,7 @@ const useStyles = makeStyles({
     alignSelf: "flex-start",
     width: "100%",
     maxWidth: "100%",
+    minWidth: 0,
     padding: "10px 12px",
     borderRadius: "12px",
     border: "1px solid rgba(130, 118, 255, 0.18)",
@@ -271,6 +314,7 @@ const useStyles = makeStyles({
   thinkingHeader: {
     display: "flex",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: "8px",
     marginBottom: "8px",
     fontSize: "12px",
@@ -281,10 +325,13 @@ const useStyles = makeStyles({
     fontWeight: 600,
     fontStyle: "normal",
     color: "#b28b63",
+    overflowWrap: "anywhere",
   },
   thinkingBody: {
+    minWidth: 0,
     lineHeight: "1.6",
     color: "var(--oc-text-muted)",
+    overflowWrap: "anywhere",
     "& p:first-child": {
       marginTop: 0,
     },
@@ -325,6 +372,7 @@ const useStyles = makeStyles({
     alignSelf: "flex-start",
     width: "100%",
     maxWidth: "100%",
+    minWidth: 0,
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
@@ -343,9 +391,11 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
+    minWidth: 0,
     gap: "12px",
   },
   taskBody: {
+    flex: 1,
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
@@ -354,24 +404,29 @@ const useStyles = makeStyles({
   taskTitle: {
     display: "flex",
     alignItems: "center",
+    minWidth: 0,
     gap: "8px",
     color: "var(--oc-text)",
     fontSize: "13px",
     fontWeight: 600,
+    overflowWrap: "anywhere",
   },
   taskMeta: {
     display: "flex",
     alignItems: "center",
+    minWidth: 0,
     gap: "8px",
     color: "var(--oc-text-muted)",
     fontSize: "12px",
     flexWrap: "wrap",
+    overflowWrap: "anywhere",
   },
   taskCount: {
     color: "#127d75",
     fontWeight: 600,
   },
   taskBadge: {
+    flexShrink: 0,
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
@@ -606,6 +661,19 @@ const TrafficCounter: React.FC = () => {
   );
 };
 
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+
+  return now;
+}
+
 const TaskToolMessage: React.FC<{
   message: Message;
   expanded: boolean;
@@ -617,8 +685,14 @@ const TaskToolMessage: React.FC<{
   const running = message.toolStatus === "running";
   const done = message.toolStatus === "completed";
   const failed = message.toolStatus === "error";
-  const count = useTaskToolCount(sessionId, running);
-  const summary = toolCountText(count ?? 0, running);
+  const info = useTaskInfo(sessionId, running);
+  const now = useNow(running);
+  const started = message.startedAt?.getTime() || message.timestamp.getTime();
+  const finished = message.finishedAt?.getTime() || (running ? now : message.timestamp.getTime());
+  const elapsed = durationText(Math.max(0, finished - started));
+  const meta = running
+    ? info.last || "Starting subagent work"
+    : [toolCountText(info.count ?? 0, false), elapsed].filter(Boolean).join(" • ");
 
   return (
     <div className={styles.messageTask} onClick={toggle} title="Click to show details">
@@ -629,8 +703,7 @@ const TaskToolMessage: React.FC<{
             <span>{summarizeTaskTool(message.toolArgs || {})}</span>
           </div>
           <div className={styles.taskMeta}>
-            <span className={styles.taskCount}>{summary}</span>
-            {sessionId && <span>session {sessionId.slice(0, 8)}</span>}
+            <span className={styles.taskCount}>{meta}</span>
           </div>
         </div>
 

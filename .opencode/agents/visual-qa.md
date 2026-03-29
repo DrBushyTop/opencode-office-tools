@@ -28,6 +28,7 @@ You review across all Office hosts: PowerPoint, Word, Excel, and OneNote.
 
 - Text overflowing shape boundaries or running off-slide
 - Shapes extending beyond the slide canvas (compare positions against slide dimensions)
+- Shapes overlapping in ways that obscure content (unless intentional)
 - Insufficient margins or padding inside text boxes (text touching edges)
 - Uneven spacing between elements that should be evenly distributed
 - Misaligned elements that appear intended to be aligned (left edges, centers, baselines)

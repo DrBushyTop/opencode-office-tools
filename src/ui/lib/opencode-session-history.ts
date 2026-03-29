@@ -65,6 +65,8 @@ export function mapAssistantParts(parts: unknown = [], fallbackTime?: number): M
         id,
         text: JSON.stringify(part.state?.input || {}, null, 2),
         sender: "tool" as const,
+        startedAt: typeof part.state?.time?.start === "number" ? new Date(part.state.time.start) : undefined,
+        finishedAt: typeof part.state?.time?.end === "number" ? new Date(part.state.time.end) : undefined,
         toolName: part.tool,
         toolArgs: part.state?.input || {},
         toolResult: part.state?.output,
