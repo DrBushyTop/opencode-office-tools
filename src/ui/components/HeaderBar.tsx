@@ -1,6 +1,16 @@
 import * as React from "react";
-import { Button, Tooltip, Switch, makeStyles, Combobox, Option } from "@fluentui/react-components";
-import { Compose24Regular, History24Regular } from "@fluentui/react-icons";
+import {
+  Button,
+  Combobox,
+  Option,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
+  Switch,
+  Tooltip,
+  makeStyles,
+} from "@fluentui/react-components";
+import { Compose24Regular, History24Regular, Settings24Regular } from "@fluentui/react-icons";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo } from "../lib/opencode-client";
 
@@ -13,9 +23,13 @@ interface HeaderBarProps {
   onModelChange: (model: ModelType) => void;
   models: ModelInfo[];
   debugEnabled: boolean;
-  onDebugChange: (v: boolean) => void;
+  onDebugChange: (value: boolean) => void;
   showThinking: boolean;
-  onShowThinkingChange: (v: boolean) => void;
+  onShowThinkingChange: (value: boolean) => void;
+  showToolResponses: boolean;
+  onShowToolResponsesChange: (value: boolean) => void;
+  qaSubagentModel: ModelType;
+  onQaSubagentModelChange: (model: ModelType) => void;
   subtitle?: string;
 }
 
@@ -30,30 +44,17 @@ const useStyles = makeStyles({
     borderBottom: "1px solid var(--oc-border)",
     background: "var(--oc-bg)",
   },
-  leftSection: {
+  left: {
     display: "flex",
     flexDirection: "column",
-    gap: "3px",
+    gap: "6px",
     minWidth: 0,
     flex: 1,
-  },
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    minWidth: 0,
   },
   title: {
     fontSize: "12px",
     fontWeight: "600",
     color: "var(--oc-text)",
-  },
-  debugRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    fontSize: "11px",
-    color: "var(--oc-text-muted)",
   },
   subtitle: {
     fontSize: "11px",
@@ -73,13 +74,13 @@ const useStyles = makeStyles({
       background: "var(--oc-bg-soft-hover)",
     },
   },
-  buttonGroup: {
+  group: {
     display: "flex",
     alignItems: "center",
     gap: "6px",
     flexShrink: 0,
   },
-  iconButton: {
+  icon: {
     minWidth: "30px",
     width: "30px",
     height: "30px",
@@ -94,7 +95,7 @@ const useStyles = makeStyles({
       border: "1px solid var(--oc-border)",
     },
   },
-  clearButton: {
+  primary: {
     backgroundColor: "var(--oc-accent)",
     color: "white",
     borderRadius: "8px",
@@ -110,7 +111,55 @@ const useStyles = makeStyles({
       backgroundColor: "var(--oc-accent-strong)",
     },
   },
+  menu: {
+    width: "280px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    padding: "12px",
+    background: "var(--oc-bg)",
+    color: "var(--oc-text)",
+    border: "1px solid var(--oc-border)",
+    borderRadius: "12px",
+    boxShadow: "var(--oc-shadow)",
+  },
+  menuTitle: {
+    fontSize: "12px",
+    fontWeight: "700",
+    color: "var(--oc-text)",
+  },
+  menuHint: {
+    fontSize: "11px",
+    color: "var(--oc-text-faint)",
+    lineHeight: "1.5",
+  },
+  item: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+  },
+  label: {
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "var(--oc-text)",
+  },
+  help: {
+    fontSize: "11px",
+    color: "var(--oc-text-faint)",
+    lineHeight: "1.5",
+  },
 });
+
+function label(models: ModelInfo[], model: ModelType) {
+  if (!model) return "Same as primary model";
+  return models.find((item) => item.key === model)?.label || model;
+}
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   onNewChat,
@@ -122,42 +171,47 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onDebugChange,
   showThinking,
   onShowThinkingChange,
+  showToolResponses,
+  onShowToolResponsesChange,
+  qaSubagentModel,
+  onQaSubagentModelChange,
   subtitle,
 }) => {
   const styles = useStyles();
   const [value, setValue] = React.useState("");
   const [open, setOpen] = React.useState(false);
-  const selectedLabel = models.find(m => m.key === selectedModel)?.label || selectedModel;
+  const [qaValue, setQaValue] = React.useState("");
+  const [qaOpen, setQaOpen] = React.useState(false);
+  const selectedLabel = label(models, selectedModel);
+  const qaLabel = label(models, qaSubagentModel);
   const items = React.useMemo(() => filterModels(models, open ? value : ""), [models, open, value]);
+  const qaItems = React.useMemo(() => filterModels(models, qaOpen ? qaValue : ""), [models, qaOpen, qaValue]);
 
   React.useEffect(() => {
-    if (open) return;
-    setValue(selectedLabel);
-  }, [open, selectedModel]);
+    if (!open) setValue(selectedLabel);
+  }, [open, selectedLabel]);
+
+  React.useEffect(() => {
+    if (!qaOpen) setQaValue(qaLabel);
+  }, [qaLabel, qaOpen]);
 
   return (
     <div className={styles.header}>
-      <div className={styles.leftSection}>
-        <div className={styles.titleRow}>
-          <div className={styles.title}>OpenCode</div>
-        </div>
+      <div className={styles.left}>
+        <div className={styles.title}>OpenCode</div>
         <Combobox
           className={styles.dropdown}
           appearance="filled-darker"
           freeform
           placeholder="Search models"
           value={value}
-          onChange={(event) => {
-            setValue((event.target as HTMLInputElement).value);
-          }}
+          onChange={(event) => setValue((event.target as HTMLInputElement).value)}
           onOpenChange={(_, data) => {
             setOpen(data.open);
             setValue(data.open ? "" : selectedLabel);
           }}
           onOptionSelect={(_, data) => {
-            if (data.optionValue && data.optionValue !== selectedModel) {
-              onModelChange(data.optionValue as ModelType);
-            }
+            if (data.optionValue && data.optionValue !== selectedModel) onModelChange(data.optionValue as ModelType);
             setOpen(false);
             setValue(data.optionText || selectedLabel);
           }}
@@ -168,35 +222,74 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </Option>
           ))}
         </Combobox>
-        {/* Debug toggle — hidden by default, enable via localStorage: opencode-debug-visible=true */}
-        {localStorage.getItem("opencode-debug-visible") === "true" && (
-          <div className={styles.debugRow}>
-            <Switch
-              checked={debugEnabled}
-              onChange={(_, data) => onDebugChange(data.checked)}
-              label="Debug"
-              style={{ fontSize: "11px" }}
-            />
-          </div>
-        )}
-        <div className={styles.debugRow}>
-          <Switch
-            checked={showThinking}
-            onChange={(_, data) => onShowThinkingChange(data.checked)}
-            label="Thinking"
-            style={{ fontSize: "11px" }}
-          />
-        </div>
         {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
       </div>
-      <div className={styles.buttonGroup}>
+
+      <div className={styles.group}>
+        <Popover positioning="below-end">
+          <PopoverTrigger disableButtonEnhancement>
+            <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
+          </PopoverTrigger>
+          <PopoverSurface className={styles.menu}>
+            <div className={styles.menuTitle}>Options</div>
+            <div className={styles.item}>
+              <div className={styles.row}>
+                <div className={styles.label}>show thinking</div>
+                <Switch checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
+              </div>
+            </div>
+            <div className={styles.item}>
+              <div className={styles.row}>
+                <div className={styles.label}>show raw tool responses in expand</div>
+                <Switch checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
+              </div>
+            </div>
+            <div className={styles.item}>
+              <div className={styles.row}>
+                <div className={styles.label}>show debug events</div>
+                <Switch checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
+              </div>
+            </div>
+            <div className={styles.item}>
+              <div className={styles.label}>qa subagent model</div>
+              <Combobox
+                className={styles.dropdown}
+                appearance="filled-darker"
+                freeform
+                placeholder="Same as primary model"
+                value={qaValue}
+                onChange={(event) => setQaValue((event.target as HTMLInputElement).value)}
+                onOpenChange={(_, data) => {
+                  setQaOpen(data.open);
+                  setQaValue(data.open ? "" : qaLabel);
+                }}
+                onOptionSelect={(_, data) => {
+                  onQaSubagentModelChange((data.optionValue as ModelType) || "");
+                  setQaOpen(false);
+                  setQaValue(data.optionText || qaLabel);
+                }}
+              >
+                <Option value="" text="Same as primary model">
+                  Same as primary model
+                </Option>
+                {qaItems.map((model) => (
+                  <Option key={model.key} value={model.key} text={model.label}>
+                    {model.label}
+                  </Option>
+                ))}
+              </Combobox>
+              <div className={styles.help}>Uses the selected model list from OpenCode. Leaving this on the default follows the active chat model.</div>
+            </div>
+            <div className={styles.menuHint}>UI options are kept locally in the add-in. The QA subagent model is stored in OpenCode config so it persists across sessions.</div>
+          </PopoverSurface>
+        </Popover>
         <Tooltip content="History" relationship="label">
           <Button
             icon={<History24Regular />}
             appearance="subtle"
             onClick={onShowHistory}
             aria-label="History"
-            className={styles.iconButton}
+            className={styles.icon}
           />
         </Tooltip>
         <Tooltip content="New chat" relationship="label">
@@ -204,7 +297,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             icon={<Compose24Regular />}
             onClick={onNewChat}
             aria-label="New chat"
-            className={styles.clearButton}
+            className={styles.primary}
           />
         </Tooltip>
       </div>

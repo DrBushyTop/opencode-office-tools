@@ -212,6 +212,25 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.get('/opencode/config', async (req, res) => {
+    try {
+      res.json(await runtime.request('/config'));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.patch('/opencode/config', async (req, res) => {
+    try {
+      res.json(await runtime.request('/config', {
+        method: 'PATCH',
+        body: req.body || {},
+      }));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.get('/opencode/sessions', async (req, res) => {
     try {
       const host = String(req.query.host || 'word');

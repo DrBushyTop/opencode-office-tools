@@ -13,6 +13,11 @@ export interface SessionInfo {
   parentID?: string | null;
 }
 
+export interface OpencodeConfig {
+  agent?: Record<string, { model?: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
 interface PromptPart {
   type: "text" | "file";
   text?: string;
@@ -70,6 +75,18 @@ export class OpencodeClient {
   async abortSession(sessionId: string) {
     return readJson<unknown>(`/api/opencode/session/${sessionId}/abort`, {
       method: "POST",
+    });
+  }
+
+  async getConfig() {
+    return readJson<OpencodeConfig>("/api/opencode/config");
+  }
+
+  async updateConfig(config: OpencodeConfig) {
+    return readJson<OpencodeConfig>("/api/opencode/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
     });
   }
 

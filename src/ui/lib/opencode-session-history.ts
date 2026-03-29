@@ -58,6 +58,8 @@ export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Mes
         sender: "tool" as const,
         toolName: part.tool,
         toolArgs: part.state?.input || {},
+        toolResult: part.state?.output,
+        toolError: part.state?.error,
         timestamp: time,
       }];
     }
