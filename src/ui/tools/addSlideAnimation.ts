@@ -121,24 +121,47 @@ export const addSlideAnimation: Tool = {
           for (const sid of shapeIds) {
             resolved.push(await resolveShapeTarget(context, animation.slideIndex, sid));
           }
-          await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) =>
+          const roundTrip = await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) =>
             addSlideAnimationBatchInBase64Presentation(
               base64,
               { ...animation, shapeId: resolved[0].shapeId },
               resolved.map((r) => r.shapeIndex),
             ),
           );
-          return `Added ${animation.type} animation to slide ${animation.slideIndex + 1} targeting ${resolved.length} shapes (${resolved.map((r) => r.shapeId).join(", ")}) via an Open XML slide round-trip.`;
+          const refreshedShapeIds = resolved.map((entry) => roundTrip.shapeIdMap?.[entry.shapeId] || entry.shapeId);
+          return {
+            resultType: "success",
+            textResultForLlm: `Added ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting ${resolved.length} shapes.`,
+            slideIndex: roundTrip.finalSlideIndex,
+            slideId: roundTrip.replacementSlideId,
+            shapeIds: refreshedShapeIds,
+            toolTelemetry: {
+              ...roundTrip,
+              shapeIds: refreshedShapeIds,
+            },
+          };
         }
 
         // Single shape mode
         const singleId = isBatch ? shapeIds![0] : animation.shapeId as string | number | undefined;
         const resolvedTarget = await resolveShapeTarget(context, animation.slideIndex, singleId, animation.shapeIndex);
-        await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
+        const roundTrip = await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
           ...animation,
           shapeId: resolvedTarget.shapeId,
         }, resolvedTarget.shapeIndex));
-        return `Added a ${animation.type} animation to slide ${animation.slideIndex + 1} targeting shape ${resolvedTarget.shapeId} via an Open XML slide round-trip.`;
+        return {
+          resultType: "success",
+          textResultForLlm: `Added a ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting shape ${resolvedTarget.shapeId}.`,
+          slideIndex: roundTrip.finalSlideIndex,
+          slideId: roundTrip.replacementSlideId,
+          shapeId: resolvedTarget.shapeId,
+          refreshedShapeId: roundTrip.shapeIdMap?.[resolvedTarget.shapeId] || resolvedTarget.shapeId,
+          toolTelemetry: {
+            ...roundTrip,
+            shapeId: resolvedTarget.shapeId,
+            refreshedShapeId: roundTrip.shapeIdMap?.[resolvedTarget.shapeId] || resolvedTarget.shapeId,
+          },
+        };
       });
     } catch (error: unknown) {
       return toolFailure(error, shouldAddRoundTripShapeTargetRefreshHint(error) ? roundTripRefreshHint() : undefined);

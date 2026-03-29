@@ -13,8 +13,14 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("excel", "manage_range", { action: "filter", range: "A1:C10", filterOn: "Values", filterValues: ["North"], columnIndex: 0 })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide", { action: "clear", slideIndex: 0 })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide", { action: "create", targetIndex: 0 })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "get_presentation_structure", { format: "both" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "update", slideIndex: 0, shapeId: "shape-1", text: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "create", slideIndex: 0, shapeType: "line", width: -20, height: 10 })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "insertImage", slideIndex: 0, imageUrl: "https://example.com/a.png" })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_table", { action: "create", slideIndex: 0, values: [["A", 1, true]] })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_chart", { action: "create", slideIndex: 0, chartType: "column", data: [{ label: "Jan", value: 10 }] })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "insert_business_layout", { layoutType: "timeline", items: [{ title: "Kickoff" }] })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_template", { layoutId: "layout-1", bindings: [{ placeholderType: "Title", text: "Hello" }] })).not.toThrow();
     expect(() => validateOfficeToolCall("onenote", "get_page_content", { format: "summary" })).not.toThrow();
     expect(() => validateOfficeToolCall("onenote", "set_note_selection", { content: "Hello", coercionType: "text" })).not.toThrow();
     expect(() => validateOfficeToolCall("onenote", "navigate_to_page", { pageId: "page-1" })).not.toThrow();
@@ -33,6 +39,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("onenote", "navigate_to_page", {})).toThrow(/exactly one/);
     expect(() => validateOfficeToolCall("onenote", "navigate_to_page", { pageId: "page-1", clientUrl: "https://example.invalid" })).toThrow(/exactly one/);
     expect(() => validateOfficeToolCall("word", "get_document_part", { address: "x", extra: true })).toThrow(/Unexpected args.extra/);
+    expect(() => validateOfficeToolCall("powerpoint", "get_presentation_structure", { format: "yaml" })).toThrow(/expected one of/);
     expect(() => validateOfficeToolCall("word", "__proto__", {})).toThrow(/Unknown Office tool/);
   });
 });

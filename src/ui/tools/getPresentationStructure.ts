@@ -2,26 +2,112 @@ import type { Tool } from "./types";
 import {
   isPowerPointRequirementSetSupported,
   loadShapeSummaries,
+  loadThemeColors,
+  parseColor,
   readOfficeValue,
-  supportsPowerPointPlaceholders,
   summarizePlainText,
+  supportsPowerPointPlaceholders,
   toolFailure,
+  type PowerPointThemeColors,
 } from "./powerpointShared";
 
-const themeColors = [
-  "Dark1",
-  "Light1",
-  "Dark2",
-  "Light2",
-  "Accent1",
-  "Accent2",
-  "Accent3",
-  "Accent4",
-  "Accent5",
-  "Accent6",
-  "Hyperlink",
-  "FollowedHyperlink",
-] as const;
+type StructureFormat = "summary" | "structured" | "both";
+
+interface GetPresentationStructureArgs {
+  format?: StructureFormat;
+}
+
+interface PresentationStructureShapeSummary {
+  id: string;
+  name: string;
+  type: string;
+  text?: string;
+  placeholderType?: string;
+  placeholderContainedType?: string | null;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface PresentationLayoutSummary {
+  id: string;
+  name: string;
+  type: string;
+  placeholders: PresentationStructureShapeSummary[];
+  background?: {
+    followsMaster?: boolean;
+    graphicsHidden?: boolean;
+  };
+}
+
+interface PresentationMasterSummary {
+  id: string;
+  name: string;
+  themeColors?: PowerPointThemeColors;
+  backgroundFillType?: string;
+  placeholders: PresentationStructureShapeSummary[];
+  layouts: PresentationLayoutSummary[];
+}
+
+function toShapeSummary(shape: Awaited<ReturnType<typeof loadShapeSummaries>>[number]): PresentationStructureShapeSummary {
+  return {
+    id: shape.id,
+    name: shape.name,
+    type: shape.type,
+    text: shape.text,
+    placeholderType: shape.placeholderType,
+    placeholderContainedType: shape.placeholderContainedType,
+    left: shape.left,
+    top: shape.top,
+    width: shape.width,
+    height: shape.height,
+  };
+}
+
+function buildSummaryText(data: {
+  slideCount: number;
+  slideDimensions?: { widthPoints: number; heightPoints: number; widthInches: number; heightInches: number };
+  selectedSlideIds: string[];
+  selectedShapeIds: string[];
+  masters: PresentationMasterSummary[];
+  supportsPlaceholders: boolean;
+}) {
+  const lines: string[] = [
+    `Slides: ${data.slideCount}`,
+    ...(data.slideDimensions
+      ? [`Slide dimensions: ${data.slideDimensions.widthInches.toFixed(2)}" x ${data.slideDimensions.heightInches.toFixed(2)}" (${data.slideDimensions.widthPoints}pt x ${data.slideDimensions.heightPoints}pt)`]
+      : []),
+    `Slide masters: ${data.masters.length}`,
+    `Placeholder metadata: ${data.supportsPlaceholders ? "supported" : "not supported on this host"}`,
+    `Selected slides: ${data.selectedSlideIds.length ? data.selectedSlideIds.join(", ") : "(none)"}`,
+    `Selected shapes: ${data.selectedShapeIds.length ? data.selectedShapeIds.join(", ") : "(none)"}`,
+  ];
+
+  for (const master of data.masters) {
+    lines.push("", `Master ${JSON.stringify(master.name)} (${master.id}):`);
+    if (master.themeColors) {
+      const colorPairs = Object.entries(master.themeColors).map(([key, value]) => `${key}=${value}`);
+      lines.push(`- Theme colors: ${colorPairs.join(", ")}`);
+    }
+    if (master.backgroundFillType) {
+      lines.push(`- Master background fill: ${master.backgroundFillType}`);
+    }
+    lines.push(`- Master placeholders: ${master.placeholders.length ? master.placeholders.map((shape) => `${shape.placeholderType}:${shape.id}`).join(", ") : "(none)"}`);
+
+    for (const layout of master.layouts) {
+      const placeholderText = layout.placeholders.length
+        ? layout.placeholders.map((shape) => `${shape.placeholderType}:${summarizePlainText(shape.text || shape.name, 40)}`).join(" | ")
+        : "(no placeholders)";
+      lines.push(`  - Layout ${JSON.stringify(layout.name)} (${layout.id}, ${layout.type}): ${placeholderText}`);
+      if (layout.background) {
+        lines.push(`    background follows master=${layout.background.followsMaster ? "yes" : "no"}, graphics hidden=${layout.background.graphicsHidden ? "yes" : "no"}`);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
 
 export const getPresentationStructure: Tool = {
   name: "get_presentation_structure",
@@ -31,14 +117,22 @@ Returns:
 - slide master and layout ids/names
 - placeholder inventory on masters and layouts
 - theme colors and background info when supported
-- selected slide ids and selected shape ids when supported`,
+- selected slide ids and selected shape ids when supported
+- optional structured metadata for template-aware generation`,
   parameters: {
     type: "object",
-    properties: {},
+    properties: {
+      format: {
+        type: "string",
+        enum: ["summary", "structured", "both"],
+        description: "Response format. summary returns readable text, structured returns machine-usable metadata, both returns both.",
+      },
+    },
   },
-  handler: async () => {
+  handler: async (args) => {
     try {
       return await PowerPoint.run(async (context) => {
+        const { format = "summary" } = (args || {}) as GetPresentationStructureArgs;
         const presentation = context.presentation;
         const slideMasters = presentation.slideMasters;
         const slides = presentation.slides;
@@ -47,7 +141,7 @@ Returns:
         const supportsThemes = isPowerPointRequirementSetSupported("1.10");
 
         slideMasters.load("items");
-        slides.load("items");
+        slides.load("items/id");
         await context.sync();
 
         const selectedSlides = supportsSelection ? presentation.getSelectedSlides() : null;
@@ -64,47 +158,27 @@ Returns:
         }
         await context.sync();
 
-        // Read slide dimensions if supported (PowerPointApi 1.10)
-        let slideDimensions = "";
+        let slideDimensions: { widthPoints: number; heightPoints: number; widthInches: number; heightInches: number } | undefined;
         if (supportsThemes) {
           const pageSetup = presentation.pageSetup;
           pageSetup.load(["slideWidth", "slideHeight"]);
           await context.sync();
-          const widthInches = pageSetup.slideWidth / 72;
-          const heightInches = pageSetup.slideHeight / 72;
-          slideDimensions = `Slide dimensions: ${widthInches.toFixed(2)}" × ${heightInches.toFixed(2)}" (${pageSetup.slideWidth}pt × ${pageSetup.slideHeight}pt)`;
+          slideDimensions = {
+            widthPoints: pageSetup.slideWidth,
+            heightPoints: pageSetup.slideHeight,
+            widthInches: pageSetup.slideWidth / 72,
+            heightInches: pageSetup.slideHeight / 72,
+          };
         }
 
-        const lines: string[] = [
-          `Slides: ${slides.items.length}`,
-          ...(slideDimensions ? [slideDimensions] : []),
-          `Slide masters: ${slideMasters.items.length}`,
-          `Placeholder metadata: ${supportsPlaceholders ? "supported" : "not supported on this host"}`,
-        ];
+        const selectedSlideIds = selectedSlides ? selectedSlides.items.map((slide) => slide.id || "(unloaded)") : [];
+        const selectedShapeIds = selectedShapes ? selectedShapes.items.map((shape) => shape.id || "(unloaded)") : [];
 
-        if (selectedSlides) {
-          const selectedSlideIds = selectedSlides.items.map((slide) => slide.id || "(unloaded)");
-          lines.push(`Selected slides: ${selectedSlideIds.length ? selectedSlideIds.join(", ") : "(none)"}`);
-        }
-        if (selectedShapes) {
-          const selectedShapeIds = selectedShapes.items.map((shape) => shape.id || "(unloaded)");
-          lines.push(`Selected shapes: ${selectedShapeIds.length ? selectedShapeIds.join(", ") : "(none)"}`);
-        }
-
+        const masters: PresentationMasterSummary[] = [];
         for (const master of slideMasters.items) {
           const masterShapes = await loadShapeSummaries(context, master.shapes.items, { includeText: true, includeFormatting: false, includeTableValues: false });
-          const masterPlaceholders = masterShapes.filter((shape) => Boolean(shape.placeholderType));
-          const masterName = readOfficeValue(() => master.name, "");
-          const masterId = readOfficeValue(() => master.id, "(missing)");
-          lines.push("", `Master ${JSON.stringify(masterName)} (${masterId}):`);
-          if (supportsThemes) {
-            const colorValues = themeColors.map((color) => ({ color: String(color), value: master.themeColorScheme.getThemeColor(color) }));
-            await context.sync();
-            const colorPairs = colorValues.map((entry) => `${entry.color}=${entry.value.value}`);
-            lines.push(`- Theme colors: ${colorPairs.join(", ")}`);
-            lines.push(`- Master background fill: ${master.background.fill.type}`);
-          }
-          lines.push(`- Master placeholders: ${masterPlaceholders.length ? masterPlaceholders.map((shape) => `${shape.placeholderType}:${shape.id}`).join(", ") : "(none)"}`);
+          const masterPlaceholders = masterShapes.filter((shape) => Boolean(shape.placeholderType)).map(toShapeSummary);
+          const layouts: PresentationLayoutSummary[] = [];
 
           for (const layout of master.layouts.items) {
             layout.shapes.load("items");
@@ -116,18 +190,81 @@ Returns:
 
           for (const layout of master.layouts.items) {
             const layoutShapes = await loadShapeSummaries(context, layout.shapes.items, { includeText: true, includeFormatting: false, includeTableValues: false });
-            const placeholders = layoutShapes.filter((shape) => Boolean(shape.placeholderType));
-            const layoutName = readOfficeValue(() => layout.name, "");
-            const layoutId = readOfficeValue(() => layout.id, "(missing)");
-            const layoutType = readOfficeValue(() => String(layout.type), "Unknown");
-            lines.push(`  - Layout ${JSON.stringify(layoutName)} (${layoutId}, ${layoutType}): ${placeholders.length ? placeholders.map((shape) => `${shape.placeholderType}:${summarizePlainText(shape.text || shape.name, 40)}`).join(" | ") : "(no placeholders)"}`);
-            if (supportsThemes) {
-              lines.push(`    background follows master=${layout.background.isMasterBackgroundFollowed ? "yes" : "no"}, graphics hidden=${layout.background.areBackgroundGraphicsHidden ? "yes" : "no"}`);
-            }
+            layouts.push({
+              id: readOfficeValue(() => layout.id, "(missing)"),
+              name: readOfficeValue(() => layout.name, ""),
+              type: readOfficeValue(() => String(layout.type), "Unknown"),
+              placeholders: layoutShapes.filter((shape) => Boolean(shape.placeholderType)).map(toShapeSummary),
+              background: supportsThemes
+                ? {
+                    followsMaster: readOfficeValue(() => layout.background.isMasterBackgroundFollowed, undefined),
+                    graphicsHidden: readOfficeValue(() => layout.background.areBackgroundGraphicsHidden, undefined),
+                  }
+                : undefined,
+            });
           }
+
+          masters.push({
+            id: readOfficeValue(() => master.id, "(missing)"),
+            name: readOfficeValue(() => master.name, ""),
+            themeColors: supportsThemes ? await loadThemeColors(context, master) : undefined,
+            backgroundFillType: supportsThemes ? readOfficeValue(() => String(master.background.fill.type), undefined) : undefined,
+            placeholders: masterPlaceholders,
+            layouts,
+          });
         }
 
-        return lines.join("\n");
+        const structure = {
+          slideCount: slides.items.length,
+          slideDimensions,
+          selectedSlideIds,
+          selectedShapeIds,
+          activeSlideId: selectedSlideIds[0],
+          activeSlideIndex: selectedSlideIds.length
+            ? slides.items.findIndex((slide) => slide.id === selectedSlideIds[0])
+            : undefined,
+          masters,
+        };
+
+        const summary = buildSummaryText({
+          slideCount: structure.slideCount,
+          slideDimensions: structure.slideDimensions,
+          selectedSlideIds,
+          selectedShapeIds,
+          masters,
+          supportsPlaceholders,
+        });
+
+        if (format === "structured") {
+          return {
+            resultType: "success",
+            textResultForLlm: summary,
+            structure,
+            toolTelemetry: {
+              slideCount: structure.slideCount,
+              masterCount: structure.masters.length,
+              selectedSlideIds,
+              selectedShapeIds,
+            },
+          };
+        }
+
+        if (format === "both") {
+          return {
+            resultType: "success",
+            textResultForLlm: summary,
+            summary,
+            structure,
+            toolTelemetry: {
+              slideCount: structure.slideCount,
+              masterCount: structure.masters.length,
+              selectedSlideIds,
+              selectedShapeIds,
+            },
+          };
+        }
+
+        return summary;
       });
     } catch (error: unknown) {
       return toolFailure(error);

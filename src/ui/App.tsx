@@ -17,6 +17,7 @@ import { createOfficeToolBridge } from "./lib/office-tool-bridge";
 import { makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
+import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
 import { formatOfficeToolActivity } from "../shared/office-tool-registry";
 import {
@@ -236,7 +237,53 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
           ? "OneNote"
         : "Office";
 
-  return `The user's Microsoft ${hostName} document is currently open. Always operate on the open document through the available tools.`;
+  const base = `The user's Microsoft ${hostName} document is currently open. Always operate on the open document through the available tools.`;
+  if (host !== Office.HostType.PowerPoint) return base;
+
+  const snapshot = (() => {
+    try {
+      const raw = localStorage.getItem("opencode-powerpoint-context");
+      return raw ? JSON.parse(raw) as PowerPointContextSnapshot : null;
+    } catch {
+      return null;
+    }
+  })();
+  if (!snapshot) return base;
+
+  const contextBits = [
+    snapshot.activeSlideIndex !== undefined ? `active slide index: ${snapshot.activeSlideIndex}` : "active slide index: unknown",
+    `selected slide ids: ${snapshot.selectedSlideIds.length ? snapshot.selectedSlideIds.join(", ") : "none"}`,
+    `selected shape ids: ${snapshot.selectedShapeIds.length ? snapshot.selectedShapeIds.join(", ") : "none"}`,
+  ];
+  return `${base} Current PowerPoint context: ${contextBits.join("; ")}.`;
+}
+
+async function fetchPowerPointContextSnapshot(): Promise<PowerPointContextSnapshot | null> {
+  if (Office.context.host !== Office.HostType.PowerPoint) return null;
+  if (!Office.context.requirements.isSetSupported("PowerPointApi", "1.5")) return null;
+
+  return await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items/id");
+
+    const selectedSlides = context.presentation.getSelectedSlides();
+    const selectedShapes = context.presentation.getSelectedShapes();
+    selectedSlides.load("items/id");
+    selectedShapes.load("items/id");
+    await context.sync();
+
+    const selectedSlideIds = selectedSlides.items.map((slide) => slide.id || "").filter(Boolean);
+    const selectedShapeIds = selectedShapes.items.map((shape) => shape.id || "").filter(Boolean);
+    const activeSlideId = selectedSlideIds[0];
+    const activeSlideIndex = activeSlideId ? slides.items.findIndex((slide) => slide.id === activeSlideId) : undefined;
+
+    return {
+      selectedSlideIds,
+      selectedShapeIds,
+      activeSlideId,
+      activeSlideIndex: activeSlideIndex !== undefined && activeSlideIndex >= 0 ? activeSlideIndex : undefined,
+    };
+  }).catch(() => null);
 }
 
 function toPromptParts(text: string, images: Array<{ path: string; name: string; mime: string }>) {
@@ -275,6 +322,7 @@ export const App: React.FC = () => {
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
+  const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const isDarkMode = useIsDarkMode();
   const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
@@ -316,6 +364,43 @@ export const App: React.FC = () => {
     return () => {
       void bridge.stop();
     };
+  }, []);
+
+  useEffect(() => {
+    if (officeHost !== "powerpoint") {
+      setPptContext(null);
+      setPowerPointContextSnapshot(null);
+      localStorage.removeItem("opencode-powerpoint-context");
+      return;
+    }
+
+    const update = async () => {
+      const snapshot = await fetchPowerPointContextSnapshot();
+      setPptContext(snapshot);
+      setPowerPointContextSnapshot(snapshot);
+      if (snapshot) {
+        localStorage.setItem("opencode-powerpoint-context", JSON.stringify(snapshot));
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void update();
+    }, 2000);
+    void update();
+    return () => window.clearInterval(timer);
+  }, [officeHost]);
+
+  useEffect(() => {
+    const target = localStorage.getItem("navigationTarget");
+    if (!target) return;
+    localStorage.removeItem("navigationTarget");
+    if (target === "edit-selection") {
+      setInputValue("Edit the current PowerPoint selection using the selected shapes and slide context.");
+    } else if (target === "insert-timeline") {
+      setInputValue("Insert a project timeline on the current slide using the deck template when possible.");
+    } else if (target === "insert-estimate-table") {
+      setInputValue("Insert an estimate summary table on the current slide using editable native PowerPoint content.");
+    }
   }, []);
 
   useEffect(() => {
@@ -686,6 +771,22 @@ export const App: React.FC = () => {
     );
   }
 
+  const powerpointContextLabel = officeHost === "powerpoint"
+    ? [
+        pptContext?.activeSlideIndex !== undefined ? `Slide ${pptContext.activeSlideIndex + 1}` : "No active slide",
+        pptContext?.selectedShapeIds.length ? `${pptContext.selectedShapeIds.length} shape${pptContext.selectedShapeIds.length === 1 ? "" : "s"} selected` : "No shapes selected",
+      ].join(" - ")
+    : undefined;
+
+  const powerpointQuickActions = officeHost === "powerpoint"
+    ? [
+        { label: "Edit selection", prompt: "Edit the selected PowerPoint shapes using the current selection context." },
+        { label: "Use current slide", prompt: "Work on the current PowerPoint slide." },
+        { label: "Insert timeline", prompt: "Insert a project timeline using editable native PowerPoint content." },
+        { label: "Insert estimate table", prompt: "Insert an estimate summary table using editable native PowerPoint content." },
+      ]
+    : [];
+
   return (
     <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
       <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
@@ -732,6 +833,9 @@ export const App: React.FC = () => {
             isRunning={isTyping}
             images={images}
             onImagesChange={setImages}
+            contextLabel={powerpointContextLabel}
+            quickActions={powerpointQuickActions}
+            onQuickAction={(prompt) => setInputValue(prompt)}
           />
           {permission && (
             <PermissionDialog

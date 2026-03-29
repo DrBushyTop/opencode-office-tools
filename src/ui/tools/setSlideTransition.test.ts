@@ -118,6 +118,11 @@ describe("setSlideTransition", () => {
     expect(insertedBase64).toHaveLength(2);
     expect(extractSlideTransitionFromBase64Presentation(insertedBase64[0])).toMatchObject({ effect: "fade", durationMs: 600 });
     expect(extractSlideTransitionFromBase64Presentation(insertedBase64[1])).toMatchObject({ effect: "fade", durationMs: 600 });
-    expect(result).toBe("Set the fade transition on slides 1, 2 via Open XML slide round-trips.");
+    expect(result).toMatchObject({
+      resultType: "success",
+      slideIndexes: [0, 1],
+      slideIds: ["slide-new-1", "slide-new-2"],
+      textResultForLlm: "Set the fade transition on slides 1, 2.",
+    });
   });
 });

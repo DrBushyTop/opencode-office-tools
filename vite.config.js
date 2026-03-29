@@ -24,6 +24,12 @@ module.exports = defineConfig({
     outDir: '../../dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'src/ui/index.html'),
+        commands: path.resolve(__dirname, 'src/ui/commands.html'),
+      },
+    },
   },
   server: {
     port: 52390,

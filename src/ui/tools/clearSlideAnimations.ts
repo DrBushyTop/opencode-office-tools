@@ -20,8 +20,14 @@ export const clearSlideAnimations: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        await replaceSlideWithMutatedOpenXml(context, slideIndex, clearSlideAnimationsInBase64Presentation);
-        return `Cleared all animations from slide ${slideIndex + 1} via an Open XML slide round-trip.`;
+        const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, clearSlideAnimationsInBase64Presentation);
+        return {
+          resultType: "success",
+          textResultForLlm: `Cleared all animations from slide ${result.finalSlideIndex + 1}.`,
+          slideIndex: result.finalSlideIndex,
+          slideId: result.replacementSlideId,
+          toolTelemetry: result,
+        };
       });
     } catch (error: unknown) {
       return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripSlideRefreshHint() : undefined);

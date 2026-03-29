@@ -1,6 +1,7 @@
 import type { Tool } from "./types";
 import { loadTextFrames } from "./powerpointText";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
+import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import {
   formatAvailableShapeTargets,
   invalidSlideIndexMessage,
@@ -19,7 +20,7 @@ type VerticalAlignment = "Top" | "Middle" | "Bottom" | "TopCentered" | "MiddleCe
 
 interface ManageSlideShapesArgs {
   action: ManageSlideShapesAction;
-  slideIndex: number;
+  slideIndex?: number;
   shapeId?: string | number;
   shapeIndex?: number;
   shapeIds?: (string | number)[];
@@ -140,11 +141,12 @@ function requiresTextAccess(args: ManageSlideShapesArgs) {
 async function resolveTargetShape(
   context: PowerPoint.RequestContext,
   slide: PowerPoint.Slide,
+  slideIndex: number,
   args: ManageSlideShapesArgs,
 ): Promise<PowerPoint.Shape | { error: string }> {
   if (args.shapeId !== undefined) {
     try {
-      const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, args.slideIndex, args.shapeId);
+      const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, args.shapeId);
       return resolved.shape;
     } catch (error: unknown) {
       return { error: error instanceof Error ? error.message : String(error) };
@@ -157,7 +159,7 @@ async function resolveTargetShape(
   if (args.shapeIndex !== undefined) {
     const shape = slide.shapes.items[args.shapeIndex];
     if (!shape) {
-      return { error: `Invalid shapeIndex ${args.shapeIndex}. ${formatAvailableShapeTargets(args.slideIndex, slide.shapes.items)}` };
+      return { error: `Invalid shapeIndex ${args.shapeIndex}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}` };
     }
     return shape;
   }
@@ -181,9 +183,9 @@ async function resolveTargetShape(
     if (!target) {
       const placeholderTypes = placeholders.map((shape) => String(shape.placeholderFormat.type));
       const available = placeholderTypes.length > 0
-        ? `Available placeholder types on slide ${args.slideIndex + 1}: ${placeholderTypes.join(", ")}.`
-        : `Slide ${args.slideIndex + 1} has no placeholder shapes.`;
-      return { error: `Placeholder type ${args.placeholderType} was not found on slide ${args.slideIndex + 1}. ${available}` };
+        ? `Available placeholder types on slide ${slideIndex + 1}: ${placeholderTypes.join(", ")}.`
+        : `Slide ${slideIndex + 1} has no placeholder shapes.`;
+      return { error: `Placeholder type ${args.placeholderType} was not found on slide ${slideIndex + 1}. ${available}` };
     }
     return target;
   }
@@ -345,11 +347,12 @@ export const manageSlideShapes: Tool = {
     required: ["action", "slideIndex"],
   },
   handler: async (args) => {
-    const update = args as ManageSlideShapesArgs;
+    const update = resolvePowerPointTargetingArgs(args as ManageSlideShapesArgs);
 
     if (!isNonNegativeInteger(update.slideIndex)) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }
+    const slideIndex = update.slideIndex;
     if (update.shapeIndex !== undefined && !isNonNegativeInteger(update.shapeIndex)) {
       return toolFailure("shapeIndex must be a non-negative integer.");
     }
@@ -419,10 +422,10 @@ export const manageSlideShapes: Tool = {
         slides.load("items");
         await context.sync();
 
-          const slide = slides.items[update.slideIndex];
-          if (!slide) {
-            return toolFailure(invalidSlideIndexMessage(update.slideIndex, slides.items.length));
-          }
+        const slide = slides.items[slideIndex];
+        if (!slide) {
+          return toolFailure(invalidSlideIndexMessage(slideIndex, slides.items.length));
+        }
 
         if (update.action === "create") {
           const options = {
@@ -449,7 +452,7 @@ export const manageSlideShapes: Tool = {
           }
 
           await context.sync();
-          return `Created ${update.shapeType} ${created.id} on slide ${update.slideIndex + 1}.`;
+          return `Created ${update.shapeType} ${created.id} on slide ${slideIndex + 1}.`;
         }
 
         if (update.action === "group") {
@@ -458,15 +461,15 @@ export const manageSlideShapes: Tool = {
 
           // Resolve shape ids to Shape objects (not strings) to avoid Mac crash in addGroup
           const shapeIdStrings = update.shapeIds!.map((id) => String(id));
-          const availableIds = slide.shapes.items.map((s) => s.id);
+          const availableIds = slide.shapes.items.map((s: PowerPoint.Shape) => s.id);
           const missing = shapeIdStrings.filter((id) => !availableIds.includes(id));
           if (missing.length > 0) {
-            return toolFailure(`Shape id(s) not found on slide ${update.slideIndex + 1}: ${missing.join(", ")}. ${formatAvailableShapeTargets(update.slideIndex, slide.shapes.items)}`);
+            return toolFailure(`Shape id(s) not found on slide ${slideIndex + 1}: ${missing.join(", ")}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
           }
 
           // Pass Shape objects rather than string IDs — passing strings crashes PowerPoint on Mac
           // (BUG_IN_CLIENT_OF_LIBMALLOC / POINTER_BEING_FREED_WAS_NOT_ALLOCATED in OLEAutomation)
-          const shapeObjects = slide.shapes.items.filter((s) => shapeIdStrings.includes(s.id));
+          const shapeObjects = slide.shapes.items.filter((s: PowerPoint.Shape) => shapeIdStrings.includes(s.id));
           const group = slide.shapes.addGroup(shapeObjects);
           group.load(["id", "name"]);
           await context.sync();
@@ -476,11 +479,11 @@ export const manageSlideShapes: Tool = {
             await context.sync();
           }
 
-          return `Grouped ${shapeIdStrings.length} shapes into group ${group.id}${update.name ? ` (${JSON.stringify(update.name)})` : ""} on slide ${update.slideIndex + 1}.`;
+          return `Grouped ${shapeIdStrings.length} shapes into group ${group.id}${update.name ? ` (${JSON.stringify(update.name)})` : ""} on slide ${slideIndex + 1}.`;
         }
 
         if (update.action === "ungroup") {
-          const resolved = await resolveTargetShape(context, slide, update);
+          const resolved = await resolveTargetShape(context, slide, slideIndex, update);
           if ("error" in resolved) {
             return toolFailure(resolved.error);
           }
@@ -494,10 +497,10 @@ export const manageSlideShapes: Tool = {
 
           resolved.group.ungroup();
           await context.sync();
-          return `Ungrouped shape on slide ${update.slideIndex + 1}.`;
+          return `Ungrouped shape on slide ${slideIndex + 1}.`;
         }
 
-        const resolved = await resolveTargetShape(context, slide, update);
+        const resolved = await resolveTargetShape(context, slide, slideIndex, update);
         if ("error" in resolved) {
           return toolFailure(resolved.error);
         }
@@ -505,7 +508,7 @@ export const manageSlideShapes: Tool = {
         if (update.action === "delete") {
           resolved.delete();
           await context.sync();
-          return `Deleted shape on slide ${update.slideIndex + 1}.`;
+          return `Deleted shape on slide ${slideIndex + 1}.`;
         }
 
         if (update.width !== undefined || update.height !== undefined) {
@@ -526,7 +529,7 @@ export const manageSlideShapes: Tool = {
         }
 
         await context.sync();
-        return `Updated shape on slide ${update.slideIndex + 1}.`;
+        return `Updated shape on slide ${slideIndex + 1}.`;
       });
     } catch (error: unknown) {
       return toolFailure(error);

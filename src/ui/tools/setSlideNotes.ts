@@ -27,8 +27,14 @@ export const setSlideNotes: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) => setSpeakerNotesInBase64Presentation(base64, notes));
-        return `Updated speaker notes on slide ${slideIndex + 1} via an Open XML slide round-trip.`;
+        const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) => setSpeakerNotesInBase64Presentation(base64, notes));
+        return {
+          resultType: "success",
+          textResultForLlm: `Updated speaker notes on slide ${result.finalSlideIndex + 1}.`,
+          slideIndex: result.finalSlideIndex,
+          slideId: result.replacementSlideId,
+          toolTelemetry: result,
+        };
       });
     } catch (error: unknown) {
       return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripSlideRefreshHint() : undefined);

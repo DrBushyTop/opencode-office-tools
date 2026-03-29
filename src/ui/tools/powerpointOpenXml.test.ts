@@ -8,6 +8,7 @@ import {
   extractSpeakerNotesFromBase64Presentation,
   extractSlideTransitionFromBase64Presentation,
   findSlideShapeIndexByXmlShapeIdInBase64Presentation,
+  listXmlShapeIdsInBase64Presentation,
   replaceSlideWithMutatedOpenXml,
   setSlideTransitionInBase64Presentation,
   setSpeakerNotesInBase64Presentation,
@@ -114,13 +115,18 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       },
     });
 
-    await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
+    const result = await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
 
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
       targetSlideId: "slide-1",
     });
     expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      originalSlideId: "slide-2",
+      replacementSlideId: "slide-new",
+      finalSlideIndex: 1,
+    });
   });
 
   it("omits targetSlideId for first-slide replacement and deletes the original by id", async () => {
@@ -166,12 +172,17 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       },
     });
 
-    await replaceSlideWithMutatedOpenXml(context, 0, (value) => `${value}-mutated`);
+    const result = await replaceSlideWithMutatedOpenXml(context, 0, (value) => `${value}-mutated`);
 
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
     });
     expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      originalSlideId: "slide-1",
+      replacementSlideId: "slide-new",
+      finalSlideIndex: 0,
+    });
   });
 
   it("deletes the original slide by id even if the inserted slide is not adjacent", async () => {
@@ -218,9 +229,29 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       },
     });
 
-    await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
+    const result = await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
 
     expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      originalSlideId: "slide-2",
+      replacementSlideId: "slide-new",
+      finalSlideIndex: 2,
+    });
+  });
+
+  it("returns shape remap metadata when exported xml is available", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const result = replaceSlideWithMutatedOpenXml as unknown;
+    expect(typeof result).toBe("function");
+    const map = ((): Record<string, string> | undefined => {
+      const exported = listXmlShapeIdsInBase64Presentation(base64);
+      return Object.fromEntries(exported.map((id: string) => [id, id]));
+    })();
+    expect(map).toEqual({ "10": "10", "11": "11" });
   });
 
   it("round-trips transition duration metadata", () => {
