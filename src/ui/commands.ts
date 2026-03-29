@@ -1,6 +1,7 @@
 /// <reference types="@types/office-js" />
 
 import { z } from "zod";
+import { applyDefaultTaskpaneWidth } from "./lib/taskpaneWidth";
 
 const NavigationTargetSchema = z.enum([
   "edit-selection",
@@ -18,6 +19,7 @@ async function openTaskpane(target: NavigationTarget, event?: Office.AddinComman
   try {
     localStorage.setItem("navigationTarget", target);
     await Office.addin.showAsTaskpane();
+    applyDefaultTaskpaneWidth();
   } finally {
     completeEvent(event);
   }
