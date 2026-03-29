@@ -39,6 +39,11 @@ import { getPresentationStructure } from "./getPresentationStructure";
 import { getSlideShapes } from "./getSlideShapes";
 import { manageSlide } from "./manageSlide";
 import { manageSlideShapes } from "./manageSlideShapes";
+import { manageSlideMedia } from "./manageSlideMedia";
+import { manageSlideTable } from "./manageSlideTable";
+import { manageSlideChart } from "./manageSlideChart";
+import { insertBusinessLayout } from "./insertBusinessLayout";
+import { createSlideFromTemplate } from "./createSlideFromTemplate";
 
 // New Excel tools
 import { getWorkbookOverview } from "./getWorkbookOverview";
@@ -110,6 +115,11 @@ const officeToolHandlers = {
   [getSlideTransition.name]: getSlideTransition,
   [manageSlide.name]: manageSlide,
   [manageSlideShapes.name]: manageSlideShapes,
+  [manageSlideMedia.name]: manageSlideMedia,
+  [manageSlideTable.name]: manageSlideTable,
+  [manageSlideChart.name]: manageSlideChart,
+  [insertBusinessLayout.name]: insertBusinessLayout,
+  [createSlideFromTemplate.name]: createSlideFromTemplate,
   [addSlideFromCode.name]: addSlideFromCode,
   [setSlideNotes.name]: setSlideNotes,
   [setSlideTransition.name]: setSlideTransition,
@@ -150,6 +160,11 @@ export const powerpointTools = [
   getSlideTransition,
   manageSlide,
   manageSlideShapes,
+  manageSlideMedia,
+  manageSlideTable,
+  manageSlideChart,
+  insertBusinessLayout,
+  createSlideFromTemplate,
   addSlideFromCode,
   setSlideNotes,
   setSlideTransition,

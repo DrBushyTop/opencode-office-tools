@@ -27,7 +27,7 @@ Use the available PowerPoint tools to inspect or update the active deck directly
 - Use `get_presentation_overview` first to understand the deck before editing
 - Use `get_presentation_content` to inspect slide text
 - Use `get_slide_image` when visual layout, spacing, or styling matters
-- Use `get_presentation_structure` for master/layout/theme/footer-placeholder discovery and to learn the **slide dimensions** (width × height in inches and points)
+- Use `get_presentation_structure` for master/layout/theme/footer-placeholder discovery, selection state, and to learn the **slide dimensions** (width × height in inches and points)
 - Use `get_slide_shapes` for precise shape targeting before editing
 - Match the existing deck's visual language before adding new slides: inspect titles, density, spacing, imagery, and color usage first
 
@@ -45,6 +45,9 @@ The `add_slide_from_code` tool automatically sizes its canvas to match the deck,
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
 - Use `manage_slide` for slide create/move/duplicate/delete/clear operations
 - Use `manage_slide_shapes` for most shape creation, deletion, text edits, formatting changes, grouping, and ungrouping
+- Use `manage_slide_media`, `manage_slide_table`, and `manage_slide_chart` for first-class native image, table, and chart-like business content
+- Use `insert_business_layout` for timelines, process flows, comparison grids, phase plans, and estimate summaries
+- Use `create_slide_from_template` when a suitable deck layout already exists and placeholder binding will produce a more template-compliant result
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - Treat `add_slide_from_code` as an advanced fallback for cases the generic PowerPoint tools cannot express cleanly, not as the default way to add common shapes or text
 
@@ -71,6 +74,7 @@ When building slides that may later be animated, keep shapes structured so each 
 - Use `add_slide_animation` for entrance effects (appear, fade, flyIn, wipe, zoomIn), motion paths, scale emphasis, and rotation
 - Use `clear_slide_animations` to remove all animations from a slide
 - Open XML fallback tools (animations, transitions, speaker notes) replace the slide in the deck and may change slide identity
+- When Open XML-backed tools return refreshed slide or shape ids, prefer those returned values for the next step instead of reusing stale ids
 - For staggered reveal sequences, use `afterPrevious` with `delayMs`
 - Supported entrance types: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), zoomIn (scale in)
 

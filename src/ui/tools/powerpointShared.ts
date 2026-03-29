@@ -78,6 +78,55 @@ export function summarizePlainText(text: string, limit = 100) {
   return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
 }
 
+const themeColorKeys = [
+  "Dark1",
+  "Light1",
+  "Dark2",
+  "Light2",
+  "Accent1",
+  "Accent2",
+  "Accent3",
+  "Accent4",
+  "Accent5",
+  "Accent6",
+  "Hyperlink",
+  "FollowedHyperlink",
+] as const;
+
+export type PowerPointThemeColorKey = (typeof themeColorKeys)[number];
+
+export interface PowerPointThemeColors {
+  Dark1?: string;
+  Light1?: string;
+  Dark2?: string;
+  Light2?: string;
+  Accent1?: string;
+  Accent2?: string;
+  Accent3?: string;
+  Accent4?: string;
+  Accent5?: string;
+  Accent6?: string;
+  Hyperlink?: string;
+  FollowedHyperlink?: string;
+}
+
+export async function loadThemeColors(context: PowerPoint.RequestContext, master: PowerPoint.SlideMaster): Promise<PowerPointThemeColors> {
+  const requests = themeColorKeys.map((color) => ({ color, value: master.themeColorScheme.getThemeColor(color) }));
+  await context.sync();
+  return Object.fromEntries(requests.map((entry) => [entry.color, parseColor(entry.value.value)])) as PowerPointThemeColors;
+}
+
+export function pickThemeColor(colors: PowerPointThemeColors | null | undefined, key: PowerPointThemeColorKey, fallback: string) {
+  return colors?.[key] || fallback;
+}
+
+export function normalizeHexColor(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("#")) return trimmed;
+  return /^[0-9A-Fa-f]{6}$/.test(trimmed) ? `#${trimmed}` : trimmed;
+}
+
+
 export function parseColor(value: string | null | undefined) {
   if (!value) return "(none)";
   if (value.startsWith("#")) return value;

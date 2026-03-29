@@ -520,7 +520,12 @@
     "hosts": ["powerpoint"],
     "description": "Inspect PowerPoint slide masters, layouts, backgrounds, themes, and current selection state.",
     "mutating": false,
-    "parameters": { "type": "object", "properties": {} },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "format": { "type": "string", "enum": ["summary", "structured", "both"], "description": "Response format. Default summary." }
+      }
+    },
     "ui": { "icon": "🧭", "activity": { "type": "static", "text": "Inspecting presentation structure" } }
   },
   "get_presentation_content": {
@@ -754,6 +759,146 @@
       "required": ["action", "slideIndex"]
     },
     "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Managing shapes on slide ", "suffix": "" } }
+  },
+  "manage_slide_media": {
+    "hosts": ["powerpoint"],
+    "description": "Insert, replace, or delete editable PowerPoint image shapes on a slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["insertImage", "replaceImage", "deleteImage"] },
+        "slideIndex": { "type": "number", "description": "0-based slide index. Defaults to the active slide when available." },
+        "shapeId": { "anyOf": [{ "type": "string" }, { "type": "number" }], "description": "Existing image shape id for replaceImage or deleteImage." },
+        "imageUrl": { "type": "string", "description": "Source image URL for insertImage or replaceImage." },
+        "left": { "type": "number" },
+        "top": { "type": "number" },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "name": { "type": "string" }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "🖼️", "activity": { "type": "field_or_default", "field": "action", "prefix": "Image action: ", "default": "manage image" } }
+  },
+  "manage_slide_table": {
+    "hosts": ["powerpoint"],
+    "description": "Create, update, or delete editable native PowerPoint tables on a slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "update", "delete"] },
+        "slideIndex": { "type": "number", "description": "0-based slide index. Defaults to the active slide when available." },
+        "shapeId": { "anyOf": [{ "type": "string" }, { "type": "number" }], "description": "Existing table shape id for update or delete." },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
+          },
+          "description": "2D table values for create or update."
+        },
+        "left": { "type": "number" },
+        "top": { "type": "number" },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "name": { "type": "string" }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "📋", "activity": { "type": "field_or_default", "field": "action", "prefix": "Slide table: ", "default": "manage table" } }
+  },
+  "manage_slide_chart": {
+    "hosts": ["powerpoint"],
+    "description": "Create, update, or delete editable PowerPoint chart-style business visuals built from native shapes.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "update", "delete"] },
+        "slideIndex": { "type": "number", "description": "0-based slide index. Defaults to the active slide when available." },
+        "shapeId": { "anyOf": [{ "type": "string" }, { "type": "number" }], "description": "Existing chart group shape id for update or delete." },
+        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie"] },
+        "title": { "type": "string" },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "value": { "type": "number" },
+              "color": { "type": "string" }
+            },
+            "required": ["label", "value"]
+          }
+        },
+        "left": { "type": "number" },
+        "top": { "type": "number" },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "name": { "type": "string" }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "📈", "activity": { "type": "field_or_default", "field": "chartType", "prefix": "Slide chart: ", "default": "manage chart" } }
+  },
+  "insert_business_layout": {
+    "hosts": ["powerpoint"],
+    "description": "Insert an editable PowerPoint business layout such as a timeline, process flow, comparison grid, phase plan, or estimate summary.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "Optional slide index. If omitted, the tool prefers creating a new slide from a matching template layout." },
+        "layoutType": { "type": "string", "enum": ["timeline", "phase_plan", "process_flow", "comparison_grid", "estimate_summary"] },
+        "title": { "type": "string" },
+        "themeMode": { "type": "string", "enum": ["deck", "custom"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "subtitle": { "type": "string" },
+              "value": { "type": "string" },
+              "colorToken": { "type": "string" }
+            },
+            "required": ["title"]
+          }
+        }
+      },
+      "required": ["layoutType", "items"]
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "field_or_default", "field": "layoutType", "prefix": "Business layout: ", "default": "insert layout" } }
+  },
+  "create_slide_from_template": {
+    "hosts": ["powerpoint"],
+    "description": "Create a PowerPoint slide from a chosen layout and bind text, image, or table content into placeholders.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideMasterId": { "type": "string" },
+        "layoutId": { "type": "string", "description": "Required PowerPoint layout id to create the slide from." },
+        "targetIndex": { "type": "number" },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "placeholderType": { "type": "string" },
+              "placeholderName": { "type": "string" },
+              "text": { "type": "string" },
+              "imageUrl": { "type": "string" },
+              "tableData": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+            }
+          }
+        }
+      },
+      "required": ["layoutId"]
+    },
+    "ui": { "icon": "🧱", "activity": { "type": "static", "text": "Creating slide from template" } }
   },
   "set_slide_notes": {
     "hosts": ["powerpoint"],

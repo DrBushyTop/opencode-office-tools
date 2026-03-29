@@ -134,6 +134,13 @@ describe("addSlideAnimation", () => {
     const target = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "spTgt")[0];
 
     expect(target?.getAttribute("spid")).toBe("11");
-    expect(result).toBe("Added a scale animation to slide 1 targeting shape office-shape-200 via an Open XML slide round-trip.");
+    expect(result).toMatchObject({
+      resultType: "success",
+      slideIndex: 0,
+      slideId: "slide-new",
+      shapeId: "office-shape-200",
+      refreshedShapeId: "office-shape-200",
+      textResultForLlm: "Added a scale animation to slide 1 targeting shape office-shape-200.",
+    });
   });
 });

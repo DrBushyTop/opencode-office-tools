@@ -75,22 +75,38 @@ export const setSlideTransition: Tool = {
           throughBlack: transition.throughBlack,
         };
 
+        const results: Array<{ originalSlideId: string; replacementSlideId: string; finalSlideIndex: number }> = [];
+
         for (const slideIndex of slideIndexes) {
-          await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
+          const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
             setSlideTransitionInBase64Presentation(base64, definition),
           );
+          results.push(result);
         }
 
         if (slideIndexes.length === 1) {
-          return transition.effect === "none"
-            ? `Cleared the transition on slide ${slideIndexes[0] + 1} via an Open XML slide round-trip.`
-            : `Set the ${transition.effect} transition on slide ${slideIndexes[0] + 1} via an Open XML slide round-trip.`;
+          const [result] = results;
+          return {
+            resultType: "success",
+            textResultForLlm: transition.effect === "none"
+              ? `Cleared the transition on slide ${result.finalSlideIndex + 1}.`
+              : `Set the ${transition.effect} transition on slide ${result.finalSlideIndex + 1}.`,
+            slideIndex: result.finalSlideIndex,
+            slideId: result.replacementSlideId,
+            toolTelemetry: result,
+          };
         }
 
-        const slideList = slideIndexes.map((slideIndex) => slideIndex + 1).join(", ");
-        return transition.effect === "none"
-          ? `Cleared transitions on slides ${slideList} via Open XML slide round-trips.`
-          : `Set the ${transition.effect} transition on slides ${slideList} via Open XML slide round-trips.`;
+        const slideList = results.map((item) => item.finalSlideIndex + 1).join(", ");
+        return {
+          resultType: "success",
+          textResultForLlm: transition.effect === "none"
+            ? `Cleared transitions on slides ${slideList}.`
+            : `Set the ${transition.effect} transition on slides ${slideList}.`,
+          slideIndexes: results.map((item) => item.finalSlideIndex),
+          slideIds: results.map((item) => item.replacementSlideId),
+          toolTelemetry: { results },
+        };
       });
     } catch (error: unknown) {
       return toolFailure(error, shouldAddRoundTripRefreshHint(error) ? roundTripSlideRefreshHint() : undefined);

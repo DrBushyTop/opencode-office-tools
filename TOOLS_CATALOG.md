@@ -30,7 +30,7 @@ This document lists all available tools that OpenCode can use when working with 
 | Tool | Description |
 |------|-------------|
 | `get_presentation_overview` | Get a quick overview of the presentation with slide count and content previews. Use this first. |
-| `get_presentation_structure` | Inspect slide masters, layouts, themes, backgrounds, footer-like placeholders, and selection state. |
+| `get_presentation_structure` | Inspect slide masters, layouts, themes, backgrounds, footer-like placeholders, and selection state; can also return structured template metadata. |
 | `get_presentation_content` | Read text content from slides with support for chunked reading of large presentations. |
 | `get_slide_shapes` | Inspect shape ids, indices, names, types, positions, placeholder types, text, and table info for targeting later edits. |
 | `get_slide_image` | Capture a slide as a PNG image for visual inspection before making changes. |
@@ -40,6 +40,11 @@ This document lists all available tools that OpenCode can use when working with 
 | `get_slide_transition` | Inspect a slide transition through an Open XML fallback. |
 | `manage_slide` | Create, duplicate, delete, move, or clear slides with one generic slide-management tool. |
 | `manage_slide_shapes` | Create, update, or delete shapes with generic geometry, styling, text, and text-formatting controls. |
+| `manage_slide_media` | Insert, replace, or delete editable image shapes on a PowerPoint slide. |
+| `manage_slide_table` | Create, update, or delete editable native PowerPoint tables. |
+| `manage_slide_chart` | Create, update, or delete editable chart-style business visuals built from native shapes. |
+| `insert_business_layout` | Insert editable business layouts such as timelines, phase plans, comparison grids, and estimate summaries. |
+| `create_slide_from_template` | Create a slide from an existing PowerPoint layout and bind text, image, or table content into placeholders. |
 | `add_slide_from_code` | Programmatically create slides using PptxGenJS API. Supports text, bullets, tables, shapes, and images with full formatting control. |
 | `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
 | `set_slide_transition` | Add, update, or clear a slide transition by round-tripping a slide through Open XML; this may change slide identity. |
@@ -121,8 +126,8 @@ Suggested pattern:
 3. Use `set_document_range` for generic edits
 4. Keep `set_document_part` for headers, footers, section setup, and native TOC work
 
-### PowerPoint: Prefer Generic Slide/Shape Tools Before Code
-Use `manage_slide` and `manage_slide_shapes` for most native slide and shape mutations. Reach for `add_slide_from_code` when you need advanced generated layouts, tables, images, or other content that the generic native tools still cannot express cleanly.
+### PowerPoint: Prefer Native Tools Before Code
+Use `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, `manage_slide_table`, `manage_slide_chart`, and `insert_business_layout` for most native PowerPoint authoring. Reach for `create_slide_from_template` when the deck has a fitting layout, and use `add_slide_from_code` only when those native tools still cannot express the result cleanly.
 
 The `add_slide_from_code` tool accepts JavaScript code using the PptxGenJS API:
 

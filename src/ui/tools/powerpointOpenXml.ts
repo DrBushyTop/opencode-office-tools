@@ -212,6 +212,38 @@ export function findSlideShapeIndexByXmlShapeIdInBase64Presentation(base64: stri
   return getSlideShapeElementsInOrder(slideDoc).findIndex((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex) === xmlShapeId);
 }
 
+export function listXmlShapeIdsInBase64Presentation(base64: string) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slideDoc } = getFirstSlideDocument(pkg);
+  return getSlideShapeElementsInOrder(slideDoc).map((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex));
+}
+
+export interface OpenXmlRoundTripResult {
+  originalSlideId: string;
+  replacementSlideId: string;
+  finalSlideIndex: number;
+  shapeIdMap?: Record<string, string>;
+}
+
+function buildShapeIdMap(beforeBase64: string, afterBase64: string): Record<string, string> | undefined {
+  let beforeShapeIds: string[];
+  let afterShapeIds: string[];
+  try {
+    beforeShapeIds = listXmlShapeIdsInBase64Presentation(beforeBase64);
+    afterShapeIds = listXmlShapeIdsInBase64Presentation(afterBase64);
+  } catch {
+    return undefined;
+  }
+  if (beforeShapeIds.length === 0 || afterShapeIds.length === 0) return undefined;
+
+  const map: Record<string, string> = {};
+  const count = Math.min(beforeShapeIds.length, afterShapeIds.length);
+  for (let index = 0; index < count; index += 1) {
+    map[beforeShapeIds[index]] = afterShapeIds[index];
+  }
+  return Object.keys(map).length ? map : undefined;
+}
+
 function extractTextBody(textBody: Element | null) {
   if (!textBody) return "";
   const paragraphs = Array.from(textBody.getElementsByTagNameNS(NS_A, "p"));
@@ -1458,7 +1490,7 @@ export async function replaceSlideWithMutatedOpenXml(
   context: PowerPoint.RequestContext,
   slideIndex: number,
   mutate: (base64: string) => string,
-) {
+): Promise<OpenXmlRoundTripResult> {
   if (!isPowerPointRequirementSetSupported("1.8")) {
     throw new Error("PowerPoint Open XML slide round-tripping requires PowerPointApi 1.8.");
   }
@@ -1472,6 +1504,7 @@ export async function replaceSlideWithMutatedOpenXml(
   }
 
   const sourceSlide = slides.items[slideIndex];
+  const previousSlideIds = slides.items.map((slide) => slide.id).filter(Boolean);
   sourceSlide.load("id");
   await context.sync();
 
@@ -1493,6 +1526,7 @@ export async function replaceSlideWithMutatedOpenXml(
   }
 
   const mutated = mutate(exported.value);
+  const shapeIdMap = buildShapeIdMap(exported.value, mutated);
 
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
@@ -1513,12 +1547,29 @@ export async function replaceSlideWithMutatedOpenXml(
     throw new Error("Failed to locate the original slide after Open XML round-trip insertion.");
   }
 
+  const replacementSlide = updatedSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
+  if (!replacementSlide) {
+    throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
+  }
+
   originalSlide.delete();
   try {
     await context.sync();
   } catch (e) {
     throw wrapRoundTripError(e, "deleting original", slideIndex);
   }
+
+  const finalSlides = context.presentation.slides;
+  finalSlides.load("items/id");
+  await context.sync();
+  const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
+
+  return {
+    originalSlideId: sourceSlideId,
+    replacementSlideId: replacementSlide.id,
+    finalSlideIndex,
+    shapeIdMap,
+  };
 }
 
 export async function exportSlideAsBase64(context: PowerPoint.RequestContext, slideIndex: number) {
@@ -1765,4 +1816,3 @@ export function extractSlideAnimationSummaryFromBase64Presentation(base64: strin
     buildListShapeIds,
   };
 }
-

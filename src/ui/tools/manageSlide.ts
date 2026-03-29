@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { isPowerPointRequirementSetSupported, toolFailure } from "./powerpointShared";
+import { getPowerPointContextSnapshot } from "./powerpointContext";
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
@@ -45,6 +46,12 @@ export const manageSlide: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
+    const resolvedArgs = { ...(args as Record<string, unknown>) };
+    const snapshot = getPowerPointContextSnapshot();
+    if (resolvedArgs.slideIndex === undefined && snapshot?.activeSlideIndex !== undefined) {
+      resolvedArgs.slideIndex = snapshot.activeSlideIndex;
+    }
+
     const {
       action,
       slideIndex,
@@ -53,7 +60,7 @@ export const manageSlide: Tool = {
       slideMasterId,
       layoutId,
       formatting = "KeepSourceFormatting",
-    } = args as {
+    } = resolvedArgs as {
       action: "create" | "duplicate" | "delete" | "move" | "clear";
       slideIndex?: number;
       sourceIndex?: number;

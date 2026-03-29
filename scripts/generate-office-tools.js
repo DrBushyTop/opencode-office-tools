@@ -22,6 +22,13 @@ function schemaCode(schema) {
     return `tool.schema.union([${schema.anyOf.map((item) => schemaCode(item)).join(", ")}])`
   }
 
+  if (schema.type === "object") {
+    const properties = schema.properties || {}
+    const required = schema.required || []
+    const entries = Object.keys(properties).map((name) => propertyCode(name, properties[name], required))
+    return `tool.schema.object({\n${entries.join("\n")}\n})`
+  }
+
   if (schema.type === "array") {
     return `tool.schema.array(${schemaCode(schema.items || { type: "string" })})`
   }
