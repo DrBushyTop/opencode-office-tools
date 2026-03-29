@@ -101,7 +101,7 @@ export const setSlideTransition: Tool = {
         const results: Array<{ originalSlideId: string; replacementSlideId: string; finalSlideIndex: number }> = [];
 
         for (const slideIndex of slideIndexes) {
-          const result = await replaceSlideWithMutatedOpenXml(context, slideIndex as number, (base64) =>
+          const result = await replaceSlideWithMutatedOpenXml(context, slideIndex as number, (base64, _sourceSlide) =>
             setSlideTransitionInBase64Presentation(base64, definition),
           );
           results.push(result);

@@ -21,14 +21,11 @@ async function exportSlideShapeIds(context: PowerPoint.RequestContext, slide: Po
   return exported.value;
 }
 
-type PowerPointShapeIdMap = Readonly<Record<string, string>>;
-
 export async function remapShapeIdentityAfterRoundTrip(
   context: PowerPoint.RequestContext,
   slide: PowerPoint.Slide,
   slideIndex: number,
   requestedShapeId: PowerPointShapeIdentifier,
-  shapeIdMap?: PowerPointShapeIdMap,
 ): Promise<ResolvedShapeIdentity> {
   const requestedId = String(requestedShapeId);
 
@@ -45,20 +42,15 @@ export async function remapShapeIdentityAfterRoundTrip(
   }
 
   const exportedBase64 = await exportSlideShapeIds(context, slide);
-  const candidateIds = [requestedId];
-  if (shapeIdMap?.[requestedId] && shapeIdMap[requestedId] !== requestedId) {
-    candidateIds.unshift(shapeIdMap[requestedId]);
-  }
 
-  for (const candidateId of candidateIds) {
-    if (!exportedBase64) break;
-    const xmlMatchIndex = findSlideShapeIndexByXmlShapeIdInBase64Presentation(exportedBase64, candidateId);
+  if (exportedBase64) {
+    const xmlMatchIndex = findSlideShapeIndexByXmlShapeIdInBase64Presentation(exportedBase64, requestedId);
     if (xmlMatchIndex >= 0) {
       const xmlMatch = slide.shapes.items[xmlMatchIndex];
       if (xmlMatch) {
         return {
           officeShapeId: xmlMatch.id,
-          xmlShapeId: candidateId,
+          xmlShapeId: requestedId,
           shapeIndex: xmlMatchIndex,
         };
       }
@@ -73,9 +65,8 @@ export async function resolveSlideShapeByIdWithXmlFallback(
   slide: PowerPoint.Slide,
   slideIndex: number,
   shapeId: PowerPointShapeIdentifier,
-  shapeIdMap?: PowerPointShapeIdMap,
 ): Promise<ResolvedPowerPointShapeTarget> {
-  const resolved = await remapShapeIdentityAfterRoundTrip(context, slide, slideIndex, shapeId, shapeIdMap);
+  const resolved = await remapShapeIdentityAfterRoundTrip(context, slide, slideIndex, shapeId);
   return {
     shape: slide.shapes.items[resolved.shapeIndex],
     shapeId: resolved.officeShapeId,

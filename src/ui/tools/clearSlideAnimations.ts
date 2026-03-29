@@ -21,7 +21,7 @@ export const clearSlideAnimations: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, clearSlideAnimationsInBase64Presentation);
+        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, (base64, _sourceSlide) => clearSlideAnimationsInBase64Presentation(base64));
         return {
           resultType: "success",
           textResultForLlm: `Cleared all animations from slide ${result.finalSlideIndex + 1}.`,

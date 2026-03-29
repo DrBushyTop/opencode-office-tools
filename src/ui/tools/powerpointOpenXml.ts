@@ -234,29 +234,9 @@ export const openXmlRoundTripResultSchema = z.object({
   originalSlideId: z.string(),
   replacementSlideId: z.string(),
   finalSlideIndex: z.number(),
-  shapeIdMap: z.record(z.string(), z.string()).optional(),
 });
 
 export type OpenXmlRoundTripResult = z.infer<typeof openXmlRoundTripResultSchema>;
-
-function buildIdentityShapeIdMap(base64: string): Record<string, string> | undefined {
-  // Our XML mutations never change shape IDs (cNvPr @id), so the before and
-  // after shape IDs are always identical.  We only need to parse the exported
-  // package once to build an identity map, saving two full unzip+parse cycles.
-  let shapeIds: string[];
-  try {
-    shapeIds = listXmlShapeIdsInBase64Presentation(base64);
-  } catch {
-    return undefined;
-  }
-  if (shapeIds.length === 0) return undefined;
-
-  const map: Record<string, string> = {};
-  for (const id of shapeIds) {
-    map[id] = id;
-  }
-  return map;
-}
 
 function extractTextBody(textBody: Element | null) {
   if (!textBody) return "";
@@ -1500,77 +1480,76 @@ function wrapRoundTripError(error: unknown, step: string, slideIndex: number): E
   return new Error(`Slide ${slideIndex + 1} round-trip failed while ${step} slide: ${msg}${codeLabel}`);
 }
 
+export interface RoundTripOptions {
+  /** Queue extra loads on the source slide proxy before the first sync.
+   *  For example, loading shapes so they're available to the mutate callback. */
+  preload?: (sourceSlide: PowerPoint.Slide) => void;
+}
+
 export async function replaceSlideWithMutatedOpenXml(
   context: PowerPoint.RequestContext,
   slideIndex: number,
-  mutate: (base64: string) => string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  options?: RoundTripOptions,
 ): Promise<OpenXmlRoundTripResult> {
   if (!isPowerPointRequirementSetSupported("1.8")) {
     throw new Error("PowerPoint Open XML slide round-tripping requires PowerPointApi 1.8.");
   }
 
-  // ── Phase 1: Load slide collection and all slide IDs in one sync ─────
+  // ── Phase 1: Load slide IDs + export source slide in one sync ──────────
+  // Use getItemAt() to obtain a proxy for the source slide (and the slide
+  // before it) so that exportAsBase64() can be batched with the ID loads.
   const slides = context.presentation.slides;
   slides.load("items/id");
-  await context.sync();
+  const sourceSlide = slides.getItemAt(slideIndex);
+  sourceSlide.load("id");
+  const exported = sourceSlide.exportAsBase64();
+  let targetSlideProxy: PowerPoint.Slide | undefined;
+  if (slideIndex > 0) {
+    targetSlideProxy = slides.getItemAt(slideIndex - 1);
+    targetSlideProxy.load("id");
+  }
+  // Allow callers to piggyback extra loads (e.g. shapes) onto this first sync.
+  options?.preload?.(sourceSlide);
+  try {
+    await context.sync();
+  } catch (e) {
+    // Index-out-of-range from getItemAt or export failure both surface here.
+    throw wrapRoundTripError(e, "loading and exporting", slideIndex);
+  }
 
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
     throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
-  const sourceSlide = slides.items[slideIndex];
   const sourceSlideId = sourceSlide.id;
   const previousSlideIds = slides.items.map((slide) => slide.id).filter(Boolean);
-  const targetSlideId = slideIndex > 0 ? slides.items[slideIndex - 1].id : undefined;
+  const targetSlideId = targetSlideProxy?.id;
 
-  // ── Phase 2: Export the slide ────────────────────────────────────────
-  const exported = sourceSlide.exportAsBase64();
-  try {
-    await context.sync();
-  } catch (e) {
-    throw wrapRoundTripError(e, "exporting", slideIndex);
-  }
+  // ── Phase 2: Mutate the exported package ──────────────────────────────
+  const mutated = mutate(exported.value, sourceSlide);
 
-  // ── Phase 3: Mutate, extract shape IDs, and produce result ───────────
-  // Unzip the exported package once to extract shape IDs (for the identity
-  // map), then let the mutate callback process the base64. This avoids the
-  // previous 3× unzip overhead (exported + mutated × 2 in buildShapeIdMap).
-  const shapeIdMap = buildIdentityShapeIdMap(exported.value);
-  const mutated = mutate(exported.value);
-
-  // ── Phase 4: Insert mutated slide ────────────────────────────────────
+  // ── Phase 3: Insert mutated slide, delete original, load final state ──
+  // Batch all three operations into a single sync to minimize IPC round-trips.
+  // Office.js executes queued operations sequentially within a sync, so the
+  // load will reflect the state after both insert and delete.
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
     ...(targetSlideId ? { targetSlideId } : {}),
   });
-  try {
-    await context.sync();
-  } catch (e) {
-    throw wrapRoundTripError(e, "inserting mutated", slideIndex);
-  }
-
-  // ── Phase 5: Find replacement, delete original, get final state ──────
-  const updatedSlides = context.presentation.slides;
-  updatedSlides.load("items/id");
-  await context.sync();
-
-  const originalSlide = updatedSlides.items.find((slide) => slide.id === sourceSlideId);
-  if (!originalSlide) {
-    throw new Error("Failed to locate the original slide after Open XML round-trip insertion.");
-  }
-
-  const replacementSlide = updatedSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
-  if (!replacementSlide) {
-    throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
-  }
-
-  originalSlide.delete();
+  sourceSlide.delete();
   const finalSlides = context.presentation.slides;
   finalSlides.load("items/id");
   try {
     await context.sync();
   } catch (e) {
-    throw wrapRoundTripError(e, "deleting original", slideIndex);
+    throw wrapRoundTripError(e, "inserting mutated and deleting original", slideIndex);
+  }
+
+  // The replacement slide is the one whose ID wasn't in the original slide collection.
+  const replacementSlide = finalSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
+  if (!replacementSlide) {
+    throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
   }
   const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
 
@@ -1578,7 +1557,6 @@ export async function replaceSlideWithMutatedOpenXml(
     originalSlideId: sourceSlideId,
     replacementSlideId: replacementSlide.id,
     finalSlideIndex,
-    shapeIdMap,
   });
 }
 
@@ -1589,13 +1567,12 @@ export async function exportSlideAsBase64(context: PowerPoint.RequestContext, sl
 
   const slides = context.presentation.slides;
   slides.load("items");
+  const exported = slides.getItemAt(slideIndex).exportAsBase64();
   await context.sync();
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
     throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
-  const exported = slides.items[slideIndex].exportAsBase64();
-  await context.sync();
   return exported.value;
 }
 
