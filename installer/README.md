@@ -5,7 +5,7 @@ This directory contains resources for building standalone installers for Windows
 ## Prerequisites
 
 1. **Node.js 20+** installed
-2. **npm dependencies** installed: `npm install`
+2. **Bun dependencies** installed: `bun install`
 
 ### macOS-specific
 - Xcode Command Line Tools: `xcode-select --install`
@@ -15,13 +15,13 @@ This directory contains resources for building standalone installers for Windows
 ### Build for Current Platform
 
 ```bash
-npm run build:installer
+bun run build:installer
 ```
 
 ### macOS Only
 
 ```bash
-npm run build:installer:mac
+bun run build:installer:mac
 ```
 
 **Output:** `build/electron/*.dmg`
@@ -29,7 +29,7 @@ npm run build:installer:mac
 ### Windows Only
 
 ```bash
-npm run build:installer:win
+bun run build:installer:win
 ```
 
 **Output:** `build/electron/*.exe`

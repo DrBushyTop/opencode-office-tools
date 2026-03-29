@@ -20,11 +20,11 @@ console.log(`Packaging tray app for ${platform}...`);
 
 // Build the Electron app with electron-builder (unpacked only, no installer)
 console.log('Building Electron app...');
-execSync('npm run clean:extraneous && npm run build', { cwd: projectRoot, stdio: 'inherit' });
+execSync('bun run clean:extraneous && bun run build', { cwd: projectRoot, stdio: 'inherit' });
 if (platform === 'darwin') {
-  execSync('npx electron-builder --mac --dir', { cwd: projectRoot, stdio: 'inherit' });
+  execSync('bunx electron-builder --mac --dir', { cwd: projectRoot, stdio: 'inherit' });
 } else if (platform === 'win32') {
-  execSync('npx electron-builder --win --dir', { cwd: projectRoot, stdio: 'inherit' });
+  execSync('bunx electron-builder --win --dir', { cwd: projectRoot, stdio: 'inherit' });
 }
 
 // Copy the built app

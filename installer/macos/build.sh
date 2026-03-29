@@ -21,13 +21,15 @@ echo "Building macOS installer..."
 if [ ! -f "$SCRIPT_DIR/icon.icns" ]; then
     echo "Generating icons..."
     cd "$ROOT_DIR"
-    npm run build:icons
+    bun run build:icons
 fi
 
 # Clean extraneous packages and build the Electron app
 echo "Building Electron app..."
 cd "$ROOT_DIR"
-npm run build:electron:mac
+bun run clean:extraneous
+bun run build
+bunx electron-builder --mac
 
 # The electron-builder output is in build/electron/mac or build/electron/mac-arm64
 echo ""

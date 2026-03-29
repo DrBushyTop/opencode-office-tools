@@ -65,7 +65,7 @@ Write-Host ""
 
 Write-Host "Setup complete! Next steps:" -ForegroundColor Cyan
 Write-Host "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
-Write-Host "2. Start the tray app: npm run start:tray"
+Write-Host "2. Start the tray app: bun run start:tray"
 Write-Host "3. Open Word, PowerPoint, Excel, or OneNote"
 Write-Host "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 Write-Host ""

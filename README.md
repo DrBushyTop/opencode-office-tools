@@ -106,14 +106,14 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server with hot reload |
-| `npm run start` | Run production server standalone |
-| `npm run start:tray` | Run Electron tray app locally |
-| `npm run build` | Build frontend for production |
-| `npm test` | Run focused Vitest coverage for history, permissions, and tool exposure |
-| `npm run build:installer` | Build installer for current platform |
-| `npm run build:installer:mac` | Build macOS .dmg installer |
-| `npm run build:installer:win` | Build Windows .exe installer |
+| `bun run dev` | Start development server with hot reload |
+| `bun run start` | Run production server standalone |
+| `bun run start:tray` | Run Electron tray app locally |
+| `bun run build` | Build frontend for production |
+| `bun run test` | Run focused Vitest coverage for history, permissions, and tool exposure |
+| `bun run build:installer` | Build installer for current platform |
+| `bun run build:installer:mac` | Build macOS .dmg installer |
+| `bun run build:installer:win` | Build Windows .exe installer |
 
 ## Unregistering Add-in
 
