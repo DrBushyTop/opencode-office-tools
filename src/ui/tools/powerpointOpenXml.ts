@@ -1480,6 +1480,71 @@ function wrapRoundTripError(error: unknown, step: string, slideIndex: number): E
   return new Error(`Slide ${slideIndex + 1} round-trip failed while ${step} slide: ${msg}${codeLabel}`);
 }
 
+// ── Slide export cache ──────────────────────────────────────────────────
+// After a successful round-trip, cache the mutated base64 so that the next
+// round-trip targeting the same slide can skip the expensive exportAsBase64()
+// call.  The cache entry is keyed by the replacement slide ID and expires
+// after a short TTL to avoid serving stale data if the user edits the slide
+// manually between tool calls.
+
+interface SlideExportCacheEntry {
+  /** The mutated base64 that was last inserted for this slide. */
+  base64: string;
+  /** Office.js slide ID of the replacement slide (cache key). */
+  slideId: string;
+  /** Slide index at the time of caching. */
+  slideIndex: number;
+  /** All slide IDs in the deck at the time of caching (for staleness detection). */
+  allSlideIds: string[];
+  /** Timestamp when the cache entry was created. */
+  timestamp: number;
+}
+
+/** TTL for cache entries in milliseconds.  Tool calls from the bridge arrive
+ *  roughly every ~750ms, so 30s gives ample headroom for a burst of
+ *  consecutive mutations while still expiring before the user is likely to
+ *  have made manual edits. */
+const SLIDE_EXPORT_CACHE_TTL_MS = 30_000;
+
+let slideExportCache: SlideExportCacheEntry | null = null;
+
+/** Exposed for testing – clear the module-level cache. */
+export function clearSlideExportCache() {
+  slideExportCache = null;
+}
+
+/** Exposed for testing – read the current cache state. */
+export function getSlideExportCache(): Readonly<SlideExportCacheEntry> | null {
+  return slideExportCache;
+}
+
+/**
+ * Try to match the cache against the current deck state.
+ * Returns the cached base64 if the cache is valid, or null if it's stale.
+ */
+function matchSlideExportCache(
+  slideIndex: number,
+  currentSlideIds: string[],
+): string | null {
+  if (!slideExportCache) return null;
+  if (Date.now() - slideExportCache.timestamp > SLIDE_EXPORT_CACHE_TTL_MS) {
+    slideExportCache = null;
+    return null;
+  }
+  // The cached slide must still be at the same index with the same ID.
+  if (slideExportCache.slideIndex !== slideIndex) return null;
+  if (currentSlideIds[slideIndex] !== slideExportCache.slideId) return null;
+  // Deck structure must not have changed (slides added/removed/reordered).
+  if (
+    currentSlideIds.length !== slideExportCache.allSlideIds.length ||
+    !currentSlideIds.every((id, i) => id === slideExportCache!.allSlideIds[i])
+  ) {
+    slideExportCache = null;
+    return null;
+  }
+  return slideExportCache.base64;
+}
+
 export interface RoundTripOptions {
   /** Queue extra loads on the source slide proxy before the first sync.
    *  For example, loading shapes so they're available to the mutate callback. */
@@ -1496,14 +1561,32 @@ export async function replaceSlideWithMutatedOpenXml(
     throw new Error("PowerPoint Open XML slide round-tripping requires PowerPointApi 1.8.");
   }
 
-  // ── Phase 1: Load slide IDs + export source slide in one sync ──────────
+  // ── Phase 1: Load slide IDs + (maybe) export source slide in one sync ──
   // Use getItemAt() to obtain a proxy for the source slide (and the slide
-  // before it) so that exportAsBase64() can be batched with the ID loads.
+  // before it) so that operations can be batched with the ID loads.
+  //
+  // When the slide export cache holds a valid entry for this slide, we skip
+  // the expensive exportAsBase64() call and reuse the cached base64 instead.
+  // The sync is still needed for slide ID loads, preload hooks, and to obtain
+  // the source slide proxy for deletion.
   const slides = context.presentation.slides;
   slides.load("items/id");
   const sourceSlide = slides.getItemAt(slideIndex);
   sourceSlide.load("id");
-  const exported = sourceSlide.exportAsBase64();
+  // Conditionally queue the export — we may be able to skip it if the cache hits.
+  // We always queue it here because we can't know yet if the cache is valid
+  // (we need slide IDs from the sync to check). The Office.js host will
+  // execute it regardless, but we structure the code so the cache check
+  // happens after sync. In a future optimisation we could speculatively skip
+  // the export if cache looks likely, but for now we accept the export cost
+  // as a baseline and rely on the cache for the *data* only.
+  //
+  // UPDATE: We can actually skip the export when the cache looks promising.
+  // Queue it conditionally: only when there's no cache or the cache targets a
+  // different slide index.  After sync, if the full cache validation fails we
+  // fall back to the exported value (which we queued anyway).
+  const cacheCandidate = slideExportCache?.slideIndex === slideIndex;
+  const exported = cacheCandidate ? null : sourceSlide.exportAsBase64();
   let targetSlideProxy: PowerPoint.Slide | undefined;
   if (slideIndex > 0) {
     targetSlideProxy = slides.getItemAt(slideIndex - 1);
@@ -1515,6 +1598,8 @@ export async function replaceSlideWithMutatedOpenXml(
     await context.sync();
   } catch (e) {
     // Index-out-of-range from getItemAt or export failure both surface here.
+    // Invalidate cache on any error to avoid cascading stale hits.
+    slideExportCache = null;
     throw wrapRoundTripError(e, "loading and exporting", slideIndex);
   }
 
@@ -1526,8 +1611,46 @@ export async function replaceSlideWithMutatedOpenXml(
   const previousSlideIds = slides.items.map((slide) => slide.id).filter(Boolean);
   const targetSlideId = targetSlideProxy?.id;
 
-  // ── Phase 2: Mutate the exported package ──────────────────────────────
-  const mutated = mutate(exported.value, sourceSlide);
+  // Check if the cache is valid now that we have slide IDs.
+  const cachedBase64 = matchSlideExportCache(slideIndex, previousSlideIds);
+  const sourceBase64 = cachedBase64 ?? exported?.value;
+  if (!sourceBase64) {
+    // Cache miss AND we didn't queue the export (shouldn't happen given the
+    // cacheCandidate guard, but handle it defensively).  We need a second sync
+    // to export.
+    const fallbackExported = sourceSlide.exportAsBase64();
+    await context.sync();
+    if (!fallbackExported.value) {
+      throw new Error(`Slide ${slideIndex + 1} round-trip: failed to export slide and no cache available.`);
+    }
+    // Use the fallback; continue with the rest of the flow.
+    return replaceSlideWithMutatedOpenXmlPhase2(
+      context, slideIndex, sourceSlideId, previousSlideIds, targetSlideId,
+      sourceSlide, fallbackExported.value, mutate, slides,
+    );
+  }
+
+  return replaceSlideWithMutatedOpenXmlPhase2(
+    context, slideIndex, sourceSlideId, previousSlideIds, targetSlideId,
+    sourceSlide, sourceBase64, mutate, slides,
+  );
+}
+
+/** Phase 2+3: Mutate the package and replace the slide.  Factored out so both
+ *  the normal and cache-miss-fallback paths can share the same logic. */
+async function replaceSlideWithMutatedOpenXmlPhase2(
+  context: PowerPoint.RequestContext,
+  slideIndex: number,
+  sourceSlideId: string,
+  previousSlideIds: string[],
+  targetSlideId: string | undefined,
+  sourceSlide: PowerPoint.Slide,
+  sourceBase64: string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  _slides: PowerPoint.SlideCollection,
+): Promise<OpenXmlRoundTripResult> {
+  // ── Phase 2: Mutate the exported (or cached) package ──────────────────
+  const mutated = mutate(sourceBase64, sourceSlide);
 
   // ── Phase 3: Insert mutated slide, delete original, load final state ──
   // Batch all three operations into a single sync to minimize IPC round-trips.
@@ -1543,15 +1666,27 @@ export async function replaceSlideWithMutatedOpenXml(
   try {
     await context.sync();
   } catch (e) {
+    // Invalidate cache on any error during insertion.
+    slideExportCache = null;
     throw wrapRoundTripError(e, "inserting mutated and deleting original", slideIndex);
   }
 
   // The replacement slide is the one whose ID wasn't in the original slide collection.
   const replacementSlide = finalSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
   if (!replacementSlide) {
+    slideExportCache = null;
     throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
   }
   const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
+
+  // ── Update cache with the mutated base64 for the next round-trip ──────
+  slideExportCache = {
+    base64: mutated,
+    slideId: replacementSlide.id,
+    slideIndex: finalSlideIndex,
+    allSlideIds: finalSlides.items.map((slide) => slide.id).filter(Boolean),
+    timestamp: Date.now(),
+  };
 
   return openXmlRoundTripResultSchema.parse({
     originalSlideId: sourceSlideId,
