@@ -3,11 +3,16 @@ import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenXmlPackage, parseXml } from "./openXmlPackage";
 import { addSlideAnimation } from "./addSlideAnimation";
+import { clearSlideExportCache } from "./powerpointOpenXml";
 
 function createPresentationBase64(entries: Record<string, string>) {
-  return Buffer.from(zipSync(Object.fromEntries(
+  let binary = "";
+  zipSync(Object.fromEntries(
     Object.entries(entries).map(([path, contents]) => [path, strToU8(contents)]),
-  ))).toString("base64");
+  )).forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
 
 if (typeof DOMParser === "undefined") {
@@ -61,6 +66,7 @@ function baseSlideXml() {
 }
 
 afterEach(() => {
+  clearSlideExportCache();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });

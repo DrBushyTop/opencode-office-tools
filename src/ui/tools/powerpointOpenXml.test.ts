@@ -1,13 +1,15 @@
 import { strToU8, zipSync } from "fflate";
 import { DOMParser as XmldomParser, XMLSerializer as XmldomSerializer } from "@xmldom/xmldom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenXmlPackage, parseXml } from "./openXmlPackage";
 import {
   addSlideAnimationBatchInBase64Presentation,
   addSlideAnimationInBase64Presentation,
+  clearSlideExportCache,
   extractSpeakerNotesFromBase64Presentation,
   extractSlideTransitionFromBase64Presentation,
   findSlideShapeIndexByXmlShapeIdInBase64Presentation,
+  getSlideExportCache,
   listXmlShapeIdsInBase64Presentation,
   replaceSlideWithMutatedOpenXml,
   setSlideTransitionInBase64Presentation,
@@ -15,9 +17,13 @@ import {
 } from "./powerpointOpenXml";
 
 function createPresentationBase64(entries: Record<string, string>) {
-  return Buffer.from(zipSync(Object.fromEntries(
+  let binary = "";
+  zipSync(Object.fromEntries(
     Object.entries(entries).map(([path, contents]) => [path, strToU8(contents)]),
-  ))).toString("base64");
+  )).forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
 
 if (typeof DOMParser === "undefined") {
@@ -27,6 +33,15 @@ if (typeof DOMParser === "undefined") {
 if (typeof XMLSerializer === "undefined") {
   vi.stubGlobal("XMLSerializer", XmldomSerializer);
 }
+
+// Clear the module-level slide export cache before each test to prevent cross-contamination.
+beforeEach(() => {
+  clearSlideExportCache();
+});
+
+afterEach(() => {
+  clearSlideExportCache();
+});
 
 function baseSlideXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -847,5 +862,310 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     const mutated = setSpeakerNotesInBase64Presentation(base64, "Canonical notes");
 
     expect(extractSpeakerNotesFromBase64Presentation(mutated)).toBe("Canonical notes");
+  });
+});
+
+describe("slide export cache", () => {
+  function stubOfficeGlobals() {
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+  }
+
+  /** Build a mock context where slide 0 has the given sourceId and export returns
+   *  the given base64. After round-trip, the replacement slide has replacementId. */
+  function buildMockContext(opts: {
+    sourceId: string;
+    replacementId: string;
+    exportValue: string;
+  }) {
+    const sourceSlide = {
+      id: opts.sourceId,
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: opts.exportValue })),
+      delete: vi.fn(),
+    };
+    const insertedSlide = { id: opts.replacementId };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn((_index: number) => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [insertedSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn(() => {
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const context = {
+      presentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    return { context, sourceSlide, presentation };
+  }
+
+  it("populates the cache after a successful round-trip", async () => {
+    stubOfficeGlobals();
+    const { context } = buildMockContext({
+      sourceId: "slide-1",
+      replacementId: "slide-new",
+      exportValue: "EXPORTED_B64",
+    });
+
+    expect(getSlideExportCache()).toBeNull();
+
+    await replaceSlideWithMutatedOpenXml(context, 0, (b64) => `${b64}-mutated`);
+
+    const cache = getSlideExportCache();
+    expect(cache).not.toBeNull();
+    expect(cache!.slideId).toBe("slide-new");
+    expect(cache!.slideIndex).toBe(0);
+    expect(cache!.base64).toBe("EXPORTED_B64-mutated");
+    expect(cache!.allSlideIds).toEqual(["slide-new"]);
+  });
+
+  it("skips exportAsBase64 on a cache hit for the same slide", async () => {
+    stubOfficeGlobals();
+
+    // First round-trip: exports the slide normally.
+    const firstSourceSlide = {
+      id: "slide-1",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: "EXPORTED_B64" })),
+      delete: vi.fn(),
+    };
+    const firstInsertedSlide = { id: "slide-new-1" };
+    const firstSlides = {
+      items: [firstSourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn((_index: number) => firstSourceSlide),
+    } as any;
+    const firstFinalSlides = {
+      items: [firstInsertedSlide],
+      load: vi.fn(),
+    } as any;
+    const firstPresentation = {
+      slides: firstSlides,
+      insertSlidesFromBase64: vi.fn(() => {
+        firstPresentation.slides = firstFinalSlides;
+      }),
+    } as any;
+    const firstContext = {
+      presentation: firstPresentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    await replaceSlideWithMutatedOpenXml(firstContext, 0, (b64) => `${b64}-mutation1`);
+    expect(firstSourceSlide.exportAsBase64).toHaveBeenCalledTimes(1);
+    expect(getSlideExportCache()!.base64).toBe("EXPORTED_B64-mutation1");
+
+    // Second round-trip: cache hit — should NOT call exportAsBase64.
+    // The source slide now has the replacement ID from the first round-trip.
+    const secondSourceSlide = {
+      id: "slide-new-1",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: "SHOULD_NOT_USE" })),
+      delete: vi.fn(),
+    };
+    const secondInsertedSlide = { id: "slide-new-2" };
+    const secondSlides = {
+      items: [secondSourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn((_index: number) => secondSourceSlide),
+    } as any;
+    const secondFinalSlides = {
+      items: [secondInsertedSlide],
+      load: vi.fn(),
+    } as any;
+    const secondPresentation = {
+      slides: secondSlides,
+      insertSlidesFromBase64: vi.fn(() => {
+        secondPresentation.slides = secondFinalSlides;
+      }),
+    } as any;
+    const secondContext = {
+      presentation: secondPresentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const result = await replaceSlideWithMutatedOpenXml(secondContext, 0, (b64) => `${b64}-mutation2`);
+
+    // Export should NOT have been called — cache was used.
+    expect(secondSourceSlide.exportAsBase64).not.toHaveBeenCalled();
+    // The mutate callback received the cached base64 (result of first mutation).
+    expect(secondPresentation.insertSlidesFromBase64).toHaveBeenCalledWith(
+      "EXPORTED_B64-mutation1-mutation2",
+      { formatting: "KeepSourceFormatting" },
+    );
+    expect(result).toMatchObject({
+      originalSlideId: "slide-new-1",
+      replacementSlideId: "slide-new-2",
+      finalSlideIndex: 0,
+    });
+    // Cache updated with latest mutation.
+    expect(getSlideExportCache()!.base64).toBe("EXPORTED_B64-mutation1-mutation2");
+    expect(getSlideExportCache()!.slideId).toBe("slide-new-2");
+  });
+
+  it("invalidates cache when targeting a different slide index", async () => {
+    stubOfficeGlobals();
+
+    // Populate cache for slide 0.
+    const { context: ctx1 } = buildMockContext({
+      sourceId: "slide-1",
+      replacementId: "slide-new-1",
+      exportValue: "B64_SLIDE0",
+    });
+    await replaceSlideWithMutatedOpenXml(ctx1, 0, (b64) => `${b64}-m1`);
+    expect(getSlideExportCache()!.slideIndex).toBe(0);
+
+    // Now target slide 1 in a 2-slide deck.
+    const slideA = { id: "slide-new-1", load: vi.fn() };
+    const sourceSlideB = {
+      id: "slide-B",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: "B64_SLIDE1" })),
+      delete: vi.fn(),
+    };
+    const insertedSlide = { id: "slide-B-new" };
+    const slides = {
+      items: [slideA, sourceSlideB],
+      load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [slideA, sourceSlideB][index]),
+    } as any;
+    const finalSlides = {
+      items: [slideA, insertedSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn(() => {
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const context = {
+      presentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const result = await replaceSlideWithMutatedOpenXml(context, 1, (b64) => `${b64}-m2`);
+
+    // Should have exported because the cache was for slide 0, not slide 1.
+    expect(sourceSlideB.exportAsBase64).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      replacementSlideId: "slide-B-new",
+      finalSlideIndex: 1,
+    });
+  });
+
+  it("invalidates cache when deck structure changes", async () => {
+    stubOfficeGlobals();
+
+    // Populate cache for slide 0 in a single-slide deck.
+    const { context: ctx1 } = buildMockContext({
+      sourceId: "slide-1",
+      replacementId: "slide-new-1",
+      exportValue: "B64_V1",
+    });
+    await replaceSlideWithMutatedOpenXml(ctx1, 0, (b64) => `${b64}-m1`);
+    expect(getSlideExportCache()!.allSlideIds).toEqual(["slide-new-1"]);
+
+    // Now the deck has 2 slides (user added one between calls).
+    const sourceSlide = {
+      id: "slide-new-1",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: "B64_V2" })),
+      delete: vi.fn(),
+    };
+    const slideB = { id: "slide-extra", load: vi.fn() };
+    const insertedSlide = { id: "slide-new-2" };
+    const slides = {
+      items: [sourceSlide, slideB],
+      load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [sourceSlide, slideB][index]),
+    } as any;
+    const finalSlides = {
+      items: [insertedSlide, slideB],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn(() => {
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const context = {
+      presentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    await replaceSlideWithMutatedOpenXml(context, 0, (b64) => `${b64}-m2`);
+
+    // Cache miss because deck structure changed — must export.
+    expect(sourceSlide.exportAsBase64).toHaveBeenCalledTimes(1);
+    // Mutate received fresh export, not cached value.
+    expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith(
+      "B64_V2-m2",
+      { formatting: "KeepSourceFormatting" },
+    );
+  });
+
+  it("calls preload hook even on cache hit", async () => {
+    stubOfficeGlobals();
+
+    // Populate cache.
+    const { context: ctx1 } = buildMockContext({
+      sourceId: "slide-1",
+      replacementId: "slide-new-1",
+      exportValue: "B64",
+    });
+    await replaceSlideWithMutatedOpenXml(ctx1, 0, (b64) => b64);
+
+    // Second call with preload hook.
+    const secondSourceSlide = {
+      id: "slide-new-1",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: "UNUSED" })),
+      delete: vi.fn(),
+      shapes: { load: vi.fn(), items: [] },
+    };
+    const secondSlides = {
+      items: [secondSourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn((_index: number) => secondSourceSlide),
+    } as any;
+    const secondFinalSlides = {
+      items: [{ id: "slide-new-2" }],
+      load: vi.fn(),
+    } as any;
+    const secondPresentation = {
+      slides: secondSlides,
+      insertSlidesFromBase64: vi.fn(() => {
+        secondPresentation.slides = secondFinalSlides;
+      }),
+    } as any;
+    const secondContext = {
+      presentation: secondPresentation,
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const preload = vi.fn();
+    await replaceSlideWithMutatedOpenXml(secondContext, 0, (b64) => b64, { preload });
+
+    expect(preload).toHaveBeenCalledTimes(1);
+    expect(preload).toHaveBeenCalledWith(secondSourceSlide);
+    // Export still skipped.
+    expect(secondSourceSlide.exportAsBase64).not.toHaveBeenCalled();
   });
 });
