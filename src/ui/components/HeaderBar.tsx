@@ -21,6 +21,7 @@ const ModelInfoSchema = z.object({
   label: z.string().min(1),
   providerID: z.string().min(1),
   modelID: z.string().min(1),
+  limitContext: z.number().positive().optional(),
 }) satisfies z.ZodType<ModelInfo>;
 
 export type ModelType = z.infer<typeof ModelTypeSchema>;
@@ -40,6 +41,7 @@ interface HeaderBarProps {
   qaSubagentModel: ModelType;
   onQaSubagentModelChange: (model: ModelType) => void;
   subtitle?: string;
+  usageSummary?: string;
 }
 
 const useStyles = makeStyles({
@@ -88,6 +90,15 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "6px",
     flexShrink: 0,
+  },
+  usage: {
+    fontSize: "11px",
+    color: "var(--oc-text-muted)",
+    padding: "6px 8px",
+    borderRadius: "999px",
+    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg-soft)",
+    whiteSpace: "nowrap",
   },
   icon: {
     minWidth: "30px",
@@ -188,6 +199,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   qaSubagentModel,
   onQaSubagentModelChange,
   subtitle,
+  usageSummary,
 }) => {
   const styles = useStyles();
   const [value, setValue] = React.useState("");
@@ -240,6 +252,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       </div>
 
       <div className={styles.group}>
+        {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
         <Popover positioning="below-end" inline>
           <PopoverTrigger disableButtonEnhancement>
             <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
