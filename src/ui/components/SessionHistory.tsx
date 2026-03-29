@@ -27,7 +27,8 @@ const useStyles = makeStyles({
   container: {
     display: "flex",
     flexDirection: "column",
-    height: "100%",
+    flex: 1,
+    minHeight: 0,
     backgroundColor: "var(--colorNeutralBackground2)",
   },
   header: {
@@ -74,8 +75,26 @@ const useStyles = makeStyles({
   },
   list: {
     flex: 1,
+    minHeight: 0,
     overflowY: "auto",
     padding: "8px",
+    scrollbarColor: "rgba(127, 121, 121, 0.45) transparent",
+    scrollbarWidth: "thin",
+    "&::-webkit-scrollbar": {
+      width: "8px",
+    },
+    "&::-webkit-scrollbar-track": {
+      backgroundColor: "transparent",
+    },
+    "&::-webkit-scrollbar-thumb": {
+      backgroundColor: "rgba(127, 121, 121, 0.35)",
+      borderRadius: "999px",
+      border: "2px solid transparent",
+      backgroundClip: "content-box",
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "rgba(127, 121, 121, 0.5)",
+    },
   },
   emptyState: {
     display: "flex",
