@@ -238,14 +238,12 @@ function createToolExecutionContext(toolName: string, args: ToolArguments) {
   };
 }
 
-function normalizeToolExecutionResult(result: ToolHandlerResult) {
+export function normalizeToolExecutionResult(result: ToolHandlerResult) {
   if (typeof result === "string") return result;
   if (isToolResultFailure(result)) {
     throw new Error(result.error || result.textResultForLlm || "Tool execution failed");
   }
-  return "textResultForLlm" in result && typeof result.textResultForLlm === "string"
-    ? result.textResultForLlm
-    : result;
+  return result;
 }
 
 export function getOfficeToolExecutor(host: OfficeHost) {
