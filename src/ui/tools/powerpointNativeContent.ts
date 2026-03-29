@@ -1,4 +1,28 @@
 import { invalidSlideIndexMessage, normalizeHexColor, toolFailure } from "./powerpointShared";
+import { z } from "zod";
+
+const shapeBoundsSchema = z.object({
+  left: z.number(),
+  top: z.number(),
+  width: z.number(),
+  height: z.number(),
+  name: z.string(),
+  id: z.string(),
+});
+
+const imageRectangleOptionsSchema = z.object({
+  left: z.number(),
+  top: z.number(),
+  width: z.number(),
+  height: z.number(),
+  name: z.string().optional(),
+  imageBase64: z.string(),
+});
+
+const tableValuesSchema = z.array(z.array(z.union([z.boolean(), z.number(), z.string()])));
+
+export type ShapeBounds = z.infer<typeof shapeBoundsSchema>;
+export type ImageRectangleOptions = z.infer<typeof imageRectangleOptionsSchema>;
 
 export async function getSlideByIndex(context: PowerPoint.RequestContext, slideIndex: number) {
   const slides = context.presentation.slides;
@@ -31,33 +55,34 @@ export async function fetchImageUrlAsBase64(imageUrl: string) {
 export async function getShapeBounds(shape: PowerPoint.Shape, context: PowerPoint.RequestContext) {
   shape.load(["left", "top", "width", "height", "name", "id"]);
   await context.sync();
-  return {
+  return shapeBoundsSchema.parse({
     left: shape.left,
     top: shape.top,
     width: shape.width,
     height: shape.height,
     name: shape.name,
     id: shape.id,
-  };
+  });
 }
 
 export function toPowerPointTableValues(values?: Array<Array<boolean | number | string>>) {
-  return (values || []).map((row) => row.map((cell) => String(cell ?? "")));
+  return tableValuesSchema.parse(values || []).map((row) => row.map((cell) => String(cell ?? "")));
 }
 
 export function createImageRectangle(
   slide: PowerPoint.Slide,
-  options: { left: number; top: number; width: number; height: number; name?: string; imageBase64: string },
+  options: ImageRectangleOptions,
 ) {
+  const parsedOptions = imageRectangleOptionsSchema.parse(options);
   const shape = slide.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-    left: options.left,
-    top: options.top,
-    width: options.width,
-    height: options.height,
+    left: parsedOptions.left,
+    top: parsedOptions.top,
+    width: parsedOptions.width,
+    height: parsedOptions.height,
   });
-  shape.fill.setImage(options.imageBase64);
+  shape.fill.setImage(parsedOptions.imageBase64);
   shape.lineFormat.visible = false;
-  if (options.name) shape.name = options.name;
+  if (parsedOptions.name) shape.name = parsedOptions.name;
   return shape;
 }
 

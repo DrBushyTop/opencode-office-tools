@@ -1,8 +1,10 @@
 import type { Tool } from "./types";
 import { remoteLog } from "../lib/remoteLog";
 import { loadShapeTexts } from "./powerpointText";
+import { z } from "zod";
 
 const CHUNK_SIZE = 10;
+const getPresentationOverviewArgsSchema = z.object({}).passthrough();
 
 async function getSlidePreviewChunk(startIdx: number, endIdx: number): Promise<string[]> {
   return await PowerPoint.run(async (context) => {
@@ -53,7 +55,11 @@ export const getPresentationOverview: Tool = {
     properties: {},
     required: [],
   },
-  handler: async () => {
+  handler: async (args) => {
+    const parsedArgs = getPresentationOverviewArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return { textResultForLlm: parsedArgs.error.issues[0]?.message || "Invalid arguments.", resultType: "failure", error: parsedArgs.error.issues[0]?.message || "Invalid arguments.", toolTelemetry: {} };
+    }
     try {
       const slideCount = await PowerPoint.run(async (context) => {
         const slides = context.presentation.slides;

@@ -1,7 +1,9 @@
 import type { Tool } from "./types";
 import {
   findPageById,
+  formatZodError,
   isOneNoteRequirementSetSupported,
+  navigateToPageArgsSchema,
   toolFailure,
 } from "./onenoteShared";
 
@@ -26,10 +28,12 @@ export const navigateToPage: Tool = {
       return toolFailure("OneNoteApi 1.1 is required.");
     }
 
-    const { pageId, clientUrl } = (args as { pageId?: string; clientUrl?: string }) || {};
-    if ((!pageId && !clientUrl) || (pageId && clientUrl)) {
-      return toolFailure("Provide exactly one of pageId or clientUrl.");
+    const parsedArgs = navigateToPageArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
     }
+
+    const { pageId, clientUrl } = parsedArgs.data;
 
     try {
       return await OneNote.run(async (context) => {

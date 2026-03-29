@@ -3,20 +3,24 @@ import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { getShapeBounds, getSlideByIndex, toPowerPointTableValues } from "./powerpointNativeContent";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 type ManageSlideTableAction = "create" | "update" | "delete";
 
-interface ManageSlideTableArgs {
-  action: ManageSlideTableAction;
-  slideIndex?: number;
-  shapeId?: string | number;
-  values?: Array<Array<boolean | number | string>>;
-  left?: number;
-  top?: number;
-  width?: number;
-  height?: number;
-  name?: string;
-}
+const tableCellSchema = z.union([z.boolean(), z.number(), z.string()]);
+const manageSlideTableArgsSchema = z.object({
+  action: z.enum(["create", "update", "delete"]),
+  slideIndex: z.number().optional(),
+  shapeId: z.union([z.string(), z.number()]).optional(),
+  values: z.array(z.array(tableCellSchema)).optional(),
+  left: z.number().optional(),
+  top: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  name: z.string().optional(),
+});
+
+type ManageSlideTableArgs = z.infer<typeof manageSlideTableArgsSchema>;
 
 export const manageSlideTable: Tool = {
   name: "manage_slide_table",
@@ -41,7 +45,11 @@ export const manageSlideTable: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const tableArgs = resolvePowerPointTargetingArgs(args as ManageSlideTableArgs);
+    const parsedArgs = manageSlideTableArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const tableArgs = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideTableArgs);
     if (!Number.isInteger(tableArgs.slideIndex) || (tableArgs.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

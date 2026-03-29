@@ -1,5 +1,12 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { describeRange, getWorksheet, toolFailure } from "./excelShared";
+import { describeRange, getWorksheet, parseToolArgs, toolFailure } from "./excelShared";
+
+const getWorkbookContentArgsSchema = z.object({
+  sheetName: z.string().optional(),
+  range: z.string().optional(),
+  detail: z.boolean().default(false),
+});
 
 export const getWorkbookContent: Tool = {
   name: "get_workbook_content",
@@ -22,7 +29,10 @@ export const getWorkbookContent: Tool = {
     },
   },
   handler: async (args) => {
-    const { sheetName, range, detail = false } = (args as { sheetName?: string; range?: string; detail?: boolean }) || {};
+    const parsedArgs = parseToolArgs(getWorkbookContentArgsSchema, args ?? {});
+    if (!parsedArgs.success) return parsedArgs.failure;
+
+    const { sheetName, range, detail } = parsedArgs.data;
 
     try {
       return await Excel.run(async (context) => {

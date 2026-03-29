@@ -1,5 +1,6 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, isExcelRequirementSetSupported, splitSheetQualifiedRange, toolFailure } from "./excelShared";
+import { getWorksheet, isExcelRequirementSetSupported, nonNegativeIntegerSchema, parseToolArgs, splitSheetQualifiedRange, toolFailure } from "./excelShared";
 
 type RangeAction = "clear" | "insert" | "delete" | "copy" | "fill" | "sort" | "filter";
 
@@ -10,9 +11,39 @@ type FilterArgs = {
   criterion1?: string;
   criterion2?: string;
   filterValues?: string[];
-  dynamicCriteria?: Excel.DynamicFilterCriteria;
+  dynamicCriteria?: string;
   filterColor?: string;
 };
+
+const manageRangeArgsSchema = z.object({
+  action: z.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"]),
+  sheetName: z.string().optional(),
+  range: z.string(),
+  clearMode: z.enum(["All", "Formats", "Contents", "Hyperlinks", "RemoveHyperlinks", "ResetContents"]).default("Contents"),
+  insertShift: z.enum(["Down", "Right"]).default("Down"),
+  deleteShift: z.enum(["Up", "Left"]).default("Up"),
+  sourceRange: z.string().optional(),
+  copyType: z.enum(["All", "Formulas", "Values", "Formats", "Link"]).default("All"),
+  skipBlanks: z.boolean().default(false),
+  transpose: z.boolean().default(false),
+  destinationRange: z.string().optional(),
+  fillType: z.enum(["FillDefault", "FillCopy", "FillSeries", "FillFormats", "FillValues", "FillDays", "FillWeekdays", "FillMonths", "FillYears", "LinearTrend", "GrowthTrend", "FlashFill"]).default("FillDefault"),
+  sortKey: nonNegativeIntegerSchema("sortKey and columnIndex must be non-negative integers when provided.").optional(),
+  sortAscending: z.boolean().default(true),
+  hasHeaders: z.boolean().optional(),
+  matchCase: z.boolean().default(false),
+  sortOrientation: z.enum(["Rows", "Columns"]).optional(),
+  sortMethod: z.enum(["PinYin", "StrokeCount"]).optional(),
+  filterOperation: z.enum(["apply", "clearAll", "remove", "reapply"]).default("apply"),
+  columnIndex: nonNegativeIntegerSchema("sortKey and columnIndex must be non-negative integers when provided.").optional(),
+  filterOn: z.enum(["BottomItems", "BottomPercent", "CellColor", "Dynamic", "FontColor", "Values", "TopItems", "TopPercent", "Icon", "Custom"]).optional(),
+  criterion1: z.string().optional(),
+  criterion2: z.string().optional(),
+  filterOperator: z.enum(["And", "Or"]).optional(),
+  filterValues: z.array(z.string()).optional(),
+  dynamicCriteria: z.enum(["Unknown", "AboveAverage", "AllDatesInPeriodApril", "AllDatesInPeriodAugust", "AllDatesInPeriodDecember", "AllDatesInPeriodFebruray", "AllDatesInPeriodJanuary", "AllDatesInPeriodJuly", "AllDatesInPeriodJune", "AllDatesInPeriodMarch", "AllDatesInPeriodMay", "AllDatesInPeriodNovember", "AllDatesInPeriodOctober", "AllDatesInPeriodQuarter1", "AllDatesInPeriodQuarter2", "AllDatesInPeriodQuarter3", "AllDatesInPeriodQuarter4", "AllDatesInPeriodSeptember", "BelowAverage", "LastMonth", "LastQuarter", "LastWeek", "LastYear", "NextMonth", "NextQuarter", "NextWeek", "NextYear", "ThisMonth", "ThisQuarter", "ThisWeek", "ThisYear", "Today", "Tomorrow", "YearToDate", "Yesterday"]).optional(),
+  filterColor: z.string().optional(),
+});
 
 function normalizeRangeTarget(range: string, sheetName?: string) {
   const qualified = splitSheetQualifiedRange(range);
@@ -176,26 +207,29 @@ export const manageRange: Tool = {
     required: ["action", "range"],
   },
   handler: async (args) => {
+    const parsedArgs = parseToolArgs(manageRangeArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
+
     const {
       action,
       sheetName,
       range,
-      clearMode = "Contents",
-      insertShift = "Down",
-      deleteShift = "Up",
+      clearMode,
+      insertShift,
+      deleteShift,
       sourceRange,
-      copyType = "All",
-      skipBlanks = false,
-      transpose = false,
+      copyType,
+      skipBlanks,
+      transpose,
       destinationRange,
-      fillType = "FillDefault",
+      fillType,
       sortKey,
-      sortAscending = true,
+      sortAscending,
       hasHeaders,
-      matchCase = false,
+      matchCase,
       sortOrientation,
       sortMethod,
-      filterOperation = "apply",
+      filterOperation,
       columnIndex,
       filterOn,
       criterion1,
@@ -204,39 +238,7 @@ export const manageRange: Tool = {
       filterValues,
       dynamicCriteria,
       filterColor,
-    } = args as {
-      action: RangeAction;
-      sheetName?: string;
-      range: string;
-      clearMode?: "All" | "Formats" | "Contents" | "Hyperlinks" | "RemoveHyperlinks" | "ResetContents";
-      insertShift?: "Down" | "Right";
-      deleteShift?: "Up" | "Left";
-      sourceRange?: string;
-      copyType?: "All" | "Formulas" | "Values" | "Formats" | "Link";
-      skipBlanks?: boolean;
-      transpose?: boolean;
-      destinationRange?: string;
-      fillType?: "FillDefault" | "FillCopy" | "FillSeries" | "FillFormats" | "FillValues" | "FillDays" | "FillWeekdays" | "FillMonths" | "FillYears" | "LinearTrend" | "GrowthTrend" | "FlashFill";
-      sortKey?: number;
-      sortAscending?: boolean;
-      hasHeaders?: boolean;
-      matchCase?: boolean;
-      sortOrientation?: "Rows" | "Columns";
-      sortMethod?: "PinYin" | "StrokeCount";
-      filterOperation?: FilterOperation;
-      columnIndex?: number;
-      filterOn?: Excel.FilterOn | "BottomItems" | "BottomPercent" | "CellColor" | "Dynamic" | "FontColor" | "Values" | "TopItems" | "TopPercent" | "Icon" | "Custom";
-      criterion1?: string;
-      criterion2?: string;
-      filterOperator?: "And" | "Or";
-      filterValues?: string[];
-      dynamicCriteria?: Excel.DynamicFilterCriteria;
-      filterColor?: string;
-    };
-
-    if ((sortKey !== undefined || columnIndex !== undefined) && (!Number.isInteger(sortKey ?? columnIndex) || (sortKey ?? columnIndex)! < 0)) {
-      return toolFailure("sortKey and columnIndex must be non-negative integers when provided.");
-    }
+    } = parsedArgs.data;
 
     if (action === "filter" && filterOperation === "apply" && hasFilterCriteria({
       filterOn,
@@ -354,7 +356,7 @@ export const manageRange: Tool = {
                     criterion2,
                     operator: filterOperator,
                     values: filterValues,
-                    dynamicCriteria,
+                    dynamicCriteria: dynamicCriteria as Excel.DynamicFilterCriteria | undefined,
                     color: filterColor,
                   }
                   : undefined;

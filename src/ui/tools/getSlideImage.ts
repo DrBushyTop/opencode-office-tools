@@ -1,4 +1,10 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+
+const getSlideImageArgsSchema = z.object({
+  slideIndex: z.number(),
+  width: z.number().optional(),
+});
 
 export const getSlideImage: Tool = {
   name: "get_slide_image",
@@ -18,7 +24,19 @@ export const getSlideImage: Tool = {
     required: ["slideIndex"],
   },
   handler: async (args) => {
-    const { slideIndex, width = 800 } = args as { slideIndex: number; width?: number };
+    const parsedArgs = getSlideImageArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      const message = parsedArgs.error.issues[0]?.message || "Invalid arguments.";
+      return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+    }
+    const { slideIndex, width = 800 } = parsedArgs.data;
+
+    if (!Number.isInteger(slideIndex) || slideIndex < 0) {
+      return { textResultForLlm: "slideIndex must be a non-negative integer.", resultType: "failure", error: "slideIndex must be a non-negative integer.", toolTelemetry: {} };
+    }
+    if (!Number.isFinite(width) || width <= 0) {
+      return { textResultForLlm: "width must be a positive number.", resultType: "failure", error: "width must be a positive number.", toolTelemetry: {} };
+    }
 
     try {
       return await PowerPoint.run(async (context) => {

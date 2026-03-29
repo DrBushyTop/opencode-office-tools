@@ -1,5 +1,24 @@
 import type { OfficeHost } from "../sessionStorage";
 import type { PowerPointContextSnapshot } from "../tools/powerpointContext";
+import { z } from "zod";
+
+const officeBridgeSessionSchema = z.object({
+  sessionToken: z.string().min(1),
+});
+
+const officeExecutorSchema = z.object({
+  executorId: z.string().min(1),
+});
+
+const officeToolRequestSchema = z.object({
+  id: z.string(),
+  toolName: z.string(),
+  args: z.record(z.string(), z.unknown()).optional(),
+});
+
+const officeToolPollSchema = z.object({
+  request: officeToolRequestSchema.optional(),
+}).passthrough();
 
 export interface OfficeToolExecutor {
   execute(toolName: string, args: Record<string, unknown>): Promise<unknown>;
@@ -51,11 +70,8 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
     if (!response.ok) {
       throw new Error(`Failed to create Office bridge session: ${response.statusText}`);
     }
-    const data = await response.json();
-    sessionToken = String(data.sessionToken || "");
-    if (!sessionToken) {
-      throw new Error("Office bridge session token missing");
-    }
+    const data = officeBridgeSessionSchema.parse(await response.json());
+    sessionToken = data.sessionToken;
   };
 
   const ensureExecutor = async () => {
@@ -69,11 +85,8 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
     if (!response.ok) {
       throw new Error(`Failed to register Office executor: ${response.statusText}`);
     }
-    const data = await response.json();
-    executorId = String(data.executorId || "");
-    if (!executorId) {
-      throw new Error("Office executor id missing");
-    }
+    const data = officeExecutorSchema.parse(await response.json());
+    executorId = data.executorId;
   };
 
   const ensureOk = async (response: Response) => {
@@ -90,7 +103,7 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
       const response = await ensureOk(await fetch(`/api/office-tools/poll?executorId=${encodeURIComponent(executorId)}`, {
         headers: headers(),
       }));
-      const data = await response.json();
+      const data = officeToolPollSchema.parse(await response.json());
 
       if (data.request) {
         try {

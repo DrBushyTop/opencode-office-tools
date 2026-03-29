@@ -1,5 +1,16 @@
 import type { Tool } from "./types";
-import { parseDocumentRangeAddress, resolveDocumentRangeTarget, toolFailure } from "./wordShared";
+import { z } from "zod";
+import { getZodErrorMessage, parseDocumentRangeAddress, resolveDocumentRangeTarget, toolFailure } from "./wordShared";
+
+const findAndReplaceArgsSchema = z.object({
+  find: z.string(),
+  replace: z.string(),
+  address: z.string().optional(),
+  matchCase: z.boolean().optional().default(false),
+  matchWholeWord: z.boolean().optional().default(false),
+});
+
+export type FindAndReplaceArgs = z.infer<typeof findAndReplaceArgsSchema>;
 
 export const findAndReplace: Tool = {
   name: "find_and_replace",
@@ -47,14 +58,12 @@ Examples:
     required: ["find", "replace"],
   },
   handler: async (args) => {
-    const { find, replace, matchCase = false, matchWholeWord = false } = args as {
-      find: string;
-      replace: string;
-      address?: string;
-      matchCase?: boolean;
-      matchWholeWord?: boolean;
-    };
-    const { address } = args as { address?: string };
+    const parsedArgs = findAndReplaceArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { find, replace, address, matchCase, matchWholeWord } = parsedArgs.data;
     
     if (!find.trim()) {
       return toolFailure("Search text cannot be empty.");

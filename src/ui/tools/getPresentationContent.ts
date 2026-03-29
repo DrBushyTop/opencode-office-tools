@@ -1,8 +1,14 @@
 import type { Tool } from "./types";
 import { remoteLog } from "../lib/remoteLog";
 import { loadShapeTexts } from "./powerpointText";
+import { z } from "zod";
 
 const CHUNK_SIZE = 10; // Slides per batch in a single PowerPoint.run()
+const getPresentationContentArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+  startIndex: z.number().optional(),
+  endIndex: z.number().optional(),
+});
 
 async function getSlideChunkContent(startIdx: number, endIdx: number, slideCount: number): Promise<string[]> {
   return await PowerPoint.run(async (context) => {
@@ -73,11 +79,18 @@ export const getPresentationContent: Tool = {
     required: [],
   },
   handler: async (args) => {
-    const { slideIndex, startIndex, endIndex } = args as { 
-      slideIndex?: number; 
-      startIndex?: number; 
-      endIndex?: number;
-    };
+    const parsedArgs = getPresentationContentArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      const message = parsedArgs.error.issues[0]?.message || "Invalid arguments.";
+      return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+    }
+    const { slideIndex, startIndex, endIndex } = parsedArgs.data;
+
+    for (const [name, value] of [["slideIndex", slideIndex], ["startIndex", startIndex], ["endIndex", endIndex]] as const) {
+      if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+        return { textResultForLlm: `${name} must be a non-negative integer.`, resultType: "failure", error: `${name} must be a non-negative integer.`, toolTelemetry: {} };
+      }
+    }
 
     try {
       const slideCount = await getSlideCount();

@@ -1,5 +1,10 @@
 import type { Tool } from "./types";
-import { isWordDesktopRequirementSetSupported, toolFailure } from "./wordShared";
+import { z } from "zod";
+import { getZodErrorMessage, isWordDesktopRequirementSetSupported, toolFailure } from "./wordShared";
+
+const getDocumentOverviewArgsSchema = z.object({});
+
+export type GetDocumentOverviewArgs = z.infer<typeof getDocumentOverviewArgsSchema>;
 
 export const getDocumentOverview: Tool = {
   name: "get_document_overview",
@@ -19,7 +24,12 @@ This is faster than reading the entire document and helps you understand what to
     type: "object",
     properties: {},
   },
-  handler: async () => {
+  handler: async (args) => {
+    const parsedArgs = getDocumentOverviewArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
     try {
       return await Word.run(async (context) => {
         const body = context.document.body;

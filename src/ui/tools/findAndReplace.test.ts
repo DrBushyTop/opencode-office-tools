@@ -25,4 +25,13 @@ describe("findAndReplace", () => {
       error: expect.stringContaining("table[1].cell[2,3]"),
     });
   });
+
+  it("validates numeric search options with zod", async () => {
+    const result = await findDocumentText.handler({ find: "x", maxResults: 0 });
+
+    expect(result).toMatchObject({
+      resultType: "failure",
+      error: expect.stringContaining("maxResults"),
+    });
+  });
 });

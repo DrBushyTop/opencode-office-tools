@@ -1,7 +1,24 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, splitSheetQualifiedRange, toolFailure } from "./excelShared";
+import { getWorksheet, nonNegativeFiniteNumberSchema, parseToolArgs, splitSheetQualifiedRange, toolFailure } from "./excelShared";
 
 const supportedChartTypes = ["column", "bar", "line", "pie", "area", "scatter", "doughnut"] as const;
+
+const manageChartArgsSchema = z.object({
+  action: z.enum(["create", "setData", "setProperties", "activate", "delete"]),
+  chartName: z.string().optional(),
+  sheetName: z.string().optional(),
+  dataRange: z.string().optional(),
+  chartType: z.enum(supportedChartTypes).optional(),
+  title: z.string().optional(),
+  newName: z.string().optional(),
+  left: nonNegativeFiniteNumberSchema("left must be a non-negative number.").optional(),
+  top: nonNegativeFiniteNumberSchema("top must be a non-negative number.").optional(),
+  width: nonNegativeFiniteNumberSchema("width must be a non-negative number.").optional(),
+  height: nonNegativeFiniteNumberSchema("height must be a non-negative number.").optional(),
+  positionStartCell: z.string().optional(),
+  positionEndCell: z.string().optional(),
+});
 
 export const manageChart: Tool = {
   name: "manage_chart",
@@ -67,46 +84,10 @@ export const manageChart: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const {
-      action,
-      chartName,
-      sheetName,
-      dataRange,
-      chartType,
-      title,
-      newName,
-      left,
-      top,
-      width,
-      height,
-      positionStartCell,
-      positionEndCell,
-    } = args as {
-      action: "create" | "setData" | "setProperties" | "activate" | "delete";
-      chartName?: string;
-      sheetName?: string;
-      dataRange?: string;
-      chartType?: (typeof supportedChartTypes)[number];
-      title?: string;
-      newName?: string;
-      left?: number;
-      top?: number;
-      width?: number;
-      height?: number;
-      positionStartCell?: string;
-      positionEndCell?: string;
-    };
+    const parsedArgs = parseToolArgs(manageChartArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
 
-    if (chartType && !supportedChartTypes.includes(chartType.toLowerCase() as (typeof supportedChartTypes)[number])) {
-      return toolFailure(`Unsupported chartType ${chartType}.`);
-    }
-
-    const numericValues = { left, top, width, height };
-    for (const [key, value] of Object.entries(numericValues)) {
-      if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
-        return toolFailure(`${key} must be a non-negative number.`);
-      }
-    }
+    const { action, chartName, sheetName, dataRange, chartType, title, newName, left, top, width, height, positionStartCell, positionEndCell } = parsedArgs.data;
 
     if (positionEndCell && !positionStartCell) {
       return toolFailure("positionStartCell is required when positionEndCell is provided.");

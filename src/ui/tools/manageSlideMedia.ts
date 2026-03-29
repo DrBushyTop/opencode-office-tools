@@ -3,20 +3,23 @@ import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { createImageRectangle, fetchImageUrlAsBase64, getShapeBounds, getSlideByIndex } from "./powerpointNativeContent";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 type ManageSlideMediaAction = "insertImage" | "replaceImage" | "deleteImage";
 
-interface ManageSlideMediaArgs {
-  action: ManageSlideMediaAction;
-  slideIndex?: number;
-  shapeId?: string | number;
-  imageUrl?: string;
-  left?: number;
-  top?: number;
-  width?: number;
-  height?: number;
-  name?: string;
-}
+const manageSlideMediaArgsSchema = z.object({
+  action: z.enum(["insertImage", "replaceImage", "deleteImage"]),
+  slideIndex: z.number().optional(),
+  shapeId: z.union([z.string(), z.number()]).optional(),
+  imageUrl: z.string().optional(),
+  left: z.number().optional(),
+  top: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  name: z.string().optional(),
+});
+
+type ManageSlideMediaArgs = z.infer<typeof manageSlideMediaArgsSchema>;
 
 export const manageSlideMedia: Tool = {
   name: "manage_slide_media",
@@ -37,7 +40,11 @@ export const manageSlideMedia: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const media = resolvePowerPointTargetingArgs(args as ManageSlideMediaArgs);
+    const parsedArgs = manageSlideMediaArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const media = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideMediaArgs);
     if (!Number.isInteger(media.slideIndex) || (media.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

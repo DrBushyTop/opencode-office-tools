@@ -1,5 +1,11 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { toolFailure } from "./excelShared";
+import { excel2DDataSchema, parseToolArgs, toolFailure } from "./excelShared";
+
+const setSelectedRangeArgsSchema = z.object({
+  data: excel2DDataSchema,
+  useFormulas: z.boolean().default(true),
+});
 
 export const setSelectedRange: Tool = {
   name: "set_selected_range",
@@ -25,19 +31,11 @@ export const setSelectedRange: Tool = {
     required: ["data"],
   },
   handler: async (args) => {
-    const { data, useFormulas = true } = args as {
-      data: Array<Array<string | number | boolean>>;
-      useFormulas?: boolean;
-    };
+    const parsedArgs = parseToolArgs(setSelectedRangeArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
 
-    if (!Array.isArray(data) || data.length === 0 || !Array.isArray(data[0]) || data[0].length === 0) {
-      return toolFailure("Provide a non-empty 2D data array.");
-    }
-
+    const { data, useFormulas } = parsedArgs.data;
     const columnCount = data[0].length;
-    if (!data.every((row) => Array.isArray(row) && row.length === columnCount)) {
-      return toolFailure("All rows in data must have the same length.");
-    }
 
     try {
       return await Excel.run(async (context) => {

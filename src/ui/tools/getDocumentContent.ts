@@ -1,4 +1,10 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const getDocumentContentArgsSchema = z.object({});
+
+export type GetDocumentContentArgs = z.infer<typeof getDocumentContentArgsSchema>;
 
 export const getDocumentContent: Tool = {
   name: "get_document_content",
@@ -7,7 +13,12 @@ export const getDocumentContent: Tool = {
     type: "object",
     properties: {},
   },
-  handler: async () => {
+  handler: async (args) => {
+    const parsedArgs = getDocumentContentArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
     try {
       return await Word.run(async (context) => {
         const body = context.document.body;
@@ -15,8 +26,8 @@ export const getDocumentContent: Tool = {
         await context.sync();
         return html.value || "(empty document)";
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

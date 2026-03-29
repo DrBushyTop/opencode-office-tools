@@ -3,32 +3,55 @@ import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { makeStyles } from "@fluentui/react-components";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { z } from "zod";
 import { trafficStats } from "../lib/opencode-events";
 import { getOfficeToolUi } from "../../shared/office-tool-registry";
 
-export interface Message {
-  id: string;
-  text: string;
-  sender: "user" | "assistant" | "tool" | "thinking";
-  timestamp: Date;
-  toolName?: string;
-  toolArgs?: Record<string, unknown>;
-  toolResult?: unknown;
-  toolError?: string;
-  toolMeta?: Record<string, unknown>;
-  toolStatus?: "running" | "completed" | "error";
-  images?: Array<{ dataUrl: string; name: string }>;
-}
+const RecordValueSchema: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
+const MessageImageSchema = z.object({
+  dataUrl: z.string().min(1),
+  name: z.string().min(1),
+});
+const MessageSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+  sender: z.enum(["user", "assistant", "tool", "thinking"]),
+  timestamp: z.date(),
+  toolName: z.string().optional(),
+  toolArgs: RecordValueSchema.optional(),
+  toolResult: z.unknown().optional(),
+  toolError: z.string().optional(),
+  toolMeta: RecordValueSchema.optional(),
+  toolStatus: z.enum(["running", "completed", "error"]).optional(),
+  images: z.array(MessageImageSchema).optional(),
+});
+const DebugEventSchema = z.object({
+  type: z.string().min(1),
+  preview: z.string(),
+  timestamp: z.number(),
+});
+const TaskToolArgsSchema = z.object({
+  subagent_type: z.string().optional(),
+  description: z.string().optional(),
+  task_id: z.string().optional(),
+}).catchall(z.unknown());
+const SessionMessagePartSchema = z.object({
+  type: z.string().optional(),
+}).passthrough();
+const SessionMessageItemSchema = z.object({
+  info: z.object({
+    role: z.string().optional(),
+  }).optional(),
+  parts: z.array(SessionMessagePartSchema).optional(),
+}).passthrough();
 
-export interface DebugEvent {
-  type: string;
-  preview: string;
-  timestamp: number;
-}
+export type Message = z.infer<typeof MessageSchema>;
+export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
 function summarizeTaskTool(args: Record<string, unknown>) {
-  const subagentType = typeof args.subagent_type === "string" ? args.subagent_type : "subagent";
-  const description = typeof args.description === "string" ? args.description : "Working";
+  const parsed = TaskToolArgsSchema.safeParse(args);
+  const subagentType = parsed.success && parsed.data.subagent_type ? parsed.data.subagent_type : "subagent";
+  const description = parsed.success && parsed.data.description ? parsed.data.description : "Working";
   const prefix = /fresh[ -]?eyes|verif|review|qa/i.test(description) ? "Verification" : "Subagent";
   return `${prefix}: ${subagentType}: ${description}`;
 }
@@ -45,10 +68,10 @@ function taskSessionId(message: Message) {
   return match?.[1] || "";
 }
 
-function countTools(items: any[]) {
+function countTools(items: z.infer<typeof SessionMessageItemSchema>[]) {
   return items.reduce((sum, item) => {
-    if (item?.info?.role !== "assistant" || !Array.isArray(item.parts)) return sum;
-    return sum + item.parts.filter((part: any) => part?.type === "tool").length;
+    if (item.info?.role !== "assistant" || !Array.isArray(item.parts)) return sum;
+    return sum + item.parts.filter((part) => part.type === "tool").length;
   }, 0);
 }
 
@@ -73,7 +96,7 @@ function useTaskToolCount(sessionId: string, active: boolean) {
       try {
         const response = await fetch(`/api/opencode/session/${encodeURIComponent(sessionId)}/messages`);
         if (!response.ok) return;
-        const items = await response.json();
+        const items = z.array(SessionMessageItemSchema).catch([]).parse(await response.json());
         if (!cancelled) setCount(countTools(items));
       } catch {
         if (!cancelled) setCount(null);
@@ -701,6 +724,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   const chatRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const safeMessages = React.useMemo(() => z.array(MessageSchema).catch([]).parse(messages), [messages]);
+  const safeLiveMessages = React.useMemo(() => z.array(MessageSchema).catch([]).parse(liveMessages), [liveMessages]);
+  const safeDebugEvents = React.useMemo(
+    () => (debugEvents ? z.array(DebugEventSchema).catch([]).parse(debugEvents) : undefined),
+    [debugEvents],
+  );
 
   useEffect(() => {
     const el = chatRef.current;
@@ -733,18 +762,18 @@ export const MessageList: React.FC<MessageListProps> = ({
   };
 
   const visibleHistory = React.useMemo(
-    () => messages.filter((message) => showThinking || message.sender !== "thinking"),
-    [messages, showThinking],
+    () => safeMessages.filter((message) => showThinking || message.sender !== "thinking"),
+    [safeMessages, showThinking],
   );
   const visibleLive = React.useMemo(
-    () => liveMessages.filter((message) => showThinking || message.sender !== "thinking"),
-    [liveMessages, showThinking],
+    () => safeLiveMessages.filter((message) => showThinking || message.sender !== "thinking"),
+    [safeLiveMessages, showThinking],
   );
 
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={styles.content}>
-        {messages.length === 0 && !isConnecting && (
+        {safeMessages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
             <div className={styles.emptyTitle}>What can I do for you?</div>
             <div className={styles.emptyMeta}>{hostLabel ? `${hostLabel} workspace` : "Open document workspace"}</div>
@@ -820,7 +849,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
               </>
               <TrafficCounter />
-              {debugEvents && debugEvents.length > 0 && (
+               {safeDebugEvents && safeDebugEvents.length > 0 && (
                 <div style={{
                   marginTop: '8px',
                   maxHeight: '120px',
@@ -834,7 +863,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   padding: '6px 8px',
                   border: '1px solid var(--oc-border, #e5e5e5)',
                 }}>
-                  {debugEvents.map((ev, i) => (
+                  {safeDebugEvents.map((ev, i) => (
                     <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <span style={{ color: 'var(--oc-accent, #0078d4)' }}>{ev.type}</span>
                       {ev.preview && <span style={{ opacity: 0.7 }}> {ev.preview}</span>}

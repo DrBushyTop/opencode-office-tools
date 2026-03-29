@@ -1,59 +1,72 @@
 import { getLatestAssistantMessage, normalizeOpencodeEvent, trafficStats, type UiEvent } from "./opencode-events";
+import { modelInfoSchema, opencodeConfigSchema, opencodeMessageSchema, sessionInfoSchema } from "./opencode-schemas";
+import { z } from "zod";
 
-export interface ModelInfo {
-  key: string;
-  label: string;
-  providerID: string;
-  modelID: string;
-}
+export type ModelInfo = z.infer<typeof modelInfoSchema>;
 
-export interface SessionInfo {
-  id: string;
-  title?: string | null;
-  parentID?: string | null;
-}
+export type SessionInfo = z.infer<typeof sessionInfoSchema>;
 
-export interface OpencodeConfig {
-  agent?: Record<string, { model?: string; [key: string]: unknown }>;
-  [key: string]: unknown;
-}
+export type OpencodeConfig = z.infer<typeof opencodeConfigSchema>;
 
-interface PromptPart {
-  type: "text" | "file";
-  text?: string;
-  mime?: string;
-  url?: string;
-  filename?: string;
-}
+const promptPartSchema = z.object({
+  type: z.enum(["text", "file"]),
+  text: z.string().optional(),
+  mime: z.string().optional(),
+  url: z.string().optional(),
+  filename: z.string().optional(),
+});
 
-interface PromptInput {
-  model: { providerID: string; modelID: string };
-  agent?: string;
-  system: string;
-  parts: PromptPart[];
-  tools?: Record<string, boolean>;
-}
+const promptInputSchema = z.object({
+  model: z.object({
+    providerID: z.string(),
+    modelID: z.string(),
+  }),
+  agent: z.string().optional(),
+  system: z.string(),
+  parts: z.array(promptPartSchema),
+  tools: z.record(z.string(), z.boolean()).optional(),
+});
 
-async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
+type PromptInput = z.infer<typeof promptInputSchema>;
+
+const statusSchema = z.object({
+  mode: z.string(),
+  baseUrl: z.string(),
+  directory: z.string(),
+  models: z.array(modelInfoSchema),
+});
+
+const modelsResponseSchema = z.object({
+  models: z.array(modelInfoSchema),
+});
+
+const createSessionResponseSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+});
+
+const opencodeMessagesSchema = z.array(opencodeMessageSchema);
+
+async function readJson<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
     throw new Error((await response.text()) || `Request failed: ${response.status}`);
   }
-  return response.json();
+  return schema.parse(await response.json());
 }
 
 export class OpencodeClient {
   async getStatus() {
-    return readJson<{ mode: string; baseUrl: string; directory: string; models: ModelInfo[] }>("/api/opencode/status");
+    return readJson("/api/opencode/status", statusSchema);
   }
 
   async listModels() {
-    const data = await readJson<{ models: ModelInfo[] }>("/api/models");
+    const data = await readJson("/api/models", modelsResponseSchema);
     return data.models;
   }
 
   async createSession(input: { title?: string } = {}) {
-    return readJson<{ id: string; title: string }>("/api/opencode/session", {
+    return readJson("/api/opencode/session", createSessionResponseSchema, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -61,29 +74,29 @@ export class OpencodeClient {
   }
 
   async getMessages(sessionId: string) {
-    return readJson<any[]>(`/api/opencode/session/${sessionId}/messages`);
+    return readJson(`/api/opencode/session/${sessionId}/messages`, opencodeMessagesSchema);
   }
 
   async getSession(sessionId: string) {
-    return readJson<SessionInfo>(`/api/opencode/session/${sessionId}`);
+    return readJson(`/api/opencode/session/${sessionId}`, sessionInfoSchema);
   }
 
   async getSessionChildren(sessionId: string) {
-    return readJson<SessionInfo[]>(`/api/opencode/session/${sessionId}/children`);
+    return readJson(`/api/opencode/session/${sessionId}/children`, z.array(sessionInfoSchema));
   }
 
   async abortSession(sessionId: string) {
-    return readJson<unknown>(`/api/opencode/session/${sessionId}/abort`, {
+    return readJson(`/api/opencode/session/${sessionId}/abort`, z.unknown(), {
       method: "POST",
     });
   }
 
   async getConfig() {
-    return readJson<OpencodeConfig>("/api/opencode/config");
+    return readJson("/api/opencode/config", opencodeConfigSchema);
   }
 
   async updateConfig(config: OpencodeConfig) {
-    return readJson<OpencodeConfig>("/api/opencode/config", {
+    return readJson("/api/opencode/config", opencodeConfigSchema, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
@@ -91,6 +104,7 @@ export class OpencodeClient {
   }
 
   async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal } = {}): AsyncGenerator<UiEvent, void, undefined> {
+    const payload = promptInputSchema.parse(input);
     const partTypes = new Map<string, string>();
     const queue: UiEvent[] = [];
     let done = false;
@@ -131,11 +145,11 @@ export class OpencodeClient {
 
     opts.signal?.addEventListener("abort", stop, { once: true });
 
-    trafficStats.bytesOut += JSON.stringify(input).length;
+    trafficStats.bytesOut += JSON.stringify(payload).length;
     const send = fetch(`/api/opencode/session/${sessionId}/message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify(payload),
     }).then(async (response) => {
       if (!response.ok) {
         throw new Error((await response.text()) || "Failed to send prompt");

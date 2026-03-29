@@ -1,10 +1,22 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  getZodErrorMessage,
   parseDocumentRangeAddress,
   resolveDocumentRangeTarget,
   summarizePlainText,
   toolFailure,
 } from "./wordShared";
+
+const findDocumentTextArgsSchema = z.object({
+  find: z.string(),
+  address: z.string().optional(),
+  matchCase: z.boolean().optional().default(false),
+  matchWholeWord: z.boolean().optional().default(false),
+  maxResults: z.number().int().positive().optional().default(20),
+});
+
+export type FindDocumentTextArgs = z.infer<typeof findDocumentTextArgsSchema>;
 
 export const findDocumentText: Tool = {
   name: "find_document_text",
@@ -38,26 +50,15 @@ Optionally scope the search to a generic address such as selection, bookmark[Nam
     required: ["find"],
   },
   handler: async (args) => {
-    const {
-      find,
-      address,
-      matchCase = false,
-      matchWholeWord = false,
-      maxResults = 20,
-    } = args as {
-      find: string;
-      address?: string;
-      matchCase?: boolean;
-      matchWholeWord?: boolean;
-      maxResults?: number;
-    };
+    const parsedArgs = findDocumentTextArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { find, address, matchCase, matchWholeWord, maxResults } = parsedArgs.data;
 
     if (!find.trim()) {
       return toolFailure("Search text cannot be empty.");
-    }
-
-    if (!Number.isFinite(maxResults) || maxResults < 1) {
-      return toolFailure("maxResults must be a positive number.");
     }
 
     const parsed = address ? parseDocumentRangeAddress(address) : null;

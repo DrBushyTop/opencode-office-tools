@@ -1,28 +1,17 @@
-export interface ToolResultFailure {
-  textResultForLlm: string;
-  resultType: "failure";
-  error: string;
-  toolTelemetry: Record<string, unknown>;
-  binaryResultsForLlm?: Array<{
-    data: string;
-    mimeType: string;
-    type: string;
-    description?: string;
-  }>;
-}
+import type {
+  ToolArguments,
+  ToolContext,
+  ToolParameters,
+  ToolResultFailure,
+} from "./toolShared";
+
+export type { ToolArguments, ToolContext, ToolParameters, ToolResultFailure } from "./toolShared";
 
 export type ToolHandlerResult = string | ToolResultFailure | Record<string, unknown>;
 
-export interface ToolContext {
-  sessionId: string;
-  toolCallId: string;
-  toolName: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface Tool {
+export interface Tool<TArgs = unknown, TResult extends ToolHandlerResult = ToolHandlerResult> {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
-  handler: (args?: unknown, context?: ToolContext) => Promise<ToolHandlerResult>;
+  parameters: ToolParameters;
+  handler: (args?: TArgs, context?: ToolContext) => Promise<TResult>;
 }

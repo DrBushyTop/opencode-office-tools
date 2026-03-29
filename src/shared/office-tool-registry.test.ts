@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import rawRegistry from "./office-tool-registry.json";
+import { officeToolRegistrySourceSchema } from "./office-metadata";
 import { getOfficeToolNames, isReadOnlyOfficeTool, officeToolDefinitions, officeToolRegistry } from "./office-tool-registry";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,6 +11,7 @@ const __dirname = path.dirname(__filename);
 
 describe("office tool registry", () => {
   it("derives definitions and permissions from one registry", () => {
+    expect(() => officeToolRegistrySourceSchema.parse(rawRegistry)).not.toThrow();
     expect(officeToolDefinitions.get_document_part.description).toBe(officeToolRegistry.get_document_part.description);
     expect(isReadOnlyOfficeTool("get_document_part")).toBe(true);
     expect(isReadOnlyOfficeTool("set_document_part")).toBe(false);

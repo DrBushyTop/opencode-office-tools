@@ -1,16 +1,13 @@
 import type { ToolResultFailure } from "./types";
+import { createToolFailure, describeErrorWithCode, summarizePlainText as summarizeSharedPlainText } from "./toolShared";
 
 export function toolFailure(error: unknown, hint?: string): ToolResultFailure {
-  const message = describeError(error);
-  const fullMessage = hint ? `${message} ${hint}` : message;
-  return { textResultForLlm: fullMessage, resultType: "failure", error: fullMessage, toolTelemetry: {} };
+  return createToolFailure(error, { hint, describe: describeErrorWithCode });
 }
 
 /** Extract a descriptive message from an error, including the Office.js error code when available. */
 export function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
-  const code = (error as { code?: string }).code;
-  return code ? `${error.message} [${code}]` : error.message;
+  return describeErrorWithCode(error);
 }
 
 export function formatAvailableSlideIndexes(slideCount: number) {
@@ -73,9 +70,7 @@ export function isPowerPointRequirementSetSupported(version: string) {
 export const supportsPowerPointPlaceholders = () => isPowerPointRequirementSetSupported("1.8");
 
 export function summarizePlainText(text: string, limit = 100) {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return "(empty)";
-  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+  return summarizeSharedPlainText(text, limit);
 }
 
 const themeColorKeys = [

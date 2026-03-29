@@ -1,5 +1,7 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  getZodErrorMessage,
   getHeaderFooterBody,
   isValidSectionSelector,
   isWordDesktopRequirementSetSupported,
@@ -10,6 +12,12 @@ import {
 } from "./wordShared";
 
 const headerFooterTypes: HeaderFooterTypeName[] = ["primary", "firstPage", "evenPages"];
+const getDocumentPartArgsSchema = z.object({
+  address: z.string(),
+  format: z.enum(["summary", "text", "html"]).optional().default("summary"),
+});
+
+export type GetDocumentPartArgs = z.infer<typeof getDocumentPartArgsSchema>;
 
 export const getDocumentPart: Tool = {
   name: "get_document_part",
@@ -41,7 +49,12 @@ Use format="text" or format="html" for specific header/footer bodies. Use format
     required: ["address"],
   },
   handler: async (args) => {
-    const { address, format = "summary" } = args as { address: string; format?: "summary" | "text" | "html" };
+    const parsedArgs = getDocumentPartArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { address, format } = parsedArgs.data;
     const parsed = parseDocumentPartAddress(address);
 
     if (!parsed) {

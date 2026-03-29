@@ -10,45 +10,52 @@ import {
   toolFailure,
   type PowerPointThemeColors,
 } from "./powerpointShared";
+import { z } from "zod";
 
 type StructureFormat = "summary" | "structured" | "both";
 
-interface GetPresentationStructureArgs {
-  format?: StructureFormat;
-}
+const getPresentationStructureArgsSchema = z.object({
+  format: z.enum(["summary", "structured", "both"]).optional(),
+});
 
-interface PresentationStructureShapeSummary {
-  id: string;
-  name: string;
-  type: string;
-  text?: string;
-  placeholderType?: string;
-  placeholderContainedType?: string | null;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
+type GetPresentationStructureArgs = z.infer<typeof getPresentationStructureArgsSchema>;
 
-interface PresentationLayoutSummary {
-  id: string;
-  name: string;
-  type: string;
-  placeholders: PresentationStructureShapeSummary[];
-  background?: {
-    followsMaster?: boolean;
-    graphicsHidden?: boolean;
-  };
-}
+const presentationStructureShapeSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  text: z.string().optional(),
+  placeholderType: z.string().optional(),
+  placeholderContainedType: z.string().nullable().optional(),
+  left: z.number(),
+  top: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
 
-interface PresentationMasterSummary {
-  id: string;
-  name: string;
-  themeColors?: PowerPointThemeColors;
-  backgroundFillType?: string;
-  placeholders: PresentationStructureShapeSummary[];
-  layouts: PresentationLayoutSummary[];
-}
+const presentationLayoutSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  placeholders: z.array(presentationStructureShapeSummarySchema),
+  background: z.object({
+    followsMaster: z.boolean().optional(),
+    graphicsHidden: z.boolean().optional(),
+  }).optional(),
+});
+
+const presentationMasterSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  themeColors: z.custom<PowerPointThemeColors>().optional(),
+  backgroundFillType: z.string().optional(),
+  placeholders: z.array(presentationStructureShapeSummarySchema),
+  layouts: z.array(presentationLayoutSummarySchema),
+});
+
+type PresentationStructureShapeSummary = z.infer<typeof presentationStructureShapeSummarySchema>;
+type PresentationLayoutSummary = z.infer<typeof presentationLayoutSummarySchema>;
+type PresentationMasterSummary = z.infer<typeof presentationMasterSummarySchema>;
 
 function toShapeSummary(shape: Awaited<ReturnType<typeof loadShapeSummaries>>[number]): PresentationStructureShapeSummary {
   return {
@@ -132,7 +139,11 @@ Returns:
   handler: async (args) => {
     try {
       return await PowerPoint.run(async (context) => {
-        const { format = "summary" } = (args || {}) as GetPresentationStructureArgs;
+        const parsedArgs = getPresentationStructureArgsSchema.safeParse(args ?? {});
+        if (!parsedArgs.success) {
+          return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+        }
+        const { format = "summary" } = parsedArgs.data as GetPresentationStructureArgs;
         const presentation = context.presentation;
         const slideMasters = presentation.slideMasters;
         const slides = presentation.slides;

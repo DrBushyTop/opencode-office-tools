@@ -3,23 +3,27 @@ import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { applyTemplateBindingsToSlide, createSlideWithLayout } from "./createSlideFromTemplate";
 import { getSlideByIndex } from "./powerpointNativeContent";
 import { loadShapeSummaries, loadThemeColors, pickThemeColor, toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 type LayoutType = "timeline" | "phase_plan" | "process_flow" | "comparison_grid" | "estimate_summary";
 
-interface LayoutItem {
-  title: string;
-  subtitle?: string;
-  value?: string;
-  colorToken?: string;
-}
+const layoutItemSchema = z.object({
+  title: z.string(),
+  subtitle: z.string().optional(),
+  value: z.string().optional(),
+  colorToken: z.string().optional(),
+});
 
-interface InsertBusinessLayoutArgs {
-  slideIndex?: number;
-  layoutType: LayoutType;
-  title?: string;
-  items: LayoutItem[];
-  themeMode?: "deck" | "custom";
-}
+const insertBusinessLayoutArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+  layoutType: z.enum(["timeline", "phase_plan", "process_flow", "comparison_grid", "estimate_summary"]),
+  title: z.string().optional(),
+  items: z.array(layoutItemSchema),
+  themeMode: z.enum(["deck", "custom"]).optional(),
+});
+
+type LayoutItem = z.infer<typeof layoutItemSchema>;
+type InsertBusinessLayoutArgs = z.infer<typeof insertBusinessLayoutArgsSchema>;
 
 function layoutKeywords(layoutType: LayoutType) {
   if (layoutType === "timeline") return ["timeline", "process", "roadmap"];
@@ -195,9 +199,16 @@ export const insertBusinessLayout: Tool = {
     required: ["layoutType", "items"],
   },
   handler: async (args) => {
-    const layoutArgs = resolvePowerPointTargetingArgs(args as InsertBusinessLayoutArgs);
+    const parsedArgs = insertBusinessLayoutArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const layoutArgs = resolvePowerPointTargetingArgs(parsedArgs.data as InsertBusinessLayoutArgs);
     if (!layoutArgs.items?.length) {
       return toolFailure("items must contain at least one item.");
+    }
+    if (layoutArgs.slideIndex !== undefined && (!Number.isInteger(layoutArgs.slideIndex) || layoutArgs.slideIndex < 0)) {
+      return toolFailure("slideIndex must be a non-negative integer.");
     }
 
     try {

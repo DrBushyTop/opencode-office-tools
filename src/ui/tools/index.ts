@@ -1,3 +1,4 @@
+import type { Tool, ToolArguments, ToolHandlerResult } from "./types";
 import { getDocumentContent } from "./getDocumentContent";
 import { setDocumentContent } from "./setDocumentContent";
 import { getSelection } from "./getSelection";
@@ -63,8 +64,13 @@ import { setPageTitle } from "./setPageTitle";
 import { appendPageContent } from "./appendPageContent";
 import { navigateToPage } from "./navigateToPage";
 import { getOfficeToolNames } from "../../shared/office-tool-definitions";
+import { isToolResultFailure } from "./toolShared";
+
+type OfficeHost = typeof Office.HostType[keyof typeof Office.HostType];
+type RegistryHost = "word" | "powerpoint" | "excel" | "onenote";
 
 const officeToolHandlers = {
+
   [getDocumentOverview.name]: getDocumentOverview,
   [getDocumentContent.name]: getDocumentContent,
   [getDocumentPart.name]: getDocumentPart,
@@ -123,7 +129,7 @@ const officeToolHandlers = {
   [addSlideFromCode.name]: addSlideFromCode,
   [setSlideNotes.name]: setSlideNotes,
   [setSlideTransition.name]: setSlideTransition,
-};
+} satisfies Record<string, Tool>;
 
 export const allOfficeTools = Object.values(officeToolHandlers);
 
@@ -197,8 +203,8 @@ export const onenoteTools = [
   navigateToPage,
 ];
 
-export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office.HostType]) {
-  const registryHost = host === Office.HostType.Word
+function resolveRegistryHost(host: OfficeHost): RegistryHost | null {
+  return host === Office.HostType.Word
     ? "word"
     : host === Office.HostType.PowerPoint
       ? "powerpoint"
@@ -206,7 +212,11 @@ export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office
         ? "excel"
         : host === Office.HostType.OneNote
           ? "onenote"
-        : null;
+          : null;
+}
+
+export function getToolsForHost(host: OfficeHost): Tool[] {
+  const registryHost = resolveRegistryHost(host);
 
   if (!registryHost) return [];
 
@@ -219,30 +229,38 @@ export function getToolsForHost(host: typeof Office.HostType[keyof typeof Office
   });
 }
 
-export function getOfficeToolExecutor(host: typeof Office.HostType[keyof typeof Office.HostType]) {
+function createToolExecutionContext(toolName: string, args: ToolArguments) {
+  return {
+    sessionId: "office-bridge",
+    toolCallId: crypto.randomUUID(),
+    toolName,
+    arguments: args,
+  };
+}
+
+function normalizeToolExecutionResult(result: ToolHandlerResult) {
+  if (typeof result === "string") return result;
+  if (isToolResultFailure(result)) {
+    throw new Error(result.error || result.textResultForLlm || "Tool execution failed");
+  }
+  return "textResultForLlm" in result && typeof result.textResultForLlm === "string"
+    ? result.textResultForLlm
+    : result;
+}
+
+export function getOfficeToolExecutor(host: OfficeHost) {
   const tools = getToolsForHost(host);
   const map = new Map(tools.map((tool) => [tool.name, tool.handler]));
 
   return {
-    async execute(toolName: string, args: Record<string, unknown>) {
+    async execute(toolName: string, args: ToolArguments) {
       const handler = map.get(toolName);
       if (!handler) {
         throw new Error(`Tool '${toolName}' is not available for this host`);
       }
 
-      const result = await handler(args as never, {
-        sessionId: "office-bridge",
-        toolCallId: crypto.randomUUID(),
-        toolName,
-        arguments: args,
-      } as never);
-
-      if (typeof result === "string") return result;
-      if ((result as any).resultType === "failure") {
-        throw new Error((result as any).error || (result as any).textResultForLlm || "Tool execution failed");
-      }
-
-      return (result as any).textResultForLlm || result;
+      const result = await handler(args as never, createToolExecutionContext(toolName, args));
+      return normalizeToolExecutionResult(result);
     },
   };
 }

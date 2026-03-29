@@ -1,5 +1,10 @@
 import type { Tool } from "./types";
-import { toolFailure } from "./wordShared";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const getSelectionHtmlArgsSchema = z.object({});
+
+export type GetSelectionHtmlArgs = z.infer<typeof getSelectionHtmlArgsSchema>;
 
 export const getSelectionHtml: Tool = {
   name: "get_selection_html",
@@ -8,7 +13,12 @@ export const getSelectionHtml: Tool = {
     type: "object",
     properties: {},
   },
-  handler: async () => {
+  handler: async (args) => {
+    const parsedArgs = getSelectionHtmlArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
     try {
       return await Word.run(async (context) => {
         const selection = context.document.getSelection();

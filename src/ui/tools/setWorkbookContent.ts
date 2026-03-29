@@ -1,5 +1,18 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, toolFailure } from "./excelShared";
+import { excel2DDataSchema, getWorksheet, parseToolArgs, toolFailure } from "./excelShared";
+
+const setWorkbookContentArgsSchema = z.object({
+  sheetName: z.string().optional(),
+  startCell: z.string(),
+  data: excel2DDataSchema,
+  useFormulas: z.boolean().default(false),
+  clearMode: z.enum(["none", "contents", "all"]).default("none"),
+  createTable: z.boolean().default(false),
+  tableName: z.string().optional(),
+  hasHeaders: z.boolean().default(true),
+  tableStyle: z.string().optional(),
+});
 
 export const setWorkbookContent: Tool = {
   name: "set_workbook_content",
@@ -54,36 +67,11 @@ export const setWorkbookContent: Tool = {
     required: ["startCell", "data"],
   },
   handler: async (args) => {
-    const {
-      sheetName,
-      startCell,
-      data,
-      useFormulas = false,
-      clearMode = "none",
-      createTable = false,
-      tableName,
-      hasHeaders = true,
-      tableStyle,
-    } = args as {
-      sheetName?: string;
-      startCell: string;
-      data: Array<Array<string | number | boolean>>;
-      useFormulas?: boolean;
-      clearMode?: "none" | "contents" | "all";
-      createTable?: boolean;
-      tableName?: string;
-      hasHeaders?: boolean;
-      tableStyle?: string;
-    };
+    const parsedArgs = parseToolArgs(setWorkbookContentArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
 
-    if (!Array.isArray(data) || data.length === 0 || !Array.isArray(data[0]) || data[0].length === 0) {
-      return toolFailure("Provide a non-empty 2D data array.");
-    }
-
+    const { sheetName, startCell, data, useFormulas, clearMode, createTable, tableName, hasHeaders, tableStyle } = parsedArgs.data;
     const columnCount = data[0].length;
-    if (!data.every((row) => Array.isArray(row) && row.length === columnCount)) {
-      return toolFailure("All rows in data must have the same length.");
-    }
 
     try {
       return await Excel.run(async (context) => {

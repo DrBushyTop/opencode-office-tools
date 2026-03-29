@@ -3,10 +3,11 @@ import {
   asJsonString,
   formatPageSummary,
   formatPageText,
+  formatZodError,
+  getPageContentArgsSchema,
   isOneNoteRequirementSetSupported,
   loadActivePageOrThrow,
   loadPageContentSummaries,
-  parsePageContentFormat,
   toolFailure,
 } from "./onenoteShared";
 
@@ -35,7 +36,12 @@ OneNote only exposes full page content for the active page.`,
       return toolFailure("OneNoteApi 1.1 is required.");
     }
 
-    const format = parsePageContentFormat((args as { format?: string } | undefined)?.format);
+    const parsedArgs = getPageContentArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const { format = "summary" } = parsedArgs.data;
 
     try {
       return await OneNote.run(async (context) => {

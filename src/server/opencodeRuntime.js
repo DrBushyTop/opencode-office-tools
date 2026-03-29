@@ -1,9 +1,29 @@
 const path = require('path');
 const net = require('net');
+const { z } = require('zod');
 
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 4096;
 const OFFICE_ROOT = path.resolve(__dirname, '..', '..');
+
+const runtimeModelSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+}).passthrough();
+
+const runtimeProviderSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  models: z.record(z.string(), runtimeModelSchema).default({}),
+}).passthrough();
+
+const requestOptionsSchema = z.object({
+  baseUrl: z.string().optional(),
+  method: z.string().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.unknown().optional(),
+  raw: z.boolean().optional(),
+}).passthrough();
 
 function officeConfigDirectory() {
   return process.env.OPENCODE_OFFICE_CONFIG_DIR
@@ -37,11 +57,16 @@ function toModelInfo(provider, model) {
 }
 
 function configuredModels(configProviders) {
-  const providerItems = Array.isArray(configProviders?.providers) ? configProviders.providers : [];
   const items = [];
   const seen = new Set();
 
-  for (const provider of providerItems) {
+  const providerItems = Array.isArray(configProviders?.providers) ? configProviders.providers : [];
+
+  for (const providerItem of providerItems) {
+    const parsedProvider = runtimeProviderSchema.safeParse(providerItem);
+    if (!parsedProvider.success) continue;
+    const provider = parsedProvider.data;
+
     for (const model of Object.values(provider.models || {})) {
       const modelInfo = toModelInfo(provider, model);
       if (seen.has(modelInfo.key)) continue;
@@ -179,11 +204,12 @@ class OpencodeRuntime {
   }
 
   async request(url, options = {}) {
-    const runtime = options.baseUrl ? { baseUrl: options.baseUrl } : await this.ensureRuntime();
+    const parsedOptions = requestOptionsSchema.parse(options || {});
+    const runtime = parsedOptions.baseUrl ? { baseUrl: parsedOptions.baseUrl } : await this.ensureRuntime();
     const response = await fetch(`${runtime.baseUrl}${url}`, {
-      method: options.method || 'GET',
-      headers: this.headers(options.headers),
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      method: parsedOptions.method || 'GET',
+      headers: this.headers(parsedOptions.headers),
+      body: parsedOptions.body ? JSON.stringify(parsedOptions.body) : undefined,
     });
 
     if (!response.ok) {
@@ -191,7 +217,7 @@ class OpencodeRuntime {
       throw new Error(text || `OpenCode request failed: ${response.status}`);
     }
 
-    if (options.raw) {
+    if (parsedOptions.raw) {
       return response;
     }
 
@@ -204,9 +230,14 @@ class OpencodeRuntime {
     if (narrowed.length > 0) return narrowed;
 
     const providers = await this.request('/provider');
+    const providerItems = Array.isArray(providers?.all) ? providers.all : [];
     const items = [];
 
-    for (const provider of providers.all || []) {
+    for (const providerItem of providerItems) {
+      const parsedProvider = runtimeProviderSchema.safeParse(providerItem);
+      if (!parsedProvider.success) continue;
+      const provider = parsedProvider.data;
+
       for (const model of Object.values(provider.models || {})) {
         items.push(toModelInfo(provider, model));
       }

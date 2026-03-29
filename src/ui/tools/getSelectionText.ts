@@ -1,4 +1,10 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const getSelectionTextArgsSchema = z.object({});
+
+export type GetSelectionTextArgs = z.infer<typeof getSelectionTextArgsSchema>;
 
 export const getSelectionText: Tool = {
   name: "get_selection_text",
@@ -11,7 +17,12 @@ Use this to understand what the user has highlighted before making changes to it
     type: "object",
     properties: {},
   },
-  handler: async () => {
+  handler: async (args) => {
+    const parsedArgs = getSelectionTextArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
     try {
       return await Word.run(async (context) => {
         const selection = context.document.getSelection();
@@ -24,8 +35,8 @@ Use this to understand what the user has highlighted before making changes to it
         }
         return text;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

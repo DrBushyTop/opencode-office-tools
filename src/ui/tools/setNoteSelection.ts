@@ -1,7 +1,8 @@
 import type { Tool } from "./types";
 import {
+  formatZodError,
   normalizeImagePayload,
-  parseSelectionWriteFormat,
+  setNoteSelectionArgsSchema,
   setSelectedDataAsync,
   toolFailure,
 } from "./onenoteShared";
@@ -25,8 +26,12 @@ export const setNoteSelection: Tool = {
     required: ["content"],
   },
   handler: async (args) => {
-    const { content } = args as { content: string; coercionType?: string };
-    const coercionType = parseSelectionWriteFormat((args as { coercionType?: string }).coercionType);
+    const parsedArgs = setNoteSelectionArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const { content, coercionType = "text" } = parsedArgs.data;
     const trimmed = String(content || "").trim();
 
     if (!trimmed) {

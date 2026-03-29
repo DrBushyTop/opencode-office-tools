@@ -1,8 +1,9 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
-type ZipEntries = Record<string, Uint8Array>;
+export type OpenXmlPartPath = string;
+type ZipEntries = Record<OpenXmlPartPath, Uint8Array>;
 
-function decodeBase64(base64: string) {
+function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -11,7 +12,7 @@ function decodeBase64(base64: string) {
   return bytes;
 }
 
-function encodeBase64(bytes: Uint8Array) {
+function encodeBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
   for (let index = 0; index < bytes.length; index += chunkSize) {
@@ -27,30 +28,30 @@ export class OpenXmlPackage {
     this.entries = unzipSync(decodeBase64(base64));
   }
 
-  listPaths() {
+  listPaths(): OpenXmlPartPath[] {
     return Object.keys(this.entries).sort();
   }
 
-  has(path: string) {
+  has(path: OpenXmlPartPath): boolean {
     return this.entries[path] !== undefined;
   }
 
-  readText(path: string) {
+  readText(path: OpenXmlPartPath): string {
     const entry = this.entries[path];
     if (!entry) throw new Error(`Open XML part not found: ${path}`);
     return strFromU8(entry);
   }
 
-  writeText(path: string, contents: string) {
+  writeText(path: OpenXmlPartPath, contents: string): void {
     this.entries[path] = strToU8(contents);
   }
 
-  toBase64() {
+  toBase64(): string {
     return encodeBase64(zipSync(this.entries, { level: 6 }));
   }
 }
 
-export function parseXml(xml: string) {
+export function parseXml(xml: string): XMLDocument {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, "application/xml");
   const parseError = doc.getElementsByTagName("parsererror")[0];
@@ -60,23 +61,23 @@ export function parseXml(xml: string) {
   return doc;
 }
 
-export function serializeXml(doc: XMLDocument) {
+export function serializeXml(doc: XMLDocument): string {
   return new XMLSerializer().serializeToString(doc);
 }
 
-export function relationshipPartPath(sourcePartPath: string) {
+export function relationshipPartPath(sourcePartPath: OpenXmlPartPath): OpenXmlPartPath {
   const slashIndex = sourcePartPath.lastIndexOf("/");
   const directory = slashIndex === -1 ? "" : sourcePartPath.slice(0, slashIndex);
   const filename = slashIndex === -1 ? sourcePartPath : sourcePartPath.slice(slashIndex + 1);
   return `${directory}/_rels/${filename}.rels`;
 }
 
-export function dirname(path: string) {
+export function dirname(path: OpenXmlPartPath): string {
   const slashIndex = path.lastIndexOf("/");
   return slashIndex === -1 ? "" : path.slice(0, slashIndex);
 }
 
-export function resolveTargetPath(sourcePartPath: string, target: string) {
+export function resolveTargetPath(sourcePartPath: OpenXmlPartPath, target: string): OpenXmlPartPath {
   const baseSegments = dirname(sourcePartPath).split("/").filter(Boolean);
   const targetSegments = target.split("/");
   const segments = [...baseSegments];
@@ -93,7 +94,7 @@ export function resolveTargetPath(sourcePartPath: string, target: string) {
   return segments.join("/");
 }
 
-export function nextRelationshipId(relationshipsDoc: XMLDocument) {
+export function nextRelationshipId(relationshipsDoc: XMLDocument): string {
   const existingIds = Array.from(relationshipsDoc.getElementsByTagName("Relationship"))
     .map((relationship) => relationship.getAttribute("Id") || "")
     .map((id) => /^rId(\d+)$/.exec(id)?.[1])
@@ -103,6 +104,6 @@ export function nextRelationshipId(relationshipsDoc: XMLDocument) {
   return `rId${nextId}`;
 }
 
-export function createRelationshipsDocument() {
+export function createRelationshipsDocument(): XMLDocument {
   return parseXml('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
 }

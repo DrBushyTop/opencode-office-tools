@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatZodError,
   formatPageSummary,
   formatPageText,
+  navigateToPageArgsSchema,
   normalizeImagePayload,
+  oneNoteContentSummarySchema,
+  oneNoteParagraphSummarySchema,
   parsePagePlacement,
   parseSelectionFormat,
   parseSelectionWriteFormat,
@@ -36,5 +40,26 @@ describe("onenoteShared", () => {
     expect(formatPageText(content)).toContain("First paragraph");
     expect(formatPageText(content)).toContain("[Table 2x3]");
     expect(formatPageSummary({ title: "Notes", id: "page-1", pageLevel: 0 }, content)).toContain("Notes");
+  });
+
+  it("defines zod schemas for OneNote-facing data", () => {
+    expect(oneNoteParagraphSummarySchema.parse({ type: "RichText", text: "Hello" })).toEqual({ type: "RichText", text: "Hello" });
+    expect(oneNoteContentSummarySchema.parse({
+      id: "content-1",
+      type: "Outline",
+      paragraphs: [{ type: "RichText", text: "Hello" }],
+    })).toEqual({
+      id: "content-1",
+      type: "Outline",
+      paragraphs: [{ type: "RichText", text: "Hello" }],
+    });
+  });
+
+  it("validates navigate_to_page args with zod", () => {
+    const result = navigateToPageArgsSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(formatZodError(result.error)).toContain("Provide exactly one of pageId or clientUrl.");
+    }
   });
 });

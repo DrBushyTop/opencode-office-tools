@@ -2,12 +2,25 @@ import type { Tool } from "./types";
 import { replaceSlideWithMutatedOpenXml, setSlideTransitionInBase64Presentation, type SlideTransitionDefinition } from "./powerpointOpenXml";
 import { resolvePowerPointSlideIndexes } from "./powerpointContext";
 import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 const EFFECTS = ["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"] as const;
 
 type TransitionArgs = SlideTransitionDefinition & {
   slideIndex?: number | number[];
 };
+
+const transitionArgsSchema = z.object({
+  slideIndex: z.union([z.number(), z.array(z.number())]).optional(),
+  effect: z.enum(EFFECTS),
+  speed: z.enum(["slow", "medium", "fast"]).optional(),
+  advanceOnClick: z.boolean().optional(),
+  advanceAfterMs: z.number().optional(),
+  durationMs: z.number().optional(),
+  direction: z.enum(["left", "right", "up", "down", "horizontal", "vertical", "in", "out"]).optional(),
+  orientation: z.enum(["horizontal", "vertical"]).optional(),
+  throughBlack: z.boolean().optional(),
+});
 
 export const setSlideTransition: Tool = {
   name: "set_slide_transition",
@@ -34,7 +47,11 @@ export const setSlideTransition: Tool = {
     required: ["effect"],
   },
   handler: async (args) => {
-    const transition = args as TransitionArgs;
+    const parsedArgs = transitionArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const transition = parsedArgs.data as TransitionArgs;
     const resolvedSlideIndex = resolvePowerPointSlideIndexes(transition.slideIndex);
     const transitionArgs = { ...transition, slideIndex: resolvedSlideIndex };
     const slideIndexes = Array.isArray(transitionArgs.slideIndex) ? transitionArgs.slideIndex : [transitionArgs.slideIndex];

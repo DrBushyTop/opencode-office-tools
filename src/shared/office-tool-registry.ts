@@ -1,35 +1,19 @@
 import rawRegistry from "./office-tool-registry.json";
+import {
+  officeToolRegistrySourceSchema,
+  type OfficeToolDefinition,
+  type OfficeToolHost,
+  type OfficeToolRegistryEntry,
+} from "./office-metadata";
 
-export type OfficeToolHost = "word" | "powerpoint" | "excel" | "onenote";
-
-export interface OfficeToolDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  hosts: OfficeToolHost[];
-}
+export type { OfficeToolHost, OfficeToolDefinition } from "./office-metadata";
 
 type ToolArgs = Record<string, unknown>;
 
-interface ToolUiActivity {
-  type: string;
-  text?: string;
-  prefix?: string;
-  suffix?: string;
-  field?: string;
-  default?: string;
-}
+const parsedRegistry = officeToolRegistrySourceSchema.parse(rawRegistry);
 
-interface OfficeToolRegistryEntry extends OfficeToolDefinition {
-  mutating: boolean;
-  ui: {
-    icon: string;
-    activity: ToolUiActivity;
-  };
-}
-
-export const officeToolRegistry = Object.entries(rawRegistry).reduce<Record<string, OfficeToolRegistryEntry>>((acc, [name, entry]) => {
-  acc[name] = { ...(entry as Omit<OfficeToolRegistryEntry, "name">), name };
+export const officeToolRegistry = Object.entries(parsedRegistry).reduce<Record<string, OfficeToolRegistryEntry>>((acc, [name, entry]) => {
+  acc[name] = { ...entry, name };
   return acc;
 }, {});
 

@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { z } = require('zod');
 const { validateOfficeToolCall } = require('./officeToolValidation');
 const { getLogFilePath, logInfo, logWarn, logError } = require('./devLogger');
 
@@ -13,6 +14,33 @@ const MODEL_FALLBACK = [
     modelID: 'claude-sonnet-4-5',
   },
 ];
+
+const uploadImageBodySchema = z.object({
+  dataUrl: z.string().startsWith('data:image/'),
+  name: z.any().optional(),
+});
+
+const fetchQuerySchema = z.object({
+  url: z.preprocess(
+    (value) => (value === undefined || value === null ? undefined : String(value)),
+    z.string().min(1),
+  ),
+});
+
+const logBodySchema = z.object({
+  level: z.string().optional(),
+  tag: z.any().optional(),
+  message: z.any().optional(),
+  detail: z.any().optional(),
+}).passthrough();
+
+const browseQuerySchema = z.object({
+  path: z.coerce.string().optional(),
+}).passthrough();
+
+const officeRegisterBodySchema = z.object({
+  host: z.coerce.string().optional(),
+}).passthrough();
 
 function hostPrefix(host) {
   if (host === 'powerpoint') return 'PowerPoint: ';
@@ -88,11 +116,12 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/upload-image', async (req, res) => {
     try {
-      const { dataUrl, name } = req.body;
-
-      if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      const parsedBody = uploadImageBodySchema.safeParse(req.body);
+      if (!parsedBody.success) {
         return res.status(400).json({ error: 'Invalid image data' });
       }
+
+      const { dataUrl, name } = parsedBody.data;
 
       const matches = dataUrl.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
       if (!matches || matches.length !== 3) {
@@ -120,10 +149,13 @@ function createApiRouter(runtime, bridge) {
   });
 
   apiRouter.get('/fetch', async (req, res) => {
-    const url = req.query.url;
-    if (!url) {
+    const parsedQuery = fetchQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
       return res.status(400).json({ error: 'Missing url parameter' });
     }
+
+    const { url } = parsedQuery.data;
+
     try {
       const https = require('https');
       const http = require('http');
@@ -153,7 +185,8 @@ function createApiRouter(runtime, bridge) {
   });
 
   apiRouter.post('/log', (req, res) => {
-    const { level = 'error', tag = 'client', message, detail } = req.body || {};
+    const parsedBody = logBodySchema.safeParse(req.body || {});
+    const { level = 'error', tag = 'client', message, detail } = parsedBody.success ? parsedBody.data : {};
     const scope = String(tag || 'client');
     if (level === 'error') {
       console.error(`[${scope}]`, message, detail || '');
@@ -183,7 +216,9 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/browse', (req, res) => {
     try {
-      const dir = req.query.path || os.homedir();
+      const parsedQuery = browseQuerySchema.safeParse(req.query || {});
+      const { path: requestedPath } = parsedQuery.success ? parsedQuery.data : {};
+      const dir = requestedPath || os.homedir();
       const resolved = path.resolve(String(dir));
       if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
         return res.status(400).json({ error: 'Not a directory', path: resolved });
@@ -406,7 +441,8 @@ function createApiRouter(runtime, bridge) {
   apiRouter.post('/office-tools/register', (req, res) => {
     try {
       const sessionToken = bridgeSessionToken(req);
-      const host = String(req.body.host || '');
+      const parsedBody = officeRegisterBodySchema.safeParse(req.body || {});
+      const { host = '' } = parsedBody.success ? parsedBody.data : {};
       res.json(bridge.register(host, sessionToken));
     } catch (error) {
       const message = String(error.message || error);

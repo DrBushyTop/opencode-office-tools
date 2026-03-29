@@ -1,4 +1,15 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const insertTableStyleSchema = z.enum(["grid", "striped", "plain"]);
+const insertTableArgsSchema = z.object({
+  data: z.array(z.array(z.string())).min(1),
+  hasHeader: z.boolean().optional().default(true),
+  style: insertTableStyleSchema.optional().default("grid"),
+});
+
+export type InsertTableArgs = z.infer<typeof insertTableArgsSchema>;
 
 export const insertTable: Tool = {
   name: "insert_table",
@@ -40,21 +51,18 @@ Examples:
     required: ["data"],
   },
   handler: async (args) => {
-    const { data, hasHeader = true, style = "grid" } = args as {
-      data: string[][];
-      hasHeader?: boolean;
-      style?: string;
-    };
-
-    if (!data || data.length === 0) {
-      return { textResultForLlm: "Table data cannot be empty.", resultType: "failure", error: "Empty data", toolTelemetry: {} };
+    const parsedArgs = insertTableArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
     }
+
+    const { data, hasHeader, style } = parsedArgs.data;
 
     const rowCount = data.length;
     const colCount = Math.max(...data.map(row => row.length));
 
     if (colCount === 0) {
-      return { textResultForLlm: "Table must have at least one column.", resultType: "failure", error: "No columns", toolTelemetry: {} };
+      return toolFailure("Table must have at least one column.");
     }
 
     try {
@@ -113,8 +121,8 @@ Examples:
 
         return `Inserted ${rowCount}x${colCount} table with ${style} style${hasHeader ? " and header row" : ""}.`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

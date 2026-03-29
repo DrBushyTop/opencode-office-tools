@@ -1,17 +1,71 @@
-export interface UiEvent {
-  type:
-    | "assistant.message_delta"
-    | "assistant.message"
-    | "assistant.reasoning_delta"
-    | "tool.execution_start"
-    | "tool.execution_complete"
-    | "assistant.turn_start"
-    | "assistant.turn_end"
-    | "session.error";
-  id?: string;
-  timestamp?: string;
-  data?: Record<string, unknown>;
-}
+import { z } from "zod";
+import { jsonObjectSchema, opencodeMessagePartSchema, type OpencodeMessage, opencodeMessageSchema } from "./opencode-schemas";
+
+export const uiEventSchema = z.object({
+  type: z.enum([
+    "assistant.message_delta",
+    "assistant.message",
+    "assistant.reasoning_delta",
+    "tool.execution_start",
+    "tool.execution_complete",
+    "assistant.turn_start",
+    "assistant.turn_end",
+    "session.error",
+  ]),
+  id: z.string().optional(),
+  timestamp: z.string().optional(),
+  data: jsonObjectSchema.optional(),
+});
+
+export type UiEvent = z.infer<typeof uiEventSchema>;
+
+const sessionErrorEventSchema = z.object({
+  type: z.literal("session.error"),
+  properties: z.object({
+    error: z.object({
+      message: z.string().optional(),
+      name: z.string().optional(),
+    }).passthrough().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+const sessionStatusEventSchema = z.object({
+  type: z.literal("session.status"),
+  properties: z.object({
+    status: z.object({
+      type: z.string().optional(),
+    }).passthrough().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+const messagePartDeltaEventSchema = z.object({
+  type: z.literal("message.part.delta"),
+  properties: z.object({
+    partID: z.string().optional(),
+    delta: z.string().optional(),
+  }).passthrough(),
+}).passthrough();
+
+const messagePartUpdatedEventSchema = z.object({
+  type: z.literal("message.part.updated"),
+  properties: z.object({
+    part: opencodeMessagePartSchema.optional(),
+  }).passthrough(),
+}).passthrough();
+
+const messageUpdatedEventSchema = z.object({
+  type: z.literal("message.updated"),
+  properties: z.object({
+    info: z.object({
+      id: z.string(),
+      role: z.string().optional(),
+      time: z.object({
+        created: z.union([z.string(), z.number(), z.date()]).optional(),
+        completed: z.union([z.string(), z.number(), z.date()]).optional(),
+      }).passthrough().optional(),
+    }).passthrough().optional(),
+  }).passthrough(),
+}).passthrough();
 
 export const trafficStats = {
   bytesIn: 0,
@@ -22,58 +76,64 @@ export const trafficStats = {
   },
 };
 
-function getAssistantText(message: any): string {
+function getAssistantText(message: OpencodeMessage): string {
   return (message.parts || [])
-    .filter((part: any) => part.type === "text" && !part.synthetic)
+    .filter((part) => part.type === "text" && !part.synthetic)
     .map((part: any) => part.text || "")
     .join("\n\n")
     .trim();
 }
 
-function getAssistantParts(message: any): any[] {
+function getAssistantParts(message: OpencodeMessage) {
   return Array.isArray(message.parts) ? message.parts : [];
 }
 
-function getErrorMessage(event: any): string {
+function getErrorMessage(event: z.infer<typeof sessionErrorEventSchema>): string {
   return event.properties?.error?.message || event.properties?.error?.name || "Unknown session error";
 }
 
-export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string>): UiEvent[] {
-  if (event.type === "session.error") {
-    return [{ type: "session.error", data: { message: getErrorMessage(event) } }];
+export function normalizeOpencodeEvent(event: unknown, partTypes: Map<string, string>): UiEvent[] {
+  const sessionErrorEvent = sessionErrorEventSchema.safeParse(event);
+  if (sessionErrorEvent.success) {
+    return [{ type: "session.error", data: { message: getErrorMessage(sessionErrorEvent.data) } }];
   }
 
-  if (event.type === "session.status") {
-    if (event.properties?.status?.type === "busy") {
+  const sessionStatusEvent = sessionStatusEventSchema.safeParse(event);
+  if (sessionStatusEvent.success) {
+    if (sessionStatusEvent.data.properties?.status?.type === "busy") {
       return [{ type: "assistant.turn_start", data: {} }];
     }
-    if (event.properties?.status?.type === "idle") {
+    if (sessionStatusEvent.data.properties?.status?.type === "idle") {
       return [{ type: "assistant.turn_end", data: {} }];
     }
   }
 
-  if (event.type === "message.part.delta") {
-    const type = partTypes.get(event.properties?.partID);
+  const messagePartDeltaEvent = messagePartDeltaEventSchema.safeParse(event);
+  if (messagePartDeltaEvent.success) {
+    const partId = messagePartDeltaEvent.data.properties.partID;
+    if (!partId) return [];
+    const type = partTypes.get(partId);
     if (type === "reasoning") {
       return [{
         type: "assistant.reasoning_delta",
-        id: event.properties?.partID,
-        data: { deltaContent: event.properties?.delta || "" },
+        id: partId,
+        data: { deltaContent: messagePartDeltaEvent.data.properties.delta || "" },
       }];
     }
     if (type === "text") {
       return [{
         type: "assistant.message_delta",
-        id: event.properties?.partID,
-        data: { deltaContent: event.properties?.delta || "" },
+        id: partId,
+        data: { deltaContent: messagePartDeltaEvent.data.properties.delta || "" },
       }];
     }
     return [];
   }
 
-  if (event.type === "message.part.updated") {
-    const part = event.properties?.part;
-    if (!part) return [];
+  const messagePartUpdatedEvent = messagePartUpdatedEventSchema.safeParse(event);
+  if (messagePartUpdatedEvent.success) {
+    const part = messagePartUpdatedEvent.data.properties.part;
+    if (!part?.id) return [];
     partTypes.set(part.id, part.type);
 
     if (part.type === "tool") {
@@ -108,8 +168,9 @@ export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string
     }
   }
 
-  if (event.type === "message.updated") {
-    const info = event.properties?.info;
+  const messageUpdatedEvent = messageUpdatedEventSchema.safeParse(event);
+  if (messageUpdatedEvent.success) {
+    const info = messageUpdatedEvent.data.properties.info;
     if (info?.role === "assistant" && info?.time?.completed) {
       return [
         {
@@ -127,9 +188,14 @@ export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string
   return [];
 }
 
-export function getLatestAssistantMessage(messages: any[]): UiEvent | null {
-  const latest = [...messages].reverse().find((message: any) => message.info?.role === "assistant");
-  if (!latest) return null;
+export function getLatestAssistantMessage(messages: unknown[]): UiEvent | null {
+  const parsedMessages = messages
+    .map((message) => opencodeMessageSchema.safeParse(message))
+    .filter((result) => result.success)
+    .map((result) => result.data);
+
+  const latest = [...parsedMessages].reverse().find((message) => message.info?.role === "assistant");
+  if (!latest?.info) return null;
 
   const content = getAssistantText(latest);
   const parts = getAssistantParts(latest);

@@ -2,12 +2,15 @@ import * as React from "react";
 import { useRef, useEffect } from "react";
 import { Textarea, Button, Tooltip, makeStyles } from "@fluentui/react-components";
 import { Send24Regular, Dismiss24Regular, Stop24Regular } from "@fluentui/react-icons";
+import { z } from "zod";
 
-export interface ImageAttachment {
-  id: string;
-  dataUrl: string;
-  name: string;
-}
+const ImageAttachmentSchema = z.object({
+  id: z.string().min(1),
+  dataUrl: z.string().min(1),
+  name: z.string().min(1),
+});
+
+export type ImageAttachment = z.infer<typeof ImageAttachmentSchema>;
 
 interface ChatInputProps {
   value: string;
@@ -128,6 +131,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
   const styles = useStyles();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const safeImages = React.useMemo(() => z.array(ImageAttachmentSchema).catch([]).parse(images), [images]);
 
   useEffect(() => {
     // Refocus when value becomes empty (after sending)
@@ -155,13 +159,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         if (file) {
           const reader = new FileReader();
           reader.onload = (event) => {
-            const dataUrl = event.target?.result as string;
-            const newImage: ImageAttachment = {
+            const dataUrl = typeof event.target?.result === "string" ? event.target.result : "";
+            const parsed = ImageAttachmentSchema.safeParse({
               id: crypto.randomUUID(),
               dataUrl,
               name: `pasted-image-${Date.now()}.png`,
-            };
-            onImagesChange([...images, newImage]);
+            });
+            if (!parsed.success) return;
+            onImagesChange([...safeImages, parsed.data]);
           };
           reader.readAsDataURL(file);
         }
@@ -171,15 +176,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleRemoveImage = (id: string) => {
     if (onImagesChange) {
-      onImagesChange(images.filter(img => img.id !== id));
+      onImagesChange(safeImages.filter((img) => img.id !== id));
     }
   };
 
   return (
     <div className={styles.inputContainer}>
-      {images.length > 0 && (
+      {safeImages.length > 0 && (
         <div className={styles.imagePreviewContainer}>
-          {images.map(image => (
+          {safeImages.map((image) => (
             <div key={image.id} className={styles.imagePreview}>
               <img src={image.dataUrl} alt="Preview" className={styles.imagePreviewImg} />
               <button
@@ -211,7 +216,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             appearance={isRunning ? "secondary" : "primary"}
             icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
             onClick={isRunning ? onStop : onSend}
-            disabled={isRunning ? !onStop : (!value.trim() && images.length === 0)}
+            disabled={isRunning ? !onStop : (!value.trim() && safeImages.length === 0)}
             aria-label={isRunning ? "Stop response" : "Send message"}
             className={styles.sendButton}
           />

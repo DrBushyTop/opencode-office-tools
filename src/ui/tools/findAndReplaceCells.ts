@@ -1,5 +1,14 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, isExcelRequirementSetSupported, toolFailure } from "./excelShared";
+import { getWorksheet, isExcelRequirementSetSupported, parseToolArgs, toolFailure } from "./excelShared";
+
+const findAndReplaceCellsArgsSchema = z.object({
+  find: z.string(),
+  replace: z.string(),
+  sheetName: z.string().optional(),
+  matchCase: z.boolean().default(false),
+  matchEntireCell: z.boolean().default(false),
+});
 
 export const findAndReplaceCells: Tool = {
   name: "find_and_replace_cells",
@@ -16,13 +25,10 @@ export const findAndReplaceCells: Tool = {
     required: ["find", "replace"],
   },
   handler: async (args) => {
-    const { find, replace, sheetName, matchCase = false, matchEntireCell = false } = args as {
-      find: string;
-      replace: string;
-      sheetName?: string;
-      matchCase?: boolean;
-      matchEntireCell?: boolean;
-    };
+    const parsedArgs = parseToolArgs(findAndReplaceCellsArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
+
+    const { find, replace, sheetName, matchCase, matchEntireCell } = parsedArgs.data;
 
     if (!find) {
       return toolFailure("Search text cannot be empty.");

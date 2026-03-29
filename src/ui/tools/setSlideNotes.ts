@@ -2,6 +2,12 @@ import type { Tool } from "./types";
 import { replaceSlideWithMutatedOpenXml, setSpeakerNotesInBase64Presentation } from "./powerpointOpenXml";
 import { resolvePowerPointSlideIndexes } from "./powerpointContext";
 import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
+import { z } from "zod";
+
+const setSlideNotesArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+  notes: z.string(),
+});
 
 export const setSlideNotes: Tool = {
   name: "set_slide_notes",
@@ -21,8 +27,12 @@ export const setSlideNotes: Tool = {
     required: ["notes"],
   },
   handler: async (args) => {
-    const { notes } = args as { notes: string };
-    const slideIndex = resolvePowerPointSlideIndexes((args as { slideIndex?: number }).slideIndex);
+    const parsedArgs = setSlideNotesArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const { notes } = parsedArgs.data;
+    const slideIndex = resolvePowerPointSlideIndexes(parsedArgs.data.slideIndex);
     if (!Number.isInteger(slideIndex) || (slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

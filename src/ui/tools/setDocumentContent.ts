@@ -1,4 +1,12 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const setDocumentContentArgsSchema = z.object({
+  html: z.string(),
+});
+
+export type SetDocumentContentArgs = z.infer<typeof setDocumentContentArgsSchema>;
 
 export const setDocumentContent: Tool = {
   name: "set_document_content",
@@ -14,7 +22,12 @@ export const setDocumentContent: Tool = {
     required: ["html"],
   },
   handler: async (args) => {
-    const { html } = args as { html: string };
+    const parsedArgs = setDocumentContentArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { html } = parsedArgs.data;
     
     try {
       return await Word.run(async (context) => {
@@ -24,8 +37,8 @@ export const setDocumentContent: Tool = {
         await context.sync();
         return "Document content replaced successfully.";
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

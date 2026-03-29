@@ -1,11 +1,19 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  getZodErrorMessage,
   isWordDesktopRequirementSetSupported,
   summarizePlainText,
   toolFailure,
 } from "./wordShared";
 
-type DocumentTargetKind = "all" | "tables" | "contentControls" | "bookmarks";
+const getDocumentTargetsArgsSchema = z.object({
+  kind: z.enum(["all", "tables", "contentControls", "bookmarks"]).optional().default("all"),
+  maxItems: z.number().int().positive().optional().default(25),
+  includeText: z.boolean().optional().default(true),
+});
+
+export type GetDocumentTargetsArgs = z.infer<typeof getDocumentTargetsArgsSchema>;
 
 export const getDocumentTargets: Tool = {
   name: "get_document_targets",
@@ -31,15 +39,12 @@ Lists tables, content controls, and bookmarks so later reads and writes can targ
     },
   },
   handler: async (args) => {
-    const { kind = "all", maxItems = 25, includeText = true } = args as {
-      kind?: DocumentTargetKind;
-      maxItems?: number;
-      includeText?: boolean;
-    };
-
-    if (!Number.isFinite(maxItems) || maxItems < 1) {
-      return toolFailure("maxItems must be a positive number.");
+    const parsedArgs = getDocumentTargetsArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
     }
+
+    const { kind, maxItems, includeText } = parsedArgs.data;
 
     const limit = Math.floor(maxItems);
 

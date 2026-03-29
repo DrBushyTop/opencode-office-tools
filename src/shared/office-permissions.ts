@@ -1,17 +1,7 @@
 import { isReadOnlyOfficeTool } from "./office-tool-registry";
-
-export interface OfficePermissionRequest {
-  id: string;
-  sessionID: string;
-  permission: string;
-  patterns: string[];
-  metadata: Record<string, unknown>;
-  always: string[];
-  tool?: {
-    messageID: string;
-    callID: string;
-  };
-}
+import type { OfficePermissionRequest } from "./office-metadata";
+export { officePermissionRequestSchema } from "./office-metadata";
+export type { OfficePermissionRequest } from "./office-metadata";
 
 export function toolName(request: OfficePermissionRequest) {
   return String(request.metadata.tool || request.patterns[0] || "")
