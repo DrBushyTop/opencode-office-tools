@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { z } from "zod";
 import { App } from "./App";
 import { remoteLog } from "./lib/remoteLog";
+import { applyDefaultTaskpaneWidth } from "./lib/taskpaneWidth";
 
 declare global {
   interface Window {
@@ -124,6 +125,7 @@ try {
   Office.onReady((info) => {
     const readyInfo = OfficeReadyInfoSchema.safeParse(info);
     pushEarlyLog("info", "ui.bootstrap", "Office.onReady resolved", readyInfo.success ? readyInfo.data : info);
+    applyDefaultTaskpaneWidth();
     const container = document.getElementById("root");
     if (container) {
       pushEarlyLog("info", "ui.bootstrap", "Root container found, rendering app");
