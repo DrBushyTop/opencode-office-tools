@@ -209,13 +209,29 @@ function formatToolCall(toolName: string, args: Record<string, unknown>): { icon
 const useStyles = makeStyles({
   chatContainer: {
     flex: 1,
-    overflowY: "scroll",
+    minHeight: 0,
+    overflowY: "auto",
     padding: "20px 14px 14px",
     display: "flex",
     flexDirection: "column",
     gap: "24px",
-    scrollbarColor: "var(--oc-text-faint) transparent",
+    scrollbarColor: "rgba(127, 121, 121, 0.45) transparent",
     scrollbarWidth: "thin",
+    "&::-webkit-scrollbar": {
+      width: "8px",
+    },
+    "&::-webkit-scrollbar-track": {
+      backgroundColor: "transparent",
+    },
+    "&::-webkit-scrollbar-thumb": {
+      backgroundColor: "rgba(127, 121, 121, 0.35)",
+      borderRadius: "999px",
+      border: "2px solid transparent",
+      backgroundClip: "content-box",
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "rgba(127, 121, 121, 0.5)",
+    },
   },
   content: {
     width: "100%",

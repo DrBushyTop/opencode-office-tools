@@ -336,7 +336,6 @@ export const App: React.FC = () => {
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
-  const started = useRef(false);
   const run = useRef<AbortController | null>(null);
   const liveRef = useRef<Message[]>([]);
 
@@ -496,13 +495,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    try {
-      const session = await client.createSession({ title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat` });
-      setCurrentSessionId(session.id);
-    } catch (err) {
-      setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
     const status = await client.getStatus().catch(() => null);
     if (status?.mode) setRuntimeMode(status.mode);
     if (!safeSelectedModel && availableModels.length > 0) {
@@ -515,17 +507,19 @@ export const App: React.FC = () => {
     void startNewSession(safeSelectedModel, restored);
   };
 
-  useEffect(() => {
-    if (!safeSelectedModel || started.current) return;
-    started.current = true;
-    void startNewSession(safeSelectedModel);
-  }, [safeSelectedModel]);
-
   const handleModelChange = (model: ModelType) => {
     setSelectedModel(model);
-    if (!currentSessionId) {
-      void startNewSession(model);
-    }
+  };
+
+  const ensureSession = async () => {
+    if (currentSessionId) return currentSessionId;
+
+    const office = getHostFromOfficeHost(Office.context.host);
+    const session = await client.createSession({
+      title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat`,
+    });
+    setCurrentSessionId(session.id);
+    return session.id;
   };
 
   const handleQaSubagentModelChange = async (model: ModelType) => {
@@ -541,11 +535,20 @@ export const App: React.FC = () => {
   };
 
   const handleSend = async () => {
-    if (isTyping || (!inputValue.trim() && images.length === 0) || !currentSessionId) return;
+    if (isTyping || (!inputValue.trim() && images.length === 0)) return;
 
     const userInput = inputValue;
     const userImages = [...images];
     const isFirstUserTurn = !messages.some((message) => message.sender === "user");
+
+    let sessionId = currentSessionId;
+
+    try {
+      sessionId = await ensureSession();
+    } catch (err) {
+      setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
 
     setMessages((prev) => [
       ...prev,
@@ -593,12 +596,12 @@ export const App: React.FC = () => {
       const tools = getEnabledTools(officeHost);
 
       if (isFirstUserTurn && userInput.trim()) {
-        updateSessionTitle(currentSessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+        updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
       }
 
       let count = 0;
 
-      for await (const event of client.query(currentSessionId, {
+      for await (const event of client.query(sessionId, {
         model: { providerID: model.providerID, modelID: model.modelID },
         agent: officeHost,
         system: getSystemMessage(Office.context.host),
@@ -789,14 +792,16 @@ export const App: React.FC = () => {
   if (showHistory) {
     return (
       <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-        <div style={getSurfaceVars(isDarkMode)}>
-          <SessionHistory
+        <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
+          <div className={styles.shell}>
+            <SessionHistory
               host={officeHost}
               shared={safeSharedHistory}
               onSharedChange={setSharedHistory}
               onSelectSession={handleRestoreSession}
               onClose={() => setShowHistory(false)}
-          />
+            />
+          </div>
         </div>
       </FluentProvider>
     );
@@ -842,7 +847,7 @@ export const App: React.FC = () => {
             messages={messages}
             liveMessages={liveMessages}
             isTyping={isTyping}
-            isConnecting={!currentSessionId && !error}
+            isConnecting={false}
             currentActivity={currentActivity}
             debugEvents={safeDebugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}
