@@ -61,4 +61,13 @@ describe("opencode session history", () => {
       { id: "m1", text: "Done", sender: "assistant", timestamp: new Date(2) },
     ])).toEqual([]);
   });
+
+  it("ignores malformed message payloads", () => {
+    expect(mapMessages([
+      { nope: true },
+      { info: { id: "a1", role: "assistant", time: { created: 2 } }, parts: [{ type: "text", id: "m1", text: "Done" }] },
+    ])).toMatchObject([
+      { id: "m1", sender: "assistant", text: "Done" },
+    ]);
+  });
 });

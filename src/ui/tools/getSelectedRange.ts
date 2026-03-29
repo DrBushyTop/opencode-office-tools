@@ -1,5 +1,10 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { describeRange, toolFailure } from "./excelShared";
+import { describeRange, parseToolArgs, toolFailure } from "./excelShared";
+
+const getSelectedRangeArgsSchema = z.object({
+  detail: z.boolean().default(false),
+});
 
 export const getSelectedRange: Tool = {
   name: "get_selected_range",
@@ -14,7 +19,10 @@ export const getSelectedRange: Tool = {
     },
   },
   handler: async (args) => {
-    const { detail = false } = (args as { detail?: boolean }) || {};
+    const parsedArgs = parseToolArgs(getSelectedRangeArgsSchema, args ?? {});
+    if (!parsedArgs.success) return parsedArgs.failure;
+
+    const { detail } = parsedArgs.data;
 
     try {
       return await Excel.run(async (context) => {

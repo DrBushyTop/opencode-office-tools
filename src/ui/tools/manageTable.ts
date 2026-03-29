@@ -1,5 +1,38 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, isExcelRequirementSetSupported, toolFailure } from "./excelShared";
+import { excelCellValueSchema, getWorksheet, isExcelRequirementSetSupported, parseToolArgs, toolFailure } from "./excelShared";
+
+const tableRowValuesSchema = z.array(z.array(excelCellValueSchema)).superRefine((value, context) => {
+  if (value.length <= 1) return;
+  const columnCount = value[0].length;
+  if (!value.every((row) => row.length === columnCount)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "All rows in data must have the same length.",
+      path: ["values"],
+    });
+  }
+});
+
+const manageTableArgsSchema = z.object({
+  action: z.enum(["create", "rename", "resize", "setProperties", "addRows", "clearFilters", "reapplyFilters", "convertToRange", "delete"]),
+  tableName: z.string().optional(),
+  sheetName: z.string().optional(),
+  sourceRange: z.string().optional(),
+  hasHeaders: z.boolean().default(true),
+  newName: z.string().optional(),
+  style: z.string().optional(),
+  showHeaders: z.boolean().optional(),
+  showTotals: z.boolean().optional(),
+  showBandedRows: z.boolean().optional(),
+  showBandedColumns: z.boolean().optional(),
+  showFilterButton: z.boolean().optional(),
+  highlightFirstColumn: z.boolean().optional(),
+  highlightLastColumn: z.boolean().optional(),
+  values: tableRowValuesSchema.optional(),
+  rowIndex: z.number().refine((value) => Number.isInteger(value) && value >= -1, "rowIndex must be an integer greater than or equal to -1.").optional(),
+  alwaysInsert: z.boolean().default(true),
+});
 
 export const manageTable: Tool = {
   name: "manage_table",
@@ -63,12 +96,15 @@ export const manageTable: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
+    const parsedArgs = parseToolArgs(manageTableArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
+
     const {
       action,
       tableName,
       sheetName,
       sourceRange,
-      hasHeaders = true,
+      hasHeaders,
       newName,
       style,
       showHeaders,
@@ -80,30 +116,8 @@ export const manageTable: Tool = {
       highlightLastColumn,
       values,
       rowIndex,
-      alwaysInsert = true,
-    } = args as {
-      action: "create" | "rename" | "resize" | "setProperties" | "addRows" | "clearFilters" | "reapplyFilters" | "convertToRange" | "delete";
-      tableName?: string;
-      sheetName?: string;
-      sourceRange?: string;
-      hasHeaders?: boolean;
-      newName?: string;
-      style?: string;
-      showHeaders?: boolean;
-      showTotals?: boolean;
-      showBandedRows?: boolean;
-      showBandedColumns?: boolean;
-      showFilterButton?: boolean;
-      highlightFirstColumn?: boolean;
-      highlightLastColumn?: boolean;
-      values?: Array<Array<boolean | number | string>>;
-      rowIndex?: number;
-      alwaysInsert?: boolean;
-    };
-
-    if (rowIndex !== undefined && (!Number.isInteger(rowIndex) || rowIndex < -1)) {
-      return toolFailure("rowIndex must be an integer greater than or equal to -1.");
-    }
+      alwaysInsert,
+    } = parsedArgs.data;
 
     if ((action === "create" && hasHeaders === false && showFilterButton) || (action === "setProperties" && showHeaders === false && showFilterButton)) {
       return toolFailure("showFilterButton can only be enabled when the table shows headers.");

@@ -1,5 +1,6 @@
 import { findSlideShapeIndexByXmlShapeIdInBase64Presentation } from "./powerpointOpenXml";
 import { formatAvailableShapeTargets, isPowerPointRequirementSetSupported } from "./powerpointShared";
+import type { PowerPointShapeIdentifier } from "./powerpointContext";
 
 export interface ResolvedPowerPointShapeTarget {
   shape: PowerPoint.Shape;
@@ -20,12 +21,14 @@ async function exportSlideShapeIds(context: PowerPoint.RequestContext, slide: Po
   return exported.value;
 }
 
+type PowerPointShapeIdMap = Readonly<Record<string, string>>;
+
 export async function remapShapeIdentityAfterRoundTrip(
   context: PowerPoint.RequestContext,
   slide: PowerPoint.Slide,
   slideIndex: number,
-  requestedShapeId: string | number,
-  shapeIdMap?: Record<string, string>,
+  requestedShapeId: PowerPointShapeIdentifier,
+  shapeIdMap?: PowerPointShapeIdMap,
 ): Promise<ResolvedShapeIdentity> {
   const requestedId = String(requestedShapeId);
 
@@ -69,8 +72,8 @@ export async function resolveSlideShapeByIdWithXmlFallback(
   context: PowerPoint.RequestContext,
   slide: PowerPoint.Slide,
   slideIndex: number,
-  shapeId: string | number,
-  shapeIdMap?: Record<string, string>,
+  shapeId: PowerPointShapeIdentifier,
+  shapeIdMap?: PowerPointShapeIdMap,
 ): Promise<ResolvedPowerPointShapeTarget> {
   const resolved = await remapShapeIdentityAfterRoundTrip(context, slide, slideIndex, shapeId, shapeIdMap);
   return {

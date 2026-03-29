@@ -1,5 +1,13 @@
 import type { Tool } from "./types";
 import { formatShapeSummary, invalidSlideIndexMessage, loadShapeSummaries, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
+import { z } from "zod";
+
+const getSlideShapesArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+  includeFormatting: z.boolean().optional(),
+  includeTableValues: z.boolean().optional(),
+  detail: z.boolean().optional(),
+});
 
 export const getSlideShapes: Tool = {
   name: "get_slide_shapes",
@@ -28,12 +36,20 @@ Returns shape indices, ids, names, types, positions, placeholder types, text pre
     },
   },
   handler: async (args) => {
+    const parsedArgs = getSlideShapesArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
     const {
       slideIndex,
       includeFormatting = true,
       includeTableValues = false,
       detail = false,
-    } = args as { slideIndex?: number; includeFormatting?: boolean; includeTableValues?: boolean; detail?: boolean };
+    } = parsedArgs.data;
+
+    if (slideIndex !== undefined && (!Number.isInteger(slideIndex) || slideIndex < 0)) {
+      return toolFailure("slideIndex must be a non-negative integer.");
+    }
 
     try {
       return await PowerPoint.run(async (context) => {

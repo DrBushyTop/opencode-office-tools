@@ -1,21 +1,25 @@
 import type { Tool } from "./types";
 import { createImageRectangle, fetchImageUrlAsBase64 } from "./powerpointNativeContent";
 import { loadShapeSummaries, toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
-interface TemplateBinding {
-  placeholderType?: string;
-  placeholderName?: string;
-  text?: string;
-  imageUrl?: string;
-  tableData?: string[][];
-}
+export const templateBindingSchema = z.object({
+  placeholderType: z.string().optional(),
+  placeholderName: z.string().optional(),
+  text: z.string().optional(),
+  imageUrl: z.string().optional(),
+  tableData: z.array(z.array(z.string())).optional(),
+});
 
-interface CreateSlideFromTemplateArgs {
-  layoutId: string;
-  bindings?: TemplateBinding[];
-  slideMasterId?: string;
-  targetIndex?: number;
-}
+const createSlideFromTemplateArgsSchema = z.object({
+  layoutId: z.string(),
+  bindings: z.array(templateBindingSchema).optional(),
+  slideMasterId: z.string().optional(),
+  targetIndex: z.number().optional(),
+});
+
+export type TemplateBinding = z.infer<typeof templateBindingSchema>;
+type CreateSlideFromTemplateArgs = z.infer<typeof createSlideFromTemplateArgsSchema>;
 
 export async function createSlideWithLayout(
   context: PowerPoint.RequestContext,
@@ -139,10 +143,11 @@ export const createSlideFromTemplate: Tool = {
     required: ["layoutId"],
   },
   handler: async (args) => {
-    const templateArgs = args as CreateSlideFromTemplateArgs;
-    if (!templateArgs.layoutId) {
-      return toolFailure("layoutId is required.");
+    const parsedArgs = createSlideFromTemplateArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
     }
+    const templateArgs = parsedArgs.data;
     if (templateArgs.targetIndex !== undefined && (!Number.isInteger(templateArgs.targetIndex) || templateArgs.targetIndex < 0)) {
       return toolFailure("targetIndex must be a non-negative integer.");
     }

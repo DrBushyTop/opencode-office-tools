@@ -1,5 +1,34 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, normalizeExcelColor, toolFailure } from "./excelShared";
+import { getWorksheet, nonNegativeFiniteNumberSchema, normalizeExcelColor, parseToolArgs, toolFailure } from "./excelShared";
+
+const horizontalAlignmentSchema = z.enum(["left", "center", "right", "general", "fill", "justify", "centerAcrossSelection", "distributed"]);
+const verticalAlignmentSchema = z.enum(["top", "center", "bottom", "justify", "distributed"]);
+const borderStyleSchema = z.enum(["thin", "medium", "thick", "none", "double", "dashed", "dotted"]);
+
+const applyCellFormattingArgsSchema = z.object({
+  range: z.string(),
+  sheetName: z.string().optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  fontSize: z.number().optional(),
+  fontColor: z.string().optional(),
+  backgroundColor: z.string().optional(),
+  numberFormat: z.string().optional(),
+  horizontalAlignment: horizontalAlignmentSchema.optional(),
+  verticalAlignment: verticalAlignmentSchema.optional(),
+  wrapText: z.boolean().optional(),
+  merge: z.boolean().optional(),
+  mergeAcross: z.boolean().optional(),
+  borderStyle: borderStyleSchema.optional(),
+  borderColor: z.string().optional(),
+  interiorBorders: z.boolean().optional(),
+  rowHeight: nonNegativeFiniteNumberSchema("rowHeight must be non-negative.").optional(),
+  columnWidth: nonNegativeFiniteNumberSchema("columnWidth must be non-negative.").optional(),
+  autoFitRows: z.boolean().optional(),
+  autoFitColumns: z.boolean().optional(),
+});
 
 export const applyCellFormatting: Tool = {
   name: "apply_cell_formatting",
@@ -32,39 +61,14 @@ export const applyCellFormatting: Tool = {
     required: ["range"],
   },
   handler: async (args) => {
-    const update = args as {
-      range: string;
-      sheetName?: string;
-      bold?: boolean;
-      italic?: boolean;
-      underline?: boolean;
-      fontSize?: number;
-      fontColor?: string;
-      backgroundColor?: string;
-      numberFormat?: string;
-      horizontalAlignment?: string;
-      verticalAlignment?: string;
-      wrapText?: boolean;
-      merge?: boolean;
-      mergeAcross?: boolean;
-      borderStyle?: string;
-      borderColor?: string;
-      interiorBorders?: boolean;
-      rowHeight?: number;
-      columnWidth?: number;
-      autoFitRows?: boolean;
-      autoFitColumns?: boolean;
-    };
+    const parsedArgs = parseToolArgs(applyCellFormattingArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
+
+    const update = parsedArgs.data;
 
     const hasFormatting = Object.entries(update).some(([key, value]) => key !== "range" && key !== "sheetName" && value !== undefined);
     if (!hasFormatting) {
       return toolFailure("No formatting options specified.");
-    }
-    if (update.rowHeight !== undefined && update.rowHeight < 0) {
-      return toolFailure("rowHeight must be non-negative.");
-    }
-    if (update.columnWidth !== undefined && update.columnWidth < 0) {
-      return toolFailure("columnWidth must be non-negative.");
     }
 
     try {

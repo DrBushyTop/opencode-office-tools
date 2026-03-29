@@ -2,6 +2,8 @@ import type { Tool } from "./types";
 import {
   appendSectionGroupOverview,
   appendSectionOverview,
+  formatZodError,
+  getNotebookOverviewArgsSchema,
   isOneNoteRequirementSetSupported,
   toolFailure,
 } from "./onenoteShared";
@@ -20,9 +22,14 @@ Use this first before navigating or editing pages.`,
     type: "object",
     properties: {},
   },
-  handler: async () => {
+  handler: async (args) => {
     if (!isOneNoteRequirementSetSupported("1.1")) {
       return toolFailure("OneNoteApi 1.1 is required.");
+    }
+
+    const parsedArgs = getNotebookOverviewArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
     }
 
     try {

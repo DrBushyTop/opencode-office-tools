@@ -1,3 +1,5 @@
+export type PowerPointShapeIdentifier = string | number;
+
 export interface PowerPointContextSnapshot {
   selectedSlideIds: string[];
   selectedShapeIds: string[];
@@ -17,8 +19,8 @@ export function getPowerPointContextSnapshot() {
 
 export interface PowerPointTargetingArgs {
   slideIndex?: number;
-  shapeId?: string | number;
-  shapeIds?: Array<string | number>;
+  shapeId?: PowerPointShapeIdentifier;
+  shapeIds?: PowerPointShapeIdentifier[];
 }
 
 export function resolvePowerPointTargetingArgs<T extends PowerPointTargetingArgs>(args: T): T {

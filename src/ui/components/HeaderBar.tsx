@@ -11,10 +11,19 @@ import {
   makeStyles,
 } from "@fluentui/react-components";
 import { Compose24Regular, History24Regular, Settings24Regular } from "@fluentui/react-icons";
+import { z } from "zod";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo } from "../lib/opencode-client";
 
-export type ModelType = string;
+const ModelTypeSchema = z.string();
+const ModelInfoSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  providerID: z.string().min(1),
+  modelID: z.string().min(1),
+}) satisfies z.ZodType<ModelInfo>;
+
+export type ModelType = z.infer<typeof ModelTypeSchema>;
 
 interface HeaderBarProps {
   onNewChat: () => void;
@@ -187,8 +196,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const [qaOpen, setQaOpen] = React.useState(false);
   const selectedLabel = label(models, selectedModel);
   const qaLabel = label(models, qaSubagentModel);
-  const items = React.useMemo(() => filterModels(models, open ? value : ""), [models, open, value]);
-  const qaItems = React.useMemo(() => filterModels(models, qaOpen ? qaValue : ""), [models, qaOpen, qaValue]);
+  const safeModels = React.useMemo(() => z.array(ModelInfoSchema).catch([]).parse(models), [models]);
+  const items = React.useMemo(() => filterModels(safeModels, open ? value : ""), [safeModels, open, value]);
+  const qaItems = React.useMemo(() => filterModels(safeModels, qaOpen ? qaValue : ""), [safeModels, qaOpen, qaValue]);
 
   React.useEffect(() => {
     if (!open) setValue(selectedLabel);
@@ -214,7 +224,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             setValue(data.open ? "" : selectedLabel);
           }}
           onOptionSelect={(_, data) => {
-            if (data.optionValue && data.optionValue !== selectedModel) onModelChange(data.optionValue as ModelType);
+            const nextModel = ModelTypeSchema.safeParse(data.optionValue);
+            if (nextModel.success && nextModel.data !== selectedModel) onModelChange(nextModel.data);
             setOpen(false);
             setValue(data.optionText || selectedLabel);
           }}
@@ -267,7 +278,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   setQaValue(data.open ? "" : qaLabel);
                 }}
                 onOptionSelect={(_, data) => {
-                  onQaSubagentModelChange((data.optionValue as ModelType) || "");
+                  const nextModel = ModelTypeSchema.catch("").parse(data.optionValue);
+                  onQaSubagentModelChange(nextModel);
                   setQaOpen(false);
                   setQaValue(data.optionText || qaLabel);
                 }}

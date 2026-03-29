@@ -1,7 +1,8 @@
 import type { Tool } from "./types";
 import {
+  formatZodError,
+  getNoteSelectionArgsSchema,
   getSelectedDataAsync,
-  parseSelectionFormat,
   toolFailure,
 } from "./onenoteShared";
 
@@ -19,7 +20,12 @@ export const getNoteSelection: Tool = {
     },
   },
   handler: async (args) => {
-    const format = parseSelectionFormat((args as { format?: string } | undefined)?.format);
+    const parsedArgs = getNoteSelectionArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const { format = "text" } = parsedArgs.data;
 
     try {
       if (format === "matrix") {

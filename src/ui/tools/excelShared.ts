@@ -1,8 +1,53 @@
+import { z } from "zod";
 import type { ToolResultFailure } from "./types";
+import { createToolFailure } from "./toolShared";
+
+export const excelCellValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+export type ExcelCellValue = z.infer<typeof excelCellValueSchema>;
+
+export const excel2DDataSchema = z.array(z.array(excelCellValueSchema)).superRefine((value, context) => {
+  if (value.length === 0 || value[0]?.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide a non-empty 2D data array.",
+      path: ["data"],
+    });
+    return;
+  }
+
+  const columnCount = value[0].length;
+  if (!value.every((row) => row.length === columnCount)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "All rows in data must have the same length.",
+      path: ["data"],
+    });
+  }
+});
+
+export type Excel2DData = z.infer<typeof excel2DDataSchema>;
+
+export function nonNegativeIntegerSchema(message: string) {
+  return z.number().refine((value) => Number.isInteger(value) && value >= 0, message);
+}
+
+export function nonNegativeFiniteNumberSchema(message: string) {
+  return z.number().refine((value) => Number.isFinite(value) && value >= 0, message);
+}
+
+export function parseToolArgs<T>(schema: z.ZodType<T>, args: unknown): { success: true; data: T } | { success: false; failure: ToolResultFailure } {
+  const result = schema.safeParse(args);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+
+  const issue = result.error.issues[0];
+  return { success: false, failure: toolFailure(issue?.message ?? "Invalid arguments.") };
+}
 
 export function toolFailure(error: unknown): ToolResultFailure {
-  const message = error instanceof Error ? error.message : String(error);
-  return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+  return createToolFailure(error);
 }
 
 export function isExcelRequirementSetSupported(version: string) {
@@ -57,6 +102,13 @@ export function splitSheetQualifiedRange(input: string) {
 
   return { sheetName: normalizedSheet, rangeAddress };
 }
+
+export const sheetQualifiedRangeSchema = z.object({
+  sheetName: z.string(),
+  rangeAddress: z.string(),
+});
+
+export type SheetQualifiedRange = z.infer<typeof sheetQualifiedRangeSchema>;
 
 const a1ReferencePattern = /^\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?$/;
 

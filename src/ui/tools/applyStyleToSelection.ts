@@ -1,4 +1,25 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const applyStyleToSelectionArgsSchema = z.object({
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  strikethrough: z.boolean().optional(),
+  fontSize: z.number().finite().positive().optional(),
+  fontName: z.string().optional(),
+  fontColor: z.string().optional(),
+  highlightColor: z.string().optional(),
+}).refine(
+  ({ bold, italic, underline, strikethrough, fontSize, fontName, fontColor, highlightColor }) => (
+    bold !== undefined || italic !== undefined || underline !== undefined || strikethrough !== undefined
+    || fontSize !== undefined || fontName !== undefined || fontColor !== undefined || highlightColor !== undefined
+  ),
+  { message: "No styles specified. Provide at least one style parameter." },
+);
+
+export type ApplyStyleToSelectionArgs = z.infer<typeof applyStyleToSelectionArgsSchema>;
 
 export const applyStyleToSelection: Tool = {
   name: "apply_style_to_selection",
@@ -60,34 +81,12 @@ Examples:
     required: [],
   },
   handler: async (args) => {
-    const {
-      bold,
-      italic,
-      underline,
-      strikethrough,
-      fontSize,
-      fontName,
-      fontColor,
-      highlightColor,
-    } = args as {
-      bold?: boolean;
-      italic?: boolean;
-      underline?: boolean;
-      strikethrough?: boolean;
-      fontSize?: number;
-      fontName?: string;
-      fontColor?: string;
-      highlightColor?: string;
-    };
-
-    // Check if any style was specified
-    const hasStyles = bold !== undefined || italic !== undefined || underline !== undefined ||
-      strikethrough !== undefined || fontSize !== undefined || fontName !== undefined ||
-      fontColor !== undefined || highlightColor !== undefined;
-
-    if (!hasStyles) {
-      return { textResultForLlm: "No styles specified. Provide at least one style parameter.", resultType: "failure", error: "No styles", toolTelemetry: {} };
+    const parsedArgs = applyStyleToSelectionArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
     }
+
+    const { bold, italic, underline, strikethrough, fontSize, fontName, fontColor, highlightColor } = parsedArgs.data;
 
     try {
       return await Word.run(async (context) => {
@@ -170,8 +169,8 @@ Examples:
 
         return `Applied formatting: ${applied.join(", ")}.`;
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

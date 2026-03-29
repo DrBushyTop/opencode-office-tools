@@ -15,7 +15,7 @@ describe("wordShared", () => {
   });
 
   it("parses generic document range addresses", async () => {
-    const { parseDocumentRangeAddress } = await import("./wordShared");
+    const { DocumentRangeAddressSchema, parseDocumentRangeAddress } = await import("./wordShared");
 
     expect(parseDocumentRangeAddress("selection")).toEqual({ kind: "selection" });
     expect(parseDocumentRangeAddress("bookmark[Clause A]")).toEqual({ kind: "bookmark", name: "Clause A" });
@@ -25,6 +25,21 @@ describe("wordShared", () => {
     expect(parseDocumentRangeAddress("table[2]")).toEqual({ kind: "table", tableIndex: 2 });
     expect(parseDocumentRangeAddress("content_control[id=0]")).toBeNull();
     expect(parseDocumentRangeAddress("table[1].cell[2]")).toBeNull();
+    expect(DocumentRangeAddressSchema.safeParse({ kind: "table", tableIndex: 1, rowIndex: 1 }).success).toBe(false);
+  });
+
+  it("parses structural document part addresses through schema-backed helpers", async () => {
+    const { DocumentPartAddressSchema, parseDocumentPartAddress } = await import("./wordShared");
+
+    expect(parseDocumentPartAddress("headers_footers")).toEqual({ kind: "headersFootersOverview" });
+    expect(parseDocumentPartAddress("table_of_contents")).toEqual({ kind: "tableOfContents" });
+    expect(parseDocumentPartAddress("section[*].header.primary")).toEqual({
+      kind: "section",
+      section: "*",
+      target: "header",
+      type: "primary",
+    });
+    expect(DocumentPartAddressSchema.safeParse({ kind: "section", section: 0 }).success).toBe(false);
   });
 
   it("returns full OOXML payloads without trimming the package markup", async () => {

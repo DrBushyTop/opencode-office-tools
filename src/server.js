@@ -4,15 +4,29 @@ const http = require('http');
 const { createServer: createViteServer } = require('vite');
 const path = require('path');
 const fs = require('fs');
+const { z } = require('zod');
 const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
 const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
 const { logInfo, logError } = require('./server/devLogger');
 
+const devServerConfigSchema = z.object({
+  PORT: z.number(),
+  BRIDGE_PORT: z.number(),
+  cert: z.instanceof(Buffer),
+  key: z.instanceof(Buffer),
+});
+
 async function createServer() {
-  const PORT = 52390;
-  const BRIDGE_PORT = 52391;
+  const certPath = path.resolve(__dirname, '../certs/localhost.pem');
+  const keyPath = path.resolve(__dirname, '../certs/localhost-key.pem');
+  const { PORT, BRIDGE_PORT, cert, key } = devServerConfigSchema.parse({
+    PORT: 52390,
+    BRIDGE_PORT: 52391,
+    cert: fs.readFileSync(certPath),
+    key: fs.readFileSync(keyPath),
+  });
   const app = express();
   const bridgeApp = express();
   const runtime = new OpencodeRuntime();
@@ -28,14 +42,8 @@ async function createServer() {
   // ========== Vite Dev Server (Frontend) ==========
   
   // Create HTTPS server first
-  const certPath = path.resolve(__dirname, '../certs/localhost.pem');
-  const keyPath = path.resolve(__dirname, '../certs/localhost-key.pem');
-  
-  const httpsConfig = {
-    cert: fs.readFileSync(certPath),
-    key: fs.readFileSync(keyPath),
-  };
-  
+  const httpsConfig = { cert, key };
+
   const httpsServer = https.createServer(httpsConfig, app);
   const bridgeServer = http.createServer(bridgeApp);
   

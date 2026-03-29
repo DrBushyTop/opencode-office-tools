@@ -1,25 +1,59 @@
 import type { ToolResultFailure } from "./types";
+import { z } from "zod";
+import { createToolFailure, summarizePlainText as summarizeSharedPlainText } from "./toolShared";
 
-export type HeaderFooterTarget = "header" | "footer";
-export type HeaderFooterTypeName = "primary" | "firstPage" | "evenPages";
-export type SectionSelector = number | "*";
-export type DocumentContentFormat = "summary" | "text" | "html" | "ooxml";
-export type DocumentWriteFormat = "html" | "text" | "ooxml";
-export type DocumentWriteOperation = "replace" | "insert" | "clear";
-export type DocumentWriteLocation = "replace" | "before" | "after" | "start" | "end";
+export const HeaderFooterTargetSchema = z.enum(["header", "footer"]);
+export const HeaderFooterTypeNameSchema = z.enum(["primary", "firstPage", "evenPages"]);
+export const SectionSelectorSchema = z.union([z.literal("*"), z.number().int().positive()]);
+export const DocumentContentFormatSchema = z.enum(["summary", "text", "html", "ooxml"]);
+export const DocumentWriteFormatSchema = z.enum(["html", "text", "ooxml"]);
+export const DocumentWriteOperationSchema = z.enum(["replace", "insert", "clear"]);
+export const DocumentWriteLocationSchema = z.enum(["replace", "before", "after", "start", "end"]);
+
+export type HeaderFooterTarget = z.infer<typeof HeaderFooterTargetSchema>;
+export type HeaderFooterTypeName = z.infer<typeof HeaderFooterTypeNameSchema>;
+export type SectionSelector = z.infer<typeof SectionSelectorSchema>;
+export type DocumentContentFormat = z.infer<typeof DocumentContentFormatSchema>;
+export type DocumentWriteFormat = z.infer<typeof DocumentWriteFormatSchema>;
+export type DocumentWriteOperation = z.infer<typeof DocumentWriteOperationSchema>;
+export type DocumentWriteLocation = z.infer<typeof DocumentWriteLocationSchema>;
 type InlineInsertLocation = Word.InsertLocation.replace | Word.InsertLocation.start | Word.InsertLocation.end;
 
-export type DocumentPartAddress =
-  | { kind: "headersFootersOverview" }
-  | { kind: "tableOfContents" }
-  | { kind: "section"; section: SectionSelector; target?: HeaderFooterTarget; type?: HeaderFooterTypeName };
+export const DocumentPartAddressSchema = z.union([
+  z.object({ kind: z.literal("headersFootersOverview") }),
+  z.object({ kind: z.literal("tableOfContents") }),
+  z.object({
+    kind: z.literal("section"),
+    section: SectionSelectorSchema,
+    target: HeaderFooterTargetSchema.optional(),
+    type: HeaderFooterTypeNameSchema.optional(),
+  }),
+]);
 
-export type DocumentRangeAddress =
-  | { kind: "body" }
-  | { kind: "selection" }
-  | { kind: "bookmark"; name: string }
-  | { kind: "contentControl"; by: "id" | "index"; value: number }
-  | { kind: "table"; tableIndex: number; rowIndex?: number; cellIndex?: number };
+export const DocumentRangeAddressSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("body") }),
+  z.object({ kind: z.literal("selection") }),
+  z.object({ kind: z.literal("bookmark"), name: z.string().min(1) }),
+  z.object({
+    kind: z.literal("contentControl"),
+    by: z.enum(["id", "index"]),
+    value: z.number().int().positive(),
+  }),
+  z.object({
+    kind: z.literal("table"),
+    tableIndex: z.number().int().positive(),
+    rowIndex: z.number().int().positive().optional(),
+    cellIndex: z.number().int().positive().optional(),
+  }),
+]).refine(
+  (address) => address.kind !== "table"
+    || ((address.rowIndex === undefined && address.cellIndex === undefined)
+      || (address.rowIndex !== undefined && address.cellIndex !== undefined)),
+  { message: "Table cell addresses must include both rowIndex and cellIndex." },
+);
+
+export type DocumentPartAddress = z.infer<typeof DocumentPartAddressSchema>;
+export type DocumentRangeAddress = z.infer<typeof DocumentRangeAddressSchema>;
 
 export type ResolvedWordTarget =
   | { kind: "body"; label: string; target: Word.Body }
@@ -53,14 +87,19 @@ export function isWordRequirementSetSupported(version: string) {
 }
 
 export function toolFailure(error: unknown): ToolResultFailure {
-  const message = error instanceof Error ? error.message : String(error);
-  return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+  return createToolFailure(error);
+}
+
+export function getZodErrorMessage(error: z.ZodError) {
+  const issue = error.issues[0];
+  if (!issue) return "Invalid arguments.";
+
+  const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return `${path}${issue.message}`;
 }
 
 export function summarizePlainText(text: string, limit = 80) {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) return "(empty)";
-  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+  return summarizeSharedPlainText(text, limit);
 }
 
 export function resolveInsertLocation(location: DocumentWriteLocation): Word.InsertLocation {
@@ -89,28 +128,28 @@ export function parseDocumentRangeAddress(address: string): DocumentRangeAddress
   if (!normalized) return null;
 
   if (/^(document|body)$/i.test(normalized)) {
-    return { kind: "body" };
+    return DocumentRangeAddressSchema.parse({ kind: "body" });
   }
 
   if (/^selection$/i.test(normalized)) {
-    return { kind: "selection" };
+    return DocumentRangeAddressSchema.parse({ kind: "selection" });
   }
 
   const bookmarkMatch = normalized.match(/^bookmark\[(.+)\]$/i);
   if (bookmarkMatch) {
     const name = bookmarkMatch[1].trim();
-    return name ? { kind: "bookmark", name } : null;
+    return name ? DocumentRangeAddressSchema.parse({ kind: "bookmark", name }) : null;
   }
 
   const contentControlMatch = normalized.match(/^content_control\[(id|index)=(\d+)\]$/i);
   if (contentControlMatch) {
     const value = parsePositiveInteger(contentControlMatch[2]);
     if (!value) return null;
-    return {
+    return DocumentRangeAddressSchema.parse({
       kind: "contentControl",
-      by: contentControlMatch[1].toLowerCase() as "id" | "index",
+      by: contentControlMatch[1].toLowerCase(),
       value,
-    };
+    });
   }
 
   const tableMatch = normalized.match(/^table\[(\d+)\](?:\.cell\[(\d+),(\d+)\])?$/i);
@@ -121,11 +160,11 @@ export function parseDocumentRangeAddress(address: string): DocumentRangeAddress
     if (!tableIndex) return null;
     if ((rowIndex && !cellIndex) || (!rowIndex && cellIndex)) return null;
 
-    return {
+    return DocumentRangeAddressSchema.parse({
       kind: "table",
       tableIndex,
       ...(rowIndex && cellIndex ? { rowIndex, cellIndex } : {}),
-    };
+    });
   }
 
   return null;
@@ -340,23 +379,23 @@ export function parseDocumentPartAddress(address: string): DocumentPartAddress |
   const normalized = String(address || "").trim();
   if (!normalized) return null;
   if (normalized === "headers_footers") {
-    return { kind: "headersFootersOverview" };
+    return DocumentPartAddressSchema.parse({ kind: "headersFootersOverview" });
   }
   if (normalized === "table_of_contents") {
-    return { kind: "tableOfContents" };
+    return DocumentPartAddressSchema.parse({ kind: "tableOfContents" });
   }
 
   const match = normalized.match(/^section\[(\*|\d+)\](?:\.(header|footer)\.(primary|firstPage|evenPages))?$/);
   if (!match) return null;
 
-  return {
+  return DocumentPartAddressSchema.parse({
     kind: "section",
     section: match[1] === "*" ? "*" : Number(match[1]),
-    target: match[2] as HeaderFooterTarget | undefined,
-    type: match[3] as HeaderFooterTypeName | undefined,
-  };
+    target: match[2],
+    type: match[3],
+  });
 }
 
 export function isValidSectionSelector(section: SectionSelector) {
-  return section === "*" || (Number.isInteger(section) && section > 0);
+  return SectionSelectorSchema.safeParse(section).success;
 }

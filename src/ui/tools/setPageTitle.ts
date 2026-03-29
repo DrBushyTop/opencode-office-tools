@@ -1,7 +1,9 @@
 import type { Tool } from "./types";
 import {
+  formatZodError,
   isOneNoteRequirementSetSupported,
   loadActivePageOrThrow,
+  setPageTitleArgsSchema,
   toolFailure,
 } from "./onenoteShared";
 
@@ -23,7 +25,12 @@ export const setPageTitle: Tool = {
       return toolFailure("OneNoteApi 1.1 is required.");
     }
 
-    const title = String((args as { title: string }).title || "").trim();
+    const parsedArgs = setPageTitleArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const title = String(parsedArgs.data.title || "").trim();
     if (!title) {
       return toolFailure("Title cannot be empty.");
     }

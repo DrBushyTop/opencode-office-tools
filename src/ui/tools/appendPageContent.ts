@@ -1,6 +1,8 @@
 import type { Tool } from "./types";
 import {
+  appendPageContentArgsSchema,
   ensureNonEmptyHtml,
+  formatZodError,
   isOneNoteRequirementSetSupported,
   loadActivePageOrThrow,
   toolFailure,
@@ -24,7 +26,12 @@ export const appendPageContent: Tool = {
       return toolFailure("OneNoteApi 1.1 is required.");
     }
 
-    const html = ensureNonEmptyHtml((args as { html: string }).html);
+    const parsedArgs = appendPageContentArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const html = ensureNonEmptyHtml(parsedArgs.data.html);
     if (!html) {
       return toolFailure("HTML content cannot be empty.");
     }

@@ -1,11 +1,20 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  DocumentContentFormatSchema,
+  getZodErrorMessage,
   parseDocumentRangeAddress,
   readResolvedWordTarget,
   resolveDocumentRangeTarget,
   toolFailure,
-  type DocumentContentFormat,
 } from "./wordShared";
+
+const getDocumentRangeArgsSchema = z.object({
+  address: z.string(),
+  format: DocumentContentFormatSchema.optional().default("text"),
+});
+
+export type GetDocumentRangeArgs = z.infer<typeof getDocumentRangeArgsSchema>;
 
 export const getDocumentRange: Tool = {
   name: "get_document_range",
@@ -37,7 +46,12 @@ Use format="html" for HTML symmetry with insertion, format="ooxml" for markup, f
     required: ["address"],
   },
   handler: async (args) => {
-    const { address, format = "text" } = args as { address: string; format?: DocumentContentFormat };
+    const parsedArgs = getDocumentRangeArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { address, format } = parsedArgs.data;
     const parsed = parseDocumentRangeAddress(address);
     if (!parsed) {
       return toolFailure("Unsupported document range address. Try selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3].");

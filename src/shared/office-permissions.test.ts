@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { officePermissionRequestSchema } from "./office-metadata";
 import { canAutoApprove, permissionKind, permissionTarget } from "./office-permissions";
 
 describe("office permissions", () => {
@@ -105,5 +106,20 @@ describe("office permissions", () => {
       metadata: { subagent_type: "subagents/code/reviewer" },
       always: [],
     })).toBe("subagents/code/reviewer");
+  });
+
+  it("parses permission requests with the shared schema", () => {
+    expect(() => officePermissionRequestSchema.parse({
+      id: "9",
+      sessionID: "s",
+      permission: "tool",
+      patterns: ["get_document_content"],
+      metadata: { tool: "get_document_content" },
+      always: [],
+      tool: {
+        messageID: "m",
+        callID: "c",
+      },
+    })).not.toThrow();
   });
 });

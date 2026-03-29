@@ -1,9 +1,19 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  DocumentWriteLocationSchema,
+  getZodErrorMessage,
   resolveDocumentRangeTarget,
   toolFailure,
   writeResolvedWordTarget,
 } from "./wordShared";
+
+const insertContentAtSelectionArgsSchema = z.object({
+  html: z.string(),
+  location: DocumentWriteLocationSchema.optional().default("replace"),
+});
+
+export type InsertContentAtSelectionArgs = z.infer<typeof insertContentAtSelectionArgsSchema>;
 
 export const insertContentAtSelection: Tool = {
   name: "insert_content_at_selection",
@@ -41,12 +51,17 @@ Examples:
     required: ["html"],
   },
   handler: async (args) => {
-    const { html, location = "replace" } = args as { html: string; location?: string };
+    const parsedArgs = insertContentAtSelectionArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { html, location } = parsedArgs.data;
     
     try {
       return await Word.run(async (context) => {
         const selection = await resolveDocumentRangeTarget(context, { kind: "selection" });
-        writeResolvedWordTarget(selection, "insert", "html", html, location as "replace" | "before" | "after" | "start" | "end");
+        writeResolvedWordTarget(selection, "insert", "html", html, location);
         await context.sync();
         
         return `Content inserted successfully (location: ${location}).`;

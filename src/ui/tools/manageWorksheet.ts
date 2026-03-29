@@ -1,5 +1,18 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, isExcelRequirementSetSupported, toolFailure } from "./excelShared";
+import { getWorksheet, isExcelRequirementSetSupported, nonNegativeIntegerSchema, parseToolArgs, toolFailure } from "./excelShared";
+
+const manageWorksheetArgsSchema = z.object({
+  action: z.enum(["create", "rename", "delete", "move", "setVisibility", "activate", "freeze", "unfreeze", "protect", "unprotect"]),
+  sheetName: z.string().optional(),
+  newName: z.string().optional(),
+  targetPosition: nonNegativeIntegerSchema("targetPosition must be a non-negative integer.").optional(),
+  visibility: z.enum(["Visible", "Hidden", "VeryHidden"]).optional(),
+  freezeRows: nonNegativeIntegerSchema("freezeRows must be a non-negative integer.").optional(),
+  freezeColumns: nonNegativeIntegerSchema("freezeColumns must be a non-negative integer.").optional(),
+  freezeRange: z.string().optional(),
+  password: z.string().optional(),
+});
 
 export const manageWorksheet: Tool = {
   name: "manage_worksheet",
@@ -49,37 +62,10 @@ export const manageWorksheet: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const {
-      action,
-      sheetName,
-      newName,
-      targetPosition,
-      visibility,
-      freezeRows,
-      freezeColumns,
-      freezeRange,
-      password,
-    } = args as {
-      action: "create" | "rename" | "delete" | "move" | "setVisibility" | "activate" | "freeze" | "unfreeze" | "protect" | "unprotect";
-      sheetName?: string;
-      newName?: string;
-      targetPosition?: number;
-      visibility?: "Visible" | "Hidden" | "VeryHidden";
-      freezeRows?: number;
-      freezeColumns?: number;
-      freezeRange?: string;
-      password?: string;
-    };
+    const parsedArgs = parseToolArgs(manageWorksheetArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
 
-    if (targetPosition !== undefined && (!Number.isInteger(targetPosition) || targetPosition < 0)) {
-      return toolFailure("targetPosition must be a non-negative integer.");
-    }
-    if (freezeRows !== undefined && (!Number.isInteger(freezeRows) || freezeRows < 0)) {
-      return toolFailure("freezeRows must be a non-negative integer.");
-    }
-    if (freezeColumns !== undefined && (!Number.isInteger(freezeColumns) || freezeColumns < 0)) {
-      return toolFailure("freezeColumns must be a non-negative integer.");
-    }
+    const { action, sheetName, newName, targetPosition, visibility, freezeRows, freezeColumns, freezeRange, password } = parsedArgs.data;
 
     try {
       return await Excel.run(async (context) => {

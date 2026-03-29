@@ -1,8 +1,19 @@
 import * as React from "react";
 import { makeStyles, Button, Text } from "@fluentui/react-components";
 import { Delete24Regular, ArrowLeft24Regular } from "@fluentui/react-icons";
+import { z } from "zod";
 import type { OfficeHost } from "../sessionStorage";
 import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/opencode-session-history";
+
+const SessionInfoSchema = z.object({
+  id: z.string().min(1),
+  title: z.string(),
+  directory: z.string(),
+  time: z.object({
+    created: z.number(),
+    updated: z.number(),
+  }),
+}) satisfies z.ZodType<OpencodeSessionInfo>;
 
 interface SessionHistoryProps {
   host: OfficeHost;
@@ -152,12 +163,17 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
   const [sessions, setSessions] = React.useState<OpencodeSessionInfo[]>([]);
 
   React.useEffect(() => {
-    listSessions(host, shared).then(setSessions).catch(() => setSessions([]));
+    listSessions(host, shared)
+      .then((items) => setSessions(z.array(SessionInfoSchema).catch([]).parse(items)))
+      .catch(() => setSessions([]));
   }, [host, shared]);
 
   const handleDelete = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
-    deleteSession(sessionId).then(() => listSessions(host, shared).then(setSessions));
+    deleteSession(sessionId)
+      .then(() => listSessions(host, shared))
+      .then((items) => setSessions(z.array(SessionInfoSchema).catch([]).parse(items)))
+      .catch(() => setSessions([]));
   };
 
   const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : host === "excel" ? "Excel" : "OneNote";

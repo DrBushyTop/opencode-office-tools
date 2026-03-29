@@ -1,4 +1,13 @@
 import type { Tool } from "./types";
+import { z } from "zod";
+import { getZodErrorMessage, toolFailure } from "./wordShared";
+
+const getDocumentSectionArgsSchema = z.object({
+  headingText: z.string(),
+  includeSubsections: z.boolean().optional().default(true),
+});
+
+export type GetDocumentSectionArgs = z.infer<typeof getDocumentSectionArgsSchema>;
 
 export const getDocumentSection: Tool = {
   name: "get_document_section",
@@ -31,10 +40,12 @@ Examples:
     required: ["headingText"],
   },
   handler: async (args) => {
-    const { headingText, includeSubsections = true } = args as {
-      headingText: string;
-      includeSubsections?: boolean;
-    };
+    const parsedArgs = getDocumentSectionArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { headingText, includeSubsections } = parsedArgs.data;
 
     try {
       return await Word.run(async (context) => {
@@ -121,8 +132,8 @@ Examples:
 
         return html.value || "(empty section)";
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (error: unknown) {
+      return toolFailure(error);
     }
   },
 };

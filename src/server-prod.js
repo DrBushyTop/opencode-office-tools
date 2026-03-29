@@ -7,6 +7,7 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const { z } = require('zod');
 const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
@@ -16,11 +17,20 @@ const { logInfo, logError } = require('./server/devLogger');
 // Determine if we're running from pkg bundle
 const isPkg = typeof process.pkg !== 'undefined';
 
+const productionServerConfigSchema = z.object({
+  PORT: z.union([z.string(), z.number()]),
+  BRIDGE_PORT: z.union([z.string(), z.number()]),
+  BASE_PATH: z.string().min(1),
+  cert: z.instanceof(Buffer),
+  key: z.instanceof(Buffer),
+});
+
 // Get the base directory (works both in dev and when packaged)
 function getBasePath() {
   // Check if running from Electron tray app
-  if (process.env.OPENCODE_OFFICE_BASE_PATH) {
-    return process.env.OPENCODE_OFFICE_BASE_PATH;
+  const configuredBasePath = z.string().min(1).safeParse(process.env.OPENCODE_OFFICE_BASE_PATH);
+  if (configuredBasePath.success) {
+    return configuredBasePath.data;
   }
   if (isPkg) {
     // When packaged, __dirname points to snapshot filesystem
@@ -33,8 +43,24 @@ function getBasePath() {
 const BASE_PATH = getBasePath();
 
 async function createServer() {
-  const PORT = process.env.PORT || 52390;
-  const BRIDGE_PORT = process.env.BRIDGE_PORT || 52391;
+  const certPath = path.join(BASE_PATH, 'certs', 'localhost.pem');
+  const keyPath = path.join(BASE_PATH, 'certs', 'localhost-key.pem');
+
+  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+    console.error('SSL certificates not found!');
+    console.error('Expected:', certPath);
+    console.error('Expected:', keyPath);
+    logError('server', 'SSL certificates not found', { certPath, keyPath });
+    process.exit(1);
+  }
+
+  const { PORT, BRIDGE_PORT, cert, key } = productionServerConfigSchema.parse({
+    PORT: process.env.PORT || 52390,
+    BRIDGE_PORT: process.env.BRIDGE_PORT || 52391,
+    BASE_PATH,
+    cert: fs.readFileSync(certPath),
+    key: fs.readFileSync(keyPath),
+  });
   const app = express();
   const bridgeApp = express();
   const runtime = new OpencodeRuntime();
@@ -69,22 +95,8 @@ async function createServer() {
   });
 
   // ========== HTTPS Server ==========
-  const certPath = path.join(BASE_PATH, 'certs', 'localhost.pem');
-  const keyPath = path.join(BASE_PATH, 'certs', 'localhost-key.pem');
-  
-  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-    console.error('SSL certificates not found!');
-    console.error('Expected:', certPath);
-    console.error('Expected:', keyPath);
-    logError('server', 'SSL certificates not found', { certPath, keyPath });
-    process.exit(1);
-  }
-  
-  const httpsConfig = {
-    cert: fs.readFileSync(certPath),
-    key: fs.readFileSync(keyPath),
-  };
-  
+  const httpsConfig = { cert, key };
+
   const httpsServer = https.createServer(httpsConfig, app);
   const bridgeServer = http.createServer(bridgeApp);
 

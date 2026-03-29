@@ -1,33 +1,101 @@
 import type { ToolResultFailure } from "./types";
+import { z } from "zod";
+import { createToolFailure, summarizePlainText as summarizeSharedPlainText } from "./toolShared";
 
-export type OneNoteSelectionFormat = "text" | "matrix";
-export type OneNoteSelectionWriteFormat = "text" | "html" | "image";
-export type OneNotePageContentFormat = "summary" | "text" | "json";
-export type OneNotePagePlacement = "sectionEnd" | "before" | "after";
+export const oneNoteSelectionFormatSchema = z.enum(["text", "matrix"]);
+export type OneNoteSelectionFormat = z.infer<typeof oneNoteSelectionFormatSchema>;
 
-export interface OneNoteParagraphSummary {
-  type: string;
-  text?: string;
-  html?: string;
-  rowCount?: number;
-  columnCount?: number;
-  description?: string;
-  width?: number;
-  height?: number;
-}
+export const oneNoteSelectionWriteFormatSchema = z.enum(["text", "html", "image"]);
+export type OneNoteSelectionWriteFormat = z.infer<typeof oneNoteSelectionWriteFormatSchema>;
 
-export interface OneNoteContentSummary {
-  id: string;
-  type: string;
-  left?: number;
-  top?: number;
-  paragraphs?: OneNoteParagraphSummary[];
-  description?: string;
-}
+export const oneNotePageContentFormatSchema = z.enum(["summary", "text", "json"]);
+export type OneNotePageContentFormat = z.infer<typeof oneNotePageContentFormatSchema>;
+
+export const oneNotePagePlacementSchema = z.enum(["sectionEnd", "before", "after"]);
+export type OneNotePagePlacement = z.infer<typeof oneNotePagePlacementSchema>;
+
+export const oneNoteParagraphSummarySchema = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+  html: z.string().optional(),
+  rowCount: z.number().optional(),
+  columnCount: z.number().optional(),
+  description: z.string().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
+export type OneNoteParagraphSummary = z.infer<typeof oneNoteParagraphSummarySchema>;
+
+export const oneNoteContentSummarySchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  left: z.number().optional(),
+  top: z.number().optional(),
+  paragraphs: z.array(oneNoteParagraphSummarySchema).optional(),
+  description: z.string().optional(),
+});
+export type OneNoteContentSummary = z.infer<typeof oneNoteContentSummarySchema>;
+
+export const oneNotePageReferenceSchema = z.object({
+  title: z.string(),
+  id: z.string(),
+  pageLevel: z.number().optional(),
+});
+
+export const createPageArgsSchema = z.object({
+  title: z.string().optional(),
+  html: z.string().optional(),
+  location: oneNotePagePlacementSchema.catch("sectionEnd").optional(),
+});
+export type CreatePageArgs = z.infer<typeof createPageArgsSchema>;
+
+export const getPageContentArgsSchema = z.object({
+  format: oneNotePageContentFormatSchema.catch("summary").optional(),
+});
+export type GetPageContentArgs = z.infer<typeof getPageContentArgsSchema>;
+
+export const getNotebookOverviewArgsSchema = z.object({});
+
+export const getNoteSelectionArgsSchema = z.object({
+  format: oneNoteSelectionFormatSchema.catch("text").optional(),
+});
+export type GetNoteSelectionArgs = z.infer<typeof getNoteSelectionArgsSchema>;
+
+export const setNoteSelectionArgsSchema = z.object({
+  content: z.string(),
+  coercionType: oneNoteSelectionWriteFormatSchema.catch("text").optional(),
+});
+export type SetNoteSelectionArgs = z.infer<typeof setNoteSelectionArgsSchema>;
+
+export const navigateToPageArgsSchema = z.object({
+  pageId: z.string().optional(),
+  clientUrl: z.string().optional(),
+}).superRefine((value, context) => {
+  if ((!value.pageId && !value.clientUrl) || (value.pageId && value.clientUrl)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide exactly one of pageId or clientUrl.",
+    });
+  }
+});
+export type NavigateToPageArgs = z.infer<typeof navigateToPageArgsSchema>;
+
+export const appendPageContentArgsSchema = z.object({
+  html: z.string(),
+});
+export type AppendPageContentArgs = z.infer<typeof appendPageContentArgsSchema>;
+
+export const setPageTitleArgsSchema = z.object({
+  title: z.string(),
+});
+export type SetPageTitleArgs = z.infer<typeof setPageTitleArgsSchema>;
 
 export function toolFailure(error: unknown): ToolResultFailure {
-  const message = error instanceof Error ? error.message : String(error);
-  return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
+  return createToolFailure(error);
+}
+
+export function formatZodError(error: z.ZodError) {
+  return error.issues.map((issue) => issue.message).join("\n") || "Invalid arguments.";
 }
 
 export function isOneNoteRequirementSetSupported(version: string) {
@@ -35,9 +103,7 @@ export function isOneNoteRequirementSetSupported(version: string) {
 }
 
 export function summarizePlainText(text: string, limit = 90) {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim();
-  if (!normalized) return "(empty)";
-  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+  return summarizeSharedPlainText(text, limit);
 }
 
 export function ensureNonEmptyHtml(html: string) {
@@ -51,19 +117,19 @@ export function normalizeImagePayload(content: string) {
 }
 
 export function parseSelectionFormat(value: unknown): OneNoteSelectionFormat {
-  return value === "matrix" ? "matrix" : "text";
+  return oneNoteSelectionFormatSchema.catch("text").parse(value);
 }
 
 export function parseSelectionWriteFormat(value: unknown): OneNoteSelectionWriteFormat {
-  return value === "html" || value === "image" ? value : "text";
+  return oneNoteSelectionWriteFormatSchema.catch("text").parse(value);
 }
 
 export function parsePagePlacement(value: unknown): OneNotePagePlacement {
-  return value === "before" || value === "after" ? value : "sectionEnd";
+  return oneNotePagePlacementSchema.catch("sectionEnd").parse(value);
 }
 
 export function parsePageContentFormat(value: unknown): OneNotePageContentFormat {
-  return value === "text" || value === "json" ? value : "summary";
+  return oneNotePageContentFormatSchema.catch("summary").parse(value);
 }
 
 export function formatPageText(contentItems: OneNoteContentSummary[]) {
@@ -96,6 +162,7 @@ export function formatPageText(contentItems: OneNoteContentSummary[]) {
 }
 
 export function formatPageSummary(page: { title: string; id: string; pageLevel?: number }, contentItems: OneNoteContentSummary[]) {
+  const normalizedPage = oneNotePageReferenceSchema.parse(page);
   const outlineCount = contentItems.filter((item) => item.type === "Outline").length;
   const imageCount = contentItems.filter((item) => item.type === "Image").length;
   const otherCount = contentItems.filter((item) => item.type !== "Outline" && item.type !== "Image").length;
@@ -103,8 +170,8 @@ export function formatPageSummary(page: { title: string; id: string; pageLevel?:
   const preview = summarizePlainText(formatPageText(contentItems), 240);
 
   return [
-    `Page ${JSON.stringify(page.title || "Untitled")} (${page.id})`,
-    `Level: ${page.pageLevel ?? 0}`,
+    `Page ${JSON.stringify(normalizedPage.title || "Untitled")} (${normalizedPage.id})`,
+    `Level: ${normalizedPage.pageLevel ?? 0}`,
     `Top-level content: outlines=${outlineCount}, images=${imageCount}, other=${otherCount}`,
     `Paragraph-like items: ${paragraphCount}`,
     `Preview: ${preview}`,
@@ -216,7 +283,7 @@ export async function loadParagraphSummaries(
     item.summary.columnCount = item.table.columnCount;
   }
 
-  return summaries;
+  return z.array(oneNoteParagraphSummarySchema).parse(summaries);
 }
 
 export async function loadPageContentSummaries(
@@ -266,7 +333,7 @@ export async function loadPageContentSummaries(
     item.summary.paragraphs = await loadParagraphSummaries(context, item.outline, format);
   }
 
-  return summaries;
+  return z.array(oneNoteContentSummarySchema).parse(summaries);
 }
 
 export async function findSectionById(

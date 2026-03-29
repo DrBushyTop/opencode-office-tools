@@ -8,6 +8,7 @@ import {
   serializeXml,
 } from "./openXmlPackage";
 import { invalidSlideIndexMessage, isPowerPointRequirementSetSupported } from "./powerpointShared";
+import { z } from "zod";
 
 const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -28,44 +29,55 @@ function getDirectChildByTagName(parent: Element, namespace: string, localName: 
   ) as Element | undefined;
 }
 
-export interface SlideTransitionDefinition {
-  effect: "none" | "cut" | "fade" | "dissolve" | "random" | "randomBar" | "push" | "wipe" | "split" | "cover" | "pull" | "zoom";
-  speed?: "slow" | "medium" | "fast";
-  advanceOnClick?: boolean;
-  advanceAfterMs?: number;
-  durationMs?: number;
-  direction?: "left" | "right" | "up" | "down" | "horizontal" | "vertical" | "in" | "out";
-  orientation?: "horizontal" | "vertical";
-  throughBlack?: boolean;
-}
+export const slideTransitionEffectSchema = z.enum(["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"]);
+export const slideTransitionSpeedSchema = z.enum(["slow", "medium", "fast"]);
+export const slideTransitionDirectionSchema = z.enum(["left", "right", "up", "down", "horizontal", "vertical", "in", "out"]);
+export const slideTransitionOrientationSchema = z.enum(["horizontal", "vertical"]);
 
-export type AnimationType =
-  // Entrance animations (shapes start hidden, are revealed)
-  | "appear" | "fade" | "flyIn" | "wipe" | "zoomIn" | "floatIn" | "riseUp" | "peekIn" | "growAndTurn"
-  // Emphasis animations (change existing shape properties)
-  | "complementaryColor" | "changeFillColor" | "changeLineColor"
-  // Emphasis motion/transform animations
-  | "motionPath" | "scale" | "rotate";
+export const slideTransitionDefinitionSchema = z.object({
+  effect: slideTransitionEffectSchema,
+  speed: slideTransitionSpeedSchema.optional(),
+  advanceOnClick: z.boolean().optional(),
+  advanceAfterMs: z.number().optional(),
+  durationMs: z.number().optional(),
+  direction: slideTransitionDirectionSchema.optional(),
+  orientation: slideTransitionOrientationSchema.optional(),
+  throughBlack: z.boolean().optional(),
+});
 
-export interface SlideAnimationDefinition {
-  type: AnimationType;
-  start: "onClick" | "withPrevious" | "afterPrevious";
-  durationMs?: number;
-  delayMs?: number;
-  repeatCount?: number;
-  shapeId: string;
-  path?: string;
-  pathOrigin?: "parent" | "layout";
-  pathEditMode?: "relative" | "fixed";
-  scaleXPercent?: number;
-  scaleYPercent?: number;
-  angleDegrees?: number;
-  direction?: "left" | "right" | "up" | "down";
-  /** Target color for emphasis color animations (hex like "FF0000" or scheme like "accent2"). */
-  toColor?: string;
-  /** Color space for emphasis color animations: "hsl" (default, smooth) or "rgb". */
-  colorSpace?: "hsl" | "rgb";
-}
+export type SlideTransitionDefinition = z.infer<typeof slideTransitionDefinitionSchema>;
+
+export const slideAnimationTypeSchema = z.enum([
+  "appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "peekIn", "growAndTurn",
+  "complementaryColor", "changeFillColor", "changeLineColor",
+  "motionPath", "scale", "rotate",
+]);
+export const slideAnimationStartSchema = z.enum(["onClick", "withPrevious", "afterPrevious"]);
+export const slideAnimationPathOriginSchema = z.enum(["parent", "layout"]);
+export const slideAnimationPathEditModeSchema = z.enum(["relative", "fixed"]);
+export const slideAnimationDirectionSchema = z.enum(["left", "right", "up", "down"]);
+export const slideAnimationColorSpaceSchema = z.enum(["hsl", "rgb"]);
+
+export const slideAnimationDefinitionSchema = z.object({
+  type: slideAnimationTypeSchema,
+  start: slideAnimationStartSchema,
+  durationMs: z.number().optional(),
+  delayMs: z.number().optional(),
+  repeatCount: z.number().optional(),
+  shapeId: z.string(),
+  path: z.string().optional(),
+  pathOrigin: slideAnimationPathOriginSchema.optional(),
+  pathEditMode: slideAnimationPathEditModeSchema.optional(),
+  scaleXPercent: z.number().optional(),
+  scaleYPercent: z.number().optional(),
+  angleDegrees: z.number().optional(),
+  direction: slideAnimationDirectionSchema.optional(),
+  toColor: z.string().optional(),
+  colorSpace: slideAnimationColorSpaceSchema.optional(),
+});
+
+export type AnimationType = z.infer<typeof slideAnimationTypeSchema>;
+export type SlideAnimationDefinition = z.infer<typeof slideAnimationDefinitionSchema>;
 
 const ENTRANCE_ANIMATION_TYPES = new Set(["appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "peekIn", "growAndTurn"]);
 
@@ -218,12 +230,14 @@ export function listXmlShapeIdsInBase64Presentation(base64: string) {
   return getSlideShapeElementsInOrder(slideDoc).map((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex));
 }
 
-export interface OpenXmlRoundTripResult {
-  originalSlideId: string;
-  replacementSlideId: string;
-  finalSlideIndex: number;
-  shapeIdMap?: Record<string, string>;
-}
+export const openXmlRoundTripResultSchema = z.object({
+  originalSlideId: z.string(),
+  replacementSlideId: z.string(),
+  finalSlideIndex: z.number(),
+  shapeIdMap: z.record(z.string(), z.string()).optional(),
+});
+
+export type OpenXmlRoundTripResult = z.infer<typeof openXmlRoundTripResultSchema>;
 
 function buildShapeIdMap(beforeBase64: string, afterBase64: string): Record<string, string> | undefined {
   let beforeShapeIds: string[];
@@ -1401,13 +1415,13 @@ export function extractSlideTransitionFromBase64Presentation(base64: string): Sl
   const effectDetails = getTransitionEffectDetails(transition);
   const speedValue = transition.getAttribute("spd");
   const duration = transition.getAttributeNS(NS_P14, "dur") || transition.getAttribute("p14:dur") || undefined;
-  return {
+  return slideTransitionDefinitionSchema.parse({
     ...effectDetails,
     speed: speedValue === "med" ? "medium" : (speedValue as SlideTransitionDefinition["speed"] | null) || undefined,
     advanceOnClick: transition.hasAttribute("advClick") ? transition.getAttribute("advClick") !== "0" && transition.getAttribute("advClick") !== "false" : undefined,
     advanceAfterMs: transition.hasAttribute("advTm") ? Number(transition.getAttribute("advTm")) : undefined,
     durationMs: duration ? Number(duration) : undefined,
-  };
+  });
 }
 
 export function setSlideTransitionInBase64Presentation(base64: string, definition: SlideTransitionDefinition) {
@@ -1564,12 +1578,12 @@ export async function replaceSlideWithMutatedOpenXml(
   await context.sync();
   const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
 
-  return {
+  return openXmlRoundTripResultSchema.parse({
     originalSlideId: sourceSlideId,
     replacementSlideId: replacementSlide.id,
     finalSlideIndex,
     shapeIdMap,
-  };
+  });
 }
 
 export async function exportSlideAsBase64(context: PowerPoint.RequestContext, slideIndex: number) {

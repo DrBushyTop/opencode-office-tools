@@ -1,13 +1,25 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  DocumentWriteFormatSchema,
+  DocumentWriteLocationSchema,
+  DocumentWriteOperationSchema,
+  getZodErrorMessage,
   parseDocumentRangeAddress,
   resolveDocumentRangeTarget,
   toolFailure,
   writeResolvedWordTarget,
-  type DocumentWriteFormat,
-  type DocumentWriteLocation,
-  type DocumentWriteOperation,
 } from "./wordShared";
+
+const setDocumentRangeArgsSchema = z.object({
+  address: z.string(),
+  operation: DocumentWriteOperationSchema.optional().default("replace"),
+  format: DocumentWriteFormatSchema.optional().default("html"),
+  content: z.string().optional(),
+  location: DocumentWriteLocationSchema.optional().default("replace"),
+});
+
+export type SetDocumentRangeArgs = z.infer<typeof setDocumentRangeArgsSchema>;
 
 export const setDocumentRange: Tool = {
   name: "set_document_range",
@@ -53,19 +65,12 @@ Use this for generic content edits. Keep set_document_part for section headers, 
     required: ["address"],
   },
   handler: async (args) => {
-    const {
-      address,
-      operation = "replace",
-      format = "html",
-      content,
-      location = "replace",
-    } = args as {
-      address: string;
-      operation?: DocumentWriteOperation;
-      format?: DocumentWriteFormat;
-      content?: string;
-      location?: DocumentWriteLocation;
-    };
+    const parsedArgs = setDocumentRangeArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
+    const { address, operation, format, content, location } = parsedArgs.data;
 
     const parsed = parseDocumentRangeAddress(address);
     if (!parsed) {

@@ -1,16 +1,14 @@
 import type { Message } from "../components/MessageList";
 import type { ModelType } from "../components/HeaderBar";
-import type { OfficeHost, SavedSession } from "../sessionStorage";
+import { savedSessionSchema, type OfficeHost, type SavedSession } from "../sessionStorage";
+import { opencodeMessagePartSchema, opencodeMessageSchema, opencodeSessionInfoSchema, type OpencodeMessagePart } from "./opencode-schemas";
+import { z } from "zod";
 
-export interface OpencodeSessionInfo {
-  id: string;
-  title: string;
-  directory: string;
-  time: {
-    created: number;
-    updated: number;
-  };
-}
+export type OpencodeSessionInfo = z.infer<typeof opencodeSessionInfoSchema>;
+
+const opencodeMessagesSchema = z.array(opencodeMessageSchema);
+const opencodeSessionListSchema = z.array(opencodeSessionInfoSchema);
+const opencodeSessionSchema = opencodeSessionInfoSchema.pick({ id: true, title: true, time: true });
 
 function hostLabel(host: OfficeHost) {
   if (host === "powerpoint") return "PowerPoint";
@@ -27,16 +25,21 @@ export function makeSessionTitle(host: OfficeHost, text: string) {
   return `${prefix}${value.slice(0, 47)}...`;
 }
 
-function text(parts: any[] = []) {
-  return parts
+function parseParts(parts: unknown): OpencodeMessagePart[] {
+  const parsed = z.array(opencodeMessagePartSchema).safeParse(parts);
+  return parsed.success ? parsed.data : [];
+}
+
+function text(parts: unknown = []) {
+  return parseParts(parts)
     .filter((part) => part.type === "text" && !part.synthetic)
     .map((part) => part.text || "")
     .join("\n\n")
     .trim();
 }
 
-function images(parts: any[] = []) {
-  return parts
+function images(parts: unknown = []) {
+  return parseParts(parts)
     .filter((part) => part.type === "file" && String(part.mime || "").startsWith("image/"))
     .map((part) => ({ dataUrl: part.url || "", name: part.filename || "image" }));
 }
@@ -52,8 +55,8 @@ export function carry(live: Message[], next: Message[]) {
   return live.filter((item) => item.sender !== "assistant" && !ids.has(item.id));
 }
 
-export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Message[] {
-  return (parts || []).flatMap((part: any, index: number): Message[] => {
+export function mapAssistantParts(parts: unknown = [], fallbackTime?: number): Message[] {
+  return parseParts(parts).flatMap((part, index): Message[] => {
     const id = String(part.id || `part-${index}`);
     const time = new Date(part.state?.time?.start || part.time?.start || fallbackTime || Date.now());
 
@@ -65,7 +68,7 @@ export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Mes
         toolName: part.tool,
         toolArgs: part.state?.input || {},
         toolResult: part.state?.output,
-        toolError: part.state?.error,
+        toolError: typeof part.state?.error === "string" ? part.state.error : undefined,
         toolMeta: part.state?.metadata || {},
         toolStatus: part.state?.status === "error" || part.state?.error ? "error" : part.state?.status === "pending" || part.state?.status === "running" ? "running" : "completed",
         timestamp: time,
@@ -94,22 +97,27 @@ export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Mes
   });
 }
 
-export function mapMessages(items: any[]): Message[] {
+export function mapMessages(items: unknown[]): Message[] {
   return items.flatMap((item) => {
-    if (item.info?.role === "user") {
-      const body = text(item.parts);
-      const files = images(item.parts);
+    const parsed = opencodeMessageSchema.safeParse(item);
+    if (!parsed.success) return [];
+
+    const { info, parts } = parsed.data;
+    if (info?.role === "user") {
+      if (!info) return [];
+      const body = text(parts);
+      const files = images(parts);
       return [{
-        id: item.info.id,
+        id: info.id,
         text: body || (files.length ? `Sent ${files.length} image${files.length === 1 ? "" : "s"}` : ""),
         sender: "user" as const,
-        timestamp: new Date(item.info.time.created),
+        timestamp: new Date(info.time.created),
         images: files.length ? files : undefined,
       }];
     }
 
-    if (item.info?.role === "assistant") {
-      return mapAssistantParts(item.parts, item.info.time.created);
+    if (info?.role === "assistant") {
+      return mapAssistantParts(parts, Number(info.time.created));
     }
 
     return [];
@@ -119,7 +127,7 @@ export function mapMessages(items: any[]): Message[] {
 export async function listSessions(host: OfficeHost, shared: boolean) {
   const response = await fetch(`/api/opencode/sessions?host=${encodeURIComponent(host)}&shared=${shared ? "1" : "0"}`);
   if (!response.ok) throw new Error((await response.text()) || "Failed to load sessions");
-  return response.json() as Promise<OpencodeSessionInfo[]>;
+  return opencodeSessionListSchema.parse(await response.json());
 }
 
 export async function deleteSession(id: string) {
@@ -145,15 +153,15 @@ export async function restoreSession(id: string, model: ModelType): Promise<Save
   if (!sessionResponse.ok) throw new Error((await sessionResponse.text()) || "Failed to load session");
   if (!messagesResponse.ok) throw new Error((await messagesResponse.text()) || "Failed to load messages");
 
-  const session = await sessionResponse.json();
-  const messages = await messagesResponse.json();
+  const session = opencodeSessionSchema.parse(await sessionResponse.json());
+  const messages = opencodeMessagesSchema.parse(await messagesResponse.json());
 
-  return {
+  return savedSessionSchema.parse({
     id: session.id,
     title: session.title,
     model,
     messages: mapMessages(messages),
     createdAt: new Date(session.time.created).toISOString(),
     updatedAt: new Date(session.time.updated).toISOString(),
-  };
+  });
 }

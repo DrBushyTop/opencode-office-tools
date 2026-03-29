@@ -1,6 +1,19 @@
 import type { Tool } from "./types";
 import { isPowerPointRequirementSetSupported, toolFailure } from "./powerpointShared";
 import { getPowerPointContextSnapshot } from "./powerpointContext";
+import { z } from "zod";
+
+const manageSlideArgsSchema = z.object({
+  action: z.enum(["create", "duplicate", "delete", "move", "clear"]),
+  slideIndex: z.number().optional(),
+  sourceIndex: z.number().optional(),
+  targetIndex: z.number().optional(),
+  slideMasterId: z.string().optional(),
+  layoutId: z.string().optional(),
+  formatting: z.enum(["KeepSourceFormatting", "UseDestinationTheme"]).optional(),
+});
+
+type ManageSlideArgs = z.infer<typeof manageSlideArgsSchema>;
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
@@ -46,29 +59,17 @@ export const manageSlide: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const resolvedArgs = { ...(args as Record<string, unknown>) };
+    const parsedArgs = manageSlideArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const resolvedArgs: ManageSlideArgs = { ...parsedArgs.data };
     const snapshot = getPowerPointContextSnapshot();
     if (resolvedArgs.slideIndex === undefined && snapshot?.activeSlideIndex !== undefined) {
       resolvedArgs.slideIndex = snapshot.activeSlideIndex;
     }
 
-    const {
-      action,
-      slideIndex,
-      sourceIndex,
-      targetIndex,
-      slideMasterId,
-      layoutId,
-      formatting = "KeepSourceFormatting",
-    } = resolvedArgs as {
-      action: "create" | "duplicate" | "delete" | "move" | "clear";
-      slideIndex?: number;
-      sourceIndex?: number;
-      targetIndex?: number;
-      slideMasterId?: string;
-      layoutId?: string;
-      formatting?: "KeepSourceFormatting" | "UseDestinationTheme";
-    };
+    const { action, slideIndex, sourceIndex, targetIndex, slideMasterId, layoutId, formatting = "KeepSourceFormatting" } = resolvedArgs;
 
     if (slideIndex !== undefined && !isNonNegativeInteger(slideIndex)) {
       return toolFailure("slideIndex must be a non-negative integer.");

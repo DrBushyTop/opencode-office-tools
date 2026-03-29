@@ -8,12 +8,33 @@ import {
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 type AnimationArgs = SlideAnimationDefinition & {
   slideIndex?: number;
   shapeIndex?: number;
   shapeId?: string | number | (string | number)[];
 };
+
+const animationArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+  shapeId: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]).optional(),
+  shapeIndex: z.number().optional(),
+  type: z.enum(["motionPath", "scale", "rotate", "appear", "fade", "flyIn", "wipe", "zoomIn", "floatIn", "riseUp", "peekIn", "growAndTurn", "complementaryColor", "changeFillColor", "changeLineColor"]),
+  start: z.enum(["onClick", "withPrevious", "afterPrevious"]),
+  durationMs: z.number().optional(),
+  delayMs: z.number().optional(),
+  repeatCount: z.number().optional(),
+  path: z.string().optional(),
+  pathOrigin: z.enum(["parent", "layout"]).optional(),
+  pathEditMode: z.enum(["relative", "fixed"]).optional(),
+  scaleXPercent: z.number().optional(),
+  scaleYPercent: z.number().optional(),
+  angleDegrees: z.number().optional(),
+  direction: z.enum(["left", "right", "up", "down"]).optional(),
+  toColor: z.string().optional(),
+  colorSpace: z.enum(["hsl", "rgb"]).optional(),
+});
 
 async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string | number, shapeIndex?: number) {
   const slides = context.presentation.slides;
@@ -74,7 +95,11 @@ export const addSlideAnimation: Tool = {
     required: ["type", "start"],
   },
   handler: async (args) => {
-    const animation = resolvePowerPointTargetingArgs(args as AnimationArgs);
+    const parsedArgs = animationArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const animation = resolvePowerPointTargetingArgs(parsedArgs.data as AnimationArgs);
     if (!Number.isInteger(animation.slideIndex) || (animation.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

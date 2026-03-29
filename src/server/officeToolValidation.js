@@ -1,77 +1,108 @@
+const { z, ZodError } = require('zod')
 const officeToolRegistry = require('../shared/office-tool-registry.json')
 
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
+const schemaCache = new WeakMap()
 
 function isBlankString(value) {
   return typeof value === 'string' && value.trim() === ''
 }
 
-function validateSchema(value, schema, path = 'args') {
-  if (!schema) return
+function joinIssuePath(basePath, segments = []) {
+  return segments.reduce((current, segment) => (
+    typeof segment === 'number' ? `${current}[${segment}]` : `${current}.${segment}`
+  ), basePath)
+}
+
+function formatZodError(error, basePath = 'args') {
+  if (!(error instanceof ZodError)) return error
+
+  const issue = error.issues[0]
+  if (!issue) return new Error(`Invalid ${basePath}`)
+
+  const path = joinIssuePath(basePath, issue.path)
+
+  if (issue.code === 'unrecognized_keys' && issue.keys.length > 0) {
+    return new Error(`Unexpected ${joinIssuePath(basePath, [issue.keys[0]])}`)
+  }
+
+  if (issue.code === 'invalid_type') {
+    if (issue.input === undefined) {
+      return new Error(`Missing required ${path}`)
+    }
+    return new Error(`Invalid ${path}: expected ${issue.expected}`)
+  }
+
+  if (issue.code === 'invalid_value' && Array.isArray(issue.values)) {
+    return new Error(`Invalid ${path}: expected one of ${issue.values.join(', ')}`)
+  }
+
+  if (issue.code === 'invalid_union') {
+    return new Error(`Invalid ${path}`)
+  }
+
+  return new Error(issue.message ? `Invalid ${path}: ${issue.message}` : `Invalid ${path}`)
+}
+
+function buildZodSchema(schema, path = 'args') {
+  if (!schema) return z.any()
+  if (schemaCache.has(schema)) return schemaCache.get(schema)
+
+  let builtSchema
 
   if (Array.isArray(schema.anyOf)) {
-    const errors = []
-    for (const item of schema.anyOf) {
-      try {
-        validateSchema(value, item, path)
-        return
-      } catch (error) {
-        errors.push(error)
-      }
+    const options = schema.anyOf.map((item) => buildZodSchema(item, path))
+    builtSchema = options.length === 1 ? options[0] : z.union(options)
+  } else if (Array.isArray(schema.enum)) {
+    if (schema.enum.length > 0 && schema.enum.every((value) => typeof value === 'string')) {
+      builtSchema = z.enum(schema.enum)
+    } else {
+      const options = schema.enum.map((value) => z.literal(value))
+      builtSchema = options.length === 1 ? options[0] : z.union(options)
     }
-    throw new Error(`Invalid ${path}`)
+  } else {
+    switch (schema.type) {
+      case 'object': {
+        const properties = schema.properties || {}
+        const required = new Set(Array.isArray(schema.required) ? schema.required : [])
+        const shape = {}
+
+        for (const [key, value] of Object.entries(properties)) {
+          const propertySchema = buildZodSchema(value, `${path}.${key}`)
+          shape[key] = required.has(key) ? propertySchema : propertySchema.optional()
+        }
+
+        builtSchema = z.object(shape).strict()
+        break
+      }
+      case 'array':
+        builtSchema = z.array(buildZodSchema(schema.items, `${path}[]`))
+        break
+      case 'string':
+        builtSchema = z.string()
+        break
+      case 'number':
+        builtSchema = z.number().finite()
+        break
+      case 'boolean':
+        builtSchema = z.boolean()
+        break
+      case undefined:
+        builtSchema = z.any()
+        break
+      default:
+        throw new Error(`Unsupported schema type for ${path}`)
+    }
   }
 
-  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-    throw new Error(`Invalid ${path}: expected one of ${schema.enum.join(', ')}`)
-  }
+  schemaCache.set(schema, builtSchema)
+  return builtSchema
+}
 
-  switch (schema.type) {
-    case 'object': {
-      if (!isPlainObject(value)) {
-        throw new Error(`Invalid ${path}: expected object`)
-      }
-
-      const properties = schema.properties || {}
-      const required = Array.isArray(schema.required) ? schema.required : []
-      for (const name of required) {
-        if (value[name] === undefined) {
-          throw new Error(`Missing required ${path}.${name}`)
-        }
-      }
-
-      for (const key of Object.keys(value)) {
-        if (!Object.prototype.hasOwnProperty.call(properties, key)) {
-          throw new Error(`Unexpected ${path}.${key}`)
-        }
-        validateSchema(value[key], properties[key], `${path}.${key}`)
-      }
-      return
-    }
-    case 'array': {
-      if (!Array.isArray(value)) {
-        throw new Error(`Invalid ${path}: expected array`)
-      }
-      for (let i = 0; i < value.length; i += 1) {
-        validateSchema(value[i], schema.items, `${path}[${i}]`)
-      }
-      return
-    }
-    case 'string':
-      if (typeof value !== 'string') throw new Error(`Invalid ${path}: expected string`)
-      return
-    case 'number':
-      if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`Invalid ${path}: expected number`)
-      return
-    case 'boolean':
-      if (typeof value !== 'boolean') throw new Error(`Invalid ${path}: expected boolean`)
-      return
-    case undefined:
-      return
-    default:
-      throw new Error(`Unsupported schema type for ${path}`)
+function validateSchema(value, schema, path = 'args') {
+  try {
+    buildZodSchema(schema, path).parse(value)
+  } catch (error) {
+    throw formatZodError(error, path)
   }
 }
 

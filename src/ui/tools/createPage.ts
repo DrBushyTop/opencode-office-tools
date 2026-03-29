@@ -1,10 +1,11 @@
 import type { Tool } from "./types";
 import {
+  createPageArgsSchema,
   ensureNonEmptyHtml,
+  formatZodError,
   isOneNoteRequirementSetSupported,
   loadActivePageOrThrow,
   loadActiveSectionOrThrow,
-  parsePagePlacement,
   toolFailure,
 } from "./onenoteShared";
 
@@ -34,8 +35,12 @@ export const createPage: Tool = {
       return toolFailure("OneNoteApi 1.1 is required.");
     }
 
-    const { title = "New Page", html } = (args as { title?: string; html?: string; location?: string }) || {};
-    const location = parsePagePlacement((args as { location?: string } | undefined)?.location);
+    const parsedArgs = createPageArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(formatZodError(parsedArgs.error));
+    }
+
+    const { title = "New Page", html, location = "sectionEnd" } = parsedArgs.data;
     const normalizedTitle = String(title || "").trim() || "New Page";
     const normalizedHtml = html === undefined ? "" : ensureNonEmptyHtml(html);
 

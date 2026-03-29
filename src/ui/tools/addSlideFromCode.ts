@@ -1,6 +1,12 @@
 import type { Tool } from "./types";
 import pptxgen from "pptxgenjs";
 import { isPowerPointRequirementSetSupported } from "./powerpointShared";
+import { z } from "zod";
+
+const addSlideFromCodeArgsSchema = z.object({
+  code: z.string(),
+  replaceSlideIndex: z.number().optional(),
+});
 
 export function normalizeAddSlideCode(input: string) {
   return String(input || "")
@@ -112,7 +118,25 @@ PptxGenJS API Examples:
     required: ["code"],
   },
   handler: async (args) => {
-    const { code, replaceSlideIndex } = args as { code: string; replaceSlideIndex?: number };
+    const parsedArgs = addSlideFromCodeArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return {
+        textResultForLlm: parsedArgs.error.issues[0]?.message || "Invalid arguments.",
+        resultType: "failure",
+        error: parsedArgs.error.issues[0]?.message || "Invalid arguments.",
+        toolTelemetry: {},
+      };
+    }
+    const { code, replaceSlideIndex } = parsedArgs.data;
+
+    if (replaceSlideIndex !== undefined && (!Number.isInteger(replaceSlideIndex) || replaceSlideIndex < 0)) {
+      return {
+        textResultForLlm: "replaceSlideIndex must be a non-negative integer.",
+        resultType: "failure",
+        error: "replaceSlideIndex must be a non-negative integer.",
+        toolTelemetry: {},
+      };
+    }
 
     try {
       // Read the actual deck's slide dimensions so PptxGenJS generates

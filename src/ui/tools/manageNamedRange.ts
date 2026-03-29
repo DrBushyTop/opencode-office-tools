@@ -1,5 +1,6 @@
+import { z } from "zod";
 import type { Tool } from "./types";
-import { isExcelRequirementSetSupported, qualifyNamedRangeReference, toolFailure } from "./excelShared";
+import { isExcelRequirementSetSupported, parseToolArgs, qualifyNamedRangeReference, toolFailure } from "./excelShared";
 
 const workbookScopedNamePattern = /^[A-Za-z_\\][A-Za-z0-9_.\\]*$/;
 const a1ReferenceLikePattern = /^\$?[A-Za-z]{1,3}\$?\d+$/;
@@ -14,6 +15,15 @@ export function isValidWorkbookNamedRangeName(value: string) {
 function invalidNameMessage(fieldName: "name" | "newName") {
   return `Invalid ${fieldName}. Workbook-scoped named ranges must start with a letter, underscore, or backslash; can contain letters, numbers, periods, underscores, or backslashes; and cannot look like cell references.`;
 }
+
+const manageNamedRangeArgsSchema = z.object({
+  action: z.enum(["create", "update", "rename", "setVisibility", "delete"]),
+  name: z.string(),
+  newName: z.string().optional(),
+  reference: z.string().optional(),
+  comment: z.string().optional(),
+  visible: z.boolean().optional(),
+});
 
 export const manageNamedRange: Tool = {
   name: "manage_named_range",
@@ -50,14 +60,10 @@ export const manageNamedRange: Tool = {
     required: ["action", "name"],
   },
   handler: async (args) => {
-    const { action, name, newName, reference, comment, visible } = args as {
-      action: "create" | "update" | "rename" | "setVisibility" | "delete";
-      name: string;
-      newName?: string;
-      reference?: string;
-      comment?: string;
-      visible?: boolean;
-    };
+    const parsedArgs = parseToolArgs(manageNamedRangeArgsSchema, args);
+    if (!parsedArgs.success) return parsedArgs.failure;
+
+    const { action, name, newName, reference, comment, visible } = parsedArgs.data;
 
     if (!isValidWorkbookNamedRangeName(name)) {
       return toolFailure(invalidNameMessage("name"));

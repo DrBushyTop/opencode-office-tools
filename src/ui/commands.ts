@@ -1,10 +1,20 @@
 /// <reference types="@types/office-js" />
 
+import { z } from "zod";
+
+const NavigationTargetSchema = z.enum([
+  "edit-selection",
+  "insert-timeline",
+  "insert-estimate-table",
+]);
+
+type NavigationTarget = z.infer<typeof NavigationTargetSchema>;
+
 function completeEvent(event?: Office.AddinCommands.Event) {
   event?.completed();
 }
 
-async function openTaskpane(target: string, event?: Office.AddinCommands.Event) {
+async function openTaskpane(target: NavigationTarget, event?: Office.AddinCommands.Event) {
   try {
     localStorage.setItem("navigationTarget", target);
     await Office.addin.showAsTaskpane();

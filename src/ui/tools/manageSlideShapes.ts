@@ -9,6 +9,7 @@ import {
   supportsPowerPointPlaceholders,
   toolFailure,
 } from "./powerpointShared";
+import { z } from "zod";
 
 type ManageSlideShapesAction = "create" | "update" | "delete" | "group" | "ungroup";
 type CreateShapeType = "textBox" | "geometricShape" | "line";
@@ -18,56 +19,58 @@ type UnderlineStyle = "None" | "Single" | "Double" | "Heavy" | "Dotted" | "Dotte
 type TextAutoSize = "AutoSizeNone" | "AutoSizeTextToFitShape" | "AutoSizeShapeToFitText";
 type VerticalAlignment = "Top" | "Middle" | "Bottom" | "TopCentered" | "MiddleCentered" | "BottomCentered";
 
-interface ManageSlideShapesArgs {
-  action: ManageSlideShapesAction;
-  slideIndex?: number;
-  shapeId?: string | number;
-  shapeIndex?: number;
-  shapeIds?: (string | number)[];
-  placeholderType?: string;
-  shapeType?: CreateShapeType;
-  geometricShapeType?: string;
-  connectorType?: ConnectorType;
-  text?: string;
-  name?: string;
-  left?: number;
-  top?: number;
-  width?: number;
-  height?: number;
-  rotation?: number;
-  visible?: boolean;
-  altTextTitle?: string;
-  altTextDescription?: string;
-  fillColor?: string;
-  fillTransparency?: number;
-  clearFill?: boolean;
-  lineColor?: string;
-  lineWeight?: number;
-  lineTransparency?: number;
-  lineVisible?: boolean;
-  fontName?: string;
-  fontSize?: number;
-  fontColor?: string;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: UnderlineStyle;
-  strikethrough?: boolean;
-  allCaps?: boolean;
-  smallCaps?: boolean;
-  subscript?: boolean;
-  superscript?: boolean;
-  doubleStrikethrough?: boolean;
-  paragraphAlignment?: ParagraphAlignment;
-  bulletVisible?: boolean;
-  indentLevel?: number;
-  textAutoSize?: TextAutoSize;
-  wordWrap?: boolean;
-  verticalAlignment?: VerticalAlignment;
-  marginLeft?: number;
-  marginRight?: number;
-  marginTop?: number;
-  marginBottom?: number;
-}
+const manageSlideShapesArgsSchema = z.object({
+  action: z.enum(["create", "update", "delete", "group", "ungroup"]),
+  slideIndex: z.number().optional(),
+  shapeId: z.union([z.string(), z.number()]).optional(),
+  shapeIndex: z.number().optional(),
+  shapeIds: z.array(z.union([z.string(), z.number()])).optional(),
+  placeholderType: z.string().optional(),
+  shapeType: z.enum(["textBox", "geometricShape", "line"]).optional(),
+  geometricShapeType: z.string().optional(),
+  connectorType: z.enum(["Straight", "Elbow", "Curve"]).optional(),
+  text: z.string().optional(),
+  name: z.string().optional(),
+  left: z.number().optional(),
+  top: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  rotation: z.number().optional(),
+  visible: z.boolean().optional(),
+  altTextTitle: z.string().optional(),
+  altTextDescription: z.string().optional(),
+  fillColor: z.string().optional(),
+  fillTransparency: z.number().optional(),
+  clearFill: z.boolean().optional(),
+  lineColor: z.string().optional(),
+  lineWeight: z.number().optional(),
+  lineTransparency: z.number().optional(),
+  lineVisible: z.boolean().optional(),
+  fontName: z.string().optional(),
+  fontSize: z.number().optional(),
+  fontColor: z.string().optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.enum(["None", "Single", "Double", "Heavy", "Dotted", "DottedHeavy", "Dash", "DashHeavy", "DashLong", "DashLongHeavy", "DotDash", "DotDashHeavy", "DotDotDash", "DotDotDashHeavy", "Wavy", "WavyHeavy", "WavyDouble"]).optional(),
+  strikethrough: z.boolean().optional(),
+  allCaps: z.boolean().optional(),
+  smallCaps: z.boolean().optional(),
+  subscript: z.boolean().optional(),
+  superscript: z.boolean().optional(),
+  doubleStrikethrough: z.boolean().optional(),
+  paragraphAlignment: z.enum(["Left", "Center", "Right", "Justify", "JustifyLow", "Distributed", "ThaiDistributed"]).optional(),
+  bulletVisible: z.boolean().optional(),
+  indentLevel: z.number().optional(),
+  textAutoSize: z.enum(["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"]).optional(),
+  wordWrap: z.boolean().optional(),
+  verticalAlignment: z.enum(["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"]).optional(),
+  marginLeft: z.number().optional(),
+  marginRight: z.number().optional(),
+  marginTop: z.number().optional(),
+  marginBottom: z.number().optional(),
+});
+
+type ManageSlideShapesArgs = z.infer<typeof manageSlideShapesArgsSchema>;
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
@@ -347,7 +350,11 @@ export const manageSlideShapes: Tool = {
     required: ["action", "slideIndex"],
   },
   handler: async (args) => {
-    const update = resolvePowerPointTargetingArgs(args as ManageSlideShapesArgs);
+    const parsedArgs = manageSlideShapesArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const update = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideShapesArgs);
 
     if (!isNonNegativeInteger(update.slideIndex)) {
       return toolFailure("slideIndex must be a non-negative integer.");

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+import { z } from "zod";
 import { App } from "./App";
 import { remoteLog } from "./lib/remoteLog";
 
@@ -11,10 +12,28 @@ declare global {
   }
 }
 
-const earlyClientLogs: Array<{ level: "info" | "warn" | "error"; tag: string; message: string; detail?: unknown }> = [];
+const LogLevelSchema = z.enum(["info", "warn", "error"]);
+type LogLevel = z.infer<typeof LogLevelSchema>;
 
-function pushEarlyLog(level: "info" | "warn" | "error", tag: string, message: string, detail?: unknown) {
-  const payload = { level, tag, message, detail };
+const BootstrapLogSchema = z.object({
+  level: LogLevelSchema,
+  tag: z.string(),
+  message: z.string(),
+  detail: z.unknown().optional(),
+});
+
+type BootstrapLog = z.infer<typeof BootstrapLogSchema>;
+
+const OfficeReadyInfoSchema = z.object({
+  host: z.string().optional(),
+  platform: z.string().optional(),
+  addin: z.string().optional(),
+}).passthrough();
+
+const earlyClientLogs: BootstrapLog[] = [];
+
+function pushEarlyLog(level: LogLevel, tag: string, message: string, detail?: unknown) {
+  const payload = BootstrapLogSchema.parse({ level, tag, message, detail });
   earlyClientLogs.push(payload);
   window.__opencodeBootstrapLog?.(level, tag, message, detail);
   remoteLog(tag, message, detail, level);
@@ -103,7 +122,8 @@ if (typeof Office === "undefined") {
 
 try {
   Office.onReady((info) => {
-    pushEarlyLog("info", "ui.bootstrap", "Office.onReady resolved", info);
+    const readyInfo = OfficeReadyInfoSchema.safeParse(info);
+    pushEarlyLog("info", "ui.bootstrap", "Office.onReady resolved", readyInfo.success ? readyInfo.data : info);
     const container = document.getElementById("root");
     if (container) {
       pushEarlyLog("info", "ui.bootstrap", "Root container found, rendering app");

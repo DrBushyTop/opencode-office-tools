@@ -3,29 +3,33 @@ import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { defaultChartPalette, getShapeBounds, getSlideByIndex } from "./powerpointNativeContent";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { normalizeHexColor, toolFailure } from "./powerpointShared";
+import { z } from "zod";
 
 type ChartType = "column" | "bar" | "line" | "pie";
 type ManageSlideChartAction = "create" | "update" | "delete";
 
-interface SlideChartPoint {
-  label: string;
-  value: number;
-  color?: string;
-}
+const slideChartPointSchema = z.object({
+  label: z.string(),
+  value: z.number(),
+  color: z.string().optional(),
+});
 
-interface ManageSlideChartArgs {
-  action: ManageSlideChartAction;
-  slideIndex?: number;
-  shapeId?: string | number;
-  chartType?: ChartType;
-  title?: string;
-  data?: SlideChartPoint[];
-  left?: number;
-  top?: number;
-  width?: number;
-  height?: number;
-  name?: string;
-}
+const manageSlideChartArgsSchema = z.object({
+  action: z.enum(["create", "update", "delete"]),
+  slideIndex: z.number().optional(),
+  shapeId: z.union([z.string(), z.number()]).optional(),
+  chartType: z.enum(["column", "bar", "line", "pie"]).optional(),
+  title: z.string().optional(),
+  data: z.array(slideChartPointSchema).optional(),
+  left: z.number().optional(),
+  top: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  name: z.string().optional(),
+});
+
+type SlideChartPoint = z.infer<typeof slideChartPointSchema>;
+type ManageSlideChartArgs = z.infer<typeof manageSlideChartArgsSchema>;
 
 function validData(data?: SlideChartPoint[]) {
   return Boolean(data?.length) && data!.every((item) => typeof item.label === "string" && Number.isFinite(item.value));
@@ -167,7 +171,11 @@ export const manageSlideChart: Tool = {
     required: ["action"],
   },
   handler: async (args) => {
-    const chart = resolvePowerPointTargetingArgs(args as ManageSlideChartArgs);
+    const parsedArgs = manageSlideChartArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const chart = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideChartArgs);
     if (!Number.isInteger(chart.slideIndex) || (chart.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

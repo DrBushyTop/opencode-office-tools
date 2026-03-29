@@ -1,6 +1,11 @@
 import type { Tool } from "./types";
 import { exportSlideAsBase64, extractSpeakerNotesFromBase64Presentation } from "./powerpointOpenXml";
 import { toolFailure } from "./powerpointShared";
+import { z } from "zod";
+
+const getSlideNotesArgsSchema = z.object({
+  slideIndex: z.number().optional(),
+});
 
 export const getSlideNotes: Tool = {
   name: "get_slide_notes",
@@ -15,7 +20,15 @@ export const getSlideNotes: Tool = {
     },
   },
   handler: async (args) => {
-    const { slideIndex } = (args as { slideIndex?: number }) || {};
+    const parsedArgs = getSlideNotesArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const { slideIndex } = parsedArgs.data;
+
+    if (slideIndex !== undefined && (!Number.isInteger(slideIndex) || slideIndex < 0)) {
+      return toolFailure("slideIndex must be a non-negative integer.");
+    }
 
     try {
       return await PowerPoint.run(async (context) => {

@@ -1,6 +1,11 @@
 import type { Tool } from "./types";
 import { exportSlideAsBase64, extractSlideAnimationSummaryFromBase64Presentation } from "./powerpointOpenXml";
 import { toolFailure } from "./powerpointShared";
+import { z } from "zod";
+
+const getSlideAnimationsArgsSchema = z.object({
+  slideIndex: z.number(),
+});
 
 export const getSlideAnimations: Tool = {
   name: "get_slide_animations",
@@ -16,7 +21,11 @@ export const getSlideAnimations: Tool = {
     required: ["slideIndex"],
   },
   handler: async (args) => {
-    const { slideIndex } = args as { slideIndex: number };
+    const parsedArgs = getSlideAnimationsArgsSchema.safeParse(args);
+    if (!parsedArgs.success) {
+      return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
+    }
+    const { slideIndex } = parsedArgs.data;
     if (!Number.isInteger(slideIndex) || slideIndex < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }

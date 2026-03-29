@@ -26,6 +26,36 @@ import {
   getHostFromOfficeHost,
 } from "./sessionStorage";
 import React from "react";
+import { z } from "zod";
+
+const NavigationTargetSchema = z.enum([
+  "edit-selection",
+  "insert-timeline",
+  "insert-estimate-table",
+]);
+const PowerPointContextSnapshotSchema = z.object({
+  activeSlideIndex: z.number().int().nonnegative().optional(),
+  selectedSlideIds: z.array(z.string()),
+  selectedShapeIds: z.array(z.string()),
+}) satisfies z.ZodType<PowerPointContextSnapshot>;
+const OfficePermissionRequestSchema = z.object({
+  id: z.string().min(1),
+  sessionID: z.string().min(1),
+  permission: z.string().min(1),
+  patterns: z.array(z.string()),
+  metadata: z.record(z.string(), z.unknown()),
+  always: z.array(z.string()),
+  tool: z.object({
+    messageID: z.string().min(1),
+    callID: z.string().min(1),
+  }).optional(),
+}) satisfies z.ZodType<OfficePermissionRequest>;
+const UploadImageResponseSchema = z.object({
+  path: z.string().min(1),
+  mime: z.string().optional(),
+});
+const PersistedBooleanSchema = z.boolean();
+const PersistedModelSchema = z.string();
 
 const useStyles = makeStyles({
   container: {
@@ -243,7 +273,9 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
   const snapshot = (() => {
     try {
       const raw = localStorage.getItem("opencode-powerpoint-context");
-      return raw ? JSON.parse(raw) as PowerPointContextSnapshot : null;
+      if (!raw) return null;
+      const parsed = PowerPointContextSnapshotSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
     } catch {
       return null;
     }
@@ -296,6 +328,12 @@ export const App: React.FC = () => {
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const isDarkMode = useIsDarkMode();
+  const safeSelectedModel = PersistedModelSchema.catch("").parse(selectedModel);
+  const safeDebugEnabled = PersistedBooleanSchema.catch(false).parse(debugEnabled);
+  const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
+  const safeShowToolResponses = PersistedBooleanSchema.catch(false).parse(showToolResponses);
+  const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
+  const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
   const sessionCreatedAt = useRef<string>("");
   const started = useRef(false);
@@ -312,12 +350,12 @@ export const App: React.FC = () => {
       setRuntimeMode(status.mode);
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
-      if (!selectedModel || !models.some((model) => model.key === selectedModel)) {
+      if (!safeSelectedModel || !models.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(models));
       }
     } catch {
       setAvailableModels(FALLBACK_MODELS);
-      if (!selectedModel || !FALLBACK_MODELS.some((model) => model.key === selectedModel)) {
+      if (!safeSelectedModel || !FALLBACK_MODELS.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(FALLBACK_MODELS));
       }
     }
@@ -371,11 +409,13 @@ export const App: React.FC = () => {
     const target = localStorage.getItem("navigationTarget");
     if (!target) return;
     localStorage.removeItem("navigationTarget");
-    if (target === "edit-selection") {
+    const parsedTarget = NavigationTargetSchema.safeParse(target);
+    if (!parsedTarget.success) return;
+    if (parsedTarget.data === "edit-selection") {
       setInputValue("Edit the current PowerPoint selection using the selected shapes and slide context.");
-    } else if (target === "insert-timeline") {
+    } else if (parsedTarget.data === "insert-timeline") {
       setInputValue("Insert a project timeline on the current slide using the deck template when possible.");
-    } else if (target === "insert-estimate-table") {
+    } else if (parsedTarget.data === "insert-estimate-table") {
       setInputValue("Insert an estimate summary table on the current slide using editable native PowerPoint content.");
     }
   }, []);
@@ -391,9 +431,9 @@ export const App: React.FC = () => {
 
         const response = await fetch("/api/opencode/permissions");
         if (!response.ok) return;
-        const items = await response.json();
+        const items = z.array(OfficePermissionRequestSchema).catch([]).parse(await response.json());
         const family = await getSessionFamily(client, currentSessionId);
-        const next = items.find((item: OfficePermissionRequest) => family.ids.has(item.sessionID));
+        const next = items.find((item) => family.ids.has(item.sessionID));
 
         if (!next) {
           setPermission(null);
@@ -465,21 +505,21 @@ export const App: React.FC = () => {
 
     const status = await client.getStatus().catch(() => null);
     if (status?.mode) setRuntimeMode(status.mode);
-    if (!selectedModel && availableModels.length > 0) {
+    if (!safeSelectedModel && availableModels.length > 0) {
       setSelectedModel(pickDefaultModel(availableModels));
     }
   };
 
   const handleRestoreSession = async (saved: OpencodeSessionInfo) => {
-    const restored = await restoreSession(saved.id, selectedModel);
-    void startNewSession(selectedModel, restored);
+    const restored = await restoreSession(saved.id, safeSelectedModel);
+    void startNewSession(safeSelectedModel, restored);
   };
 
   useEffect(() => {
-    if (!selectedModel || started.current) return;
+    if (!safeSelectedModel || started.current) return;
     started.current = true;
-    void startNewSession(selectedModel);
-  }, [selectedModel]);
+    void startNewSession(safeSelectedModel);
+  }, [safeSelectedModel]);
 
   const handleModelChange = (model: ModelType) => {
     setSelectedModel(model);
@@ -544,10 +584,11 @@ export const App: React.FC = () => {
         }
 
         const result = await response.json();
-        uploads.push({ path: result.path, name: image.name, mime: result.mime || "image/png" });
+        const upload = UploadImageResponseSchema.parse(result);
+        uploads.push({ path: upload.path, name: image.name, mime: upload.mime || "image/png" });
       }
 
-      const model = availableModels.find((item) => item.key === selectedModel) || FALLBACK_MODELS[0];
+      const model = availableModels.find((item) => item.key === safeSelectedModel) || FALLBACK_MODELS[0];
       const parts = toPromptParts(userInput, uploads);
       const tools = getEnabledTools(officeHost);
 
@@ -745,11 +786,11 @@ export const App: React.FC = () => {
       <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
         <div style={getSurfaceVars(isDarkMode)}>
           <SessionHistory
-            host={officeHost}
-            shared={sharedHistory}
-            onSharedChange={setSharedHistory}
-            onSelectSession={handleRestoreSession}
-            onClose={() => setShowHistory(false)}
+              host={officeHost}
+              shared={safeSharedHistory}
+              onSharedChange={setSharedHistory}
+              onSelectSession={handleRestoreSession}
+              onClose={() => setShowHistory(false)}
           />
         </div>
       </FluentProvider>
@@ -775,19 +816,19 @@ export const App: React.FC = () => {
           <HeaderBar
             onNewChat={() => {
               setCurrentSessionId("");
-              void startNewSession(selectedModel);
+              void startNewSession(safeSelectedModel);
             }}
             onShowHistory={() => setShowHistory(true)}
-            selectedModel={selectedModel}
+            selectedModel={safeSelectedModel}
             onModelChange={handleModelChange}
             models={availableModels}
-            debugEnabled={debugEnabled}
+            debugEnabled={safeDebugEnabled}
             onDebugChange={setDebugEnabled}
-            showThinking={showThinking}
+            showThinking={safeShowThinking}
             onShowThinkingChange={setShowThinking}
-            showToolResponses={showToolResponses}
+            showToolResponses={safeShowToolResponses}
             onShowToolResponsesChange={setShowToolResponses}
-            qaSubagentModel={qaSubagentModel}
+            qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
             subtitle={headerSubtitle}
           />
@@ -798,10 +839,10 @@ export const App: React.FC = () => {
             isTyping={isTyping}
             isConnecting={!currentSessionId && !error}
             currentActivity={currentActivity}
-            debugEvents={debugEnabled ? debugEvents : undefined}
+            debugEvents={safeDebugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}
-            showThinking={showThinking}
-            showToolResponses={showToolResponses}
+            showThinking={safeShowThinking}
+            showToolResponses={safeShowToolResponses}
           />
 
           {error && <div className={styles.error}>{error}</div>}

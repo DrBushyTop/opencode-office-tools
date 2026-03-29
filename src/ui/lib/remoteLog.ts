@@ -1,8 +1,19 @@
+import { z } from "zod";
+
 type RemoteLogLevel = "info" | "warn" | "error";
+
+const remoteLogEntrySchema = z.object({
+  level: z.enum(["info", "warn", "error"]),
+  tag: z.string(),
+  message: z.string(),
+  detail: z.unknown().optional(),
+});
+
+type RemoteLogEntry = z.infer<typeof remoteLogEntrySchema>;
 
 declare global {
   interface Window {
-    __opencodeRemoteLogs?: Array<{ level: RemoteLogLevel; tag: string; message: string; detail?: unknown }>;
+    __opencodeRemoteLogs?: RemoteLogEntry[];
   }
 }
 
@@ -27,7 +38,7 @@ function normalizeDetail(detail: unknown): unknown {
 }
 
 export function remoteLog(tag: string, message: string, detail?: unknown, level: RemoteLogLevel = "error") {
-  const body = { level, tag, message, detail: normalizeDetail(detail) };
+  const body = remoteLogEntrySchema.parse({ level, tag, message, detail: normalizeDetail(detail) });
   window.__opencodeRemoteLogs = window.__opencodeRemoteLogs || [];
   window.__opencodeRemoteLogs.push(body);
   fetch("/api/log", {

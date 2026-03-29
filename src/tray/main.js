@@ -4,7 +4,31 @@
  */
 const { app, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
+const { z } = require('zod');
 const { logInfo, logError, getLogFilePath } = require('../server/devLogger');
+
+const NonEmptyPathSchema = z.string().trim().min(1);
+const TrayEnvSchema = z.object({
+  OPENCODE_OFFICE_BASE_PATH: NonEmptyPathSchema,
+  OPENCODE_OFFICE_DIRECTORY: NonEmptyPathSchema,
+  OPENCODE_OFFICE_CONFIG_DIR: NonEmptyPathSchema,
+});
+
+/**
+ * @typedef {{
+ *   OPENCODE_OFFICE_BASE_PATH: string,
+ *   OPENCODE_OFFICE_DIRECTORY: string,
+ *   OPENCODE_OFFICE_CONFIG_DIR: string,
+ * }} TrayEnv
+ */
+
+function parseExternalPath(value, context) {
+  const result = NonEmptyPathSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid ${context}`);
+  }
+  return result.data;
+}
 
 // Prevent multiple instances
 const gotTheLock = app.requestSingleInstanceLock();
@@ -26,9 +50,9 @@ let logFilePath = null;
 // Get the resources path (works both in dev and when packaged)
 function getResourcesPath() {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath);
+    return parseExternalPath(path.join(process.resourcesPath), 'resources path');
   }
-  return path.resolve(__dirname, '../..');
+  return parseExternalPath(path.resolve(__dirname, '../..'), 'development resources path');
 }
 
 function getIconPath() {
@@ -36,18 +60,18 @@ function getIconPath() {
   
   if (process.platform === 'darwin') {
     // macOS: use color PNG for menu bar
-    return path.join(resourcesPath, 'assets', 'tray-icon.png');
+    return parseExternalPath(path.join(resourcesPath, 'assets', 'tray-icon.png'), 'macOS tray icon path');
   } else {
     // Windows: use .ico
-    return path.join(resourcesPath, 'assets', 'tray-icon.ico');
+    return parseExternalPath(path.join(resourcesPath, 'assets', 'tray-icon.ico'), 'Windows tray icon path');
   }
 }
 
 function resolveLogFilePath() {
   if (!app.isPackaged) {
-    return path.join(getResourcesPath(), '.opencode', 'debug.log');
+    return parseExternalPath(path.join(getResourcesPath(), '.opencode', 'debug.log'), 'development log file path');
   }
-  return path.join(app.getPath('userData'), 'logs', 'debug.log');
+  return parseExternalPath(path.join(app.getPath('userData'), 'logs', 'debug.log'), 'packaged log file path');
 }
 
 function configureLogging() {
@@ -59,9 +83,13 @@ function configureLogging() {
 async function startServer() {
   try {
     const root = getResourcesPath();
-    process.env.OPENCODE_OFFICE_BASE_PATH = root;
-    process.env.OPENCODE_OFFICE_DIRECTORY = root;
-    process.env.OPENCODE_OFFICE_CONFIG_DIR = path.join(root, '.opencode');
+    /** @type {TrayEnv} */
+    const trayEnv = TrayEnvSchema.parse({
+      OPENCODE_OFFICE_BASE_PATH: root,
+      OPENCODE_OFFICE_DIRECTORY: root,
+      OPENCODE_OFFICE_CONFIG_DIR: path.join(root, '.opencode'),
+    });
+    Object.assign(process.env, trayEnv);
     
     // Clear the module cache to allow re-requiring after stop
     const serverModulePath = require.resolve('../server-prod.js');
@@ -124,7 +152,7 @@ function updateTrayMenu() {
     {
       label: 'Open Debug Log',
       click: () => {
-        if (logFilePath) shell.showItemInFolder(logFilePath);
+        if (logFilePath) shell.showItemInFolder(parseExternalPath(logFilePath, 'debug log file path'));
       }
     },
     { type: 'separator' },

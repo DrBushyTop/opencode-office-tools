@@ -1,9 +1,24 @@
 import * as React from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
+import { z } from "zod";
 import type { OfficePermissionRequest } from "../../shared/office-permissions";
 import { permissionKind, permissionTarget } from "../../shared/office-permissions";
 
-export type PermissionDecision = "allow" | "deny" | "always";
+const PermissionDecisionSchema = z.enum(["allow", "deny", "always"]);
+const OfficePermissionRequestSchema = z.object({
+  id: z.string().min(1),
+  sessionID: z.string().min(1),
+  permission: z.string().min(1),
+  patterns: z.array(z.string()),
+  metadata: z.record(z.string(), z.unknown()),
+  always: z.array(z.string()),
+  tool: z.object({
+    messageID: z.string().min(1),
+    callID: z.string().min(1),
+  }).optional(),
+}) satisfies z.ZodType<OfficePermissionRequest>;
+
+export type PermissionDecision = z.infer<typeof PermissionDecisionSchema>;
 
 interface PermissionDialogProps {
   request: OfficePermissionRequest;
@@ -99,12 +114,13 @@ const useStyles = makeStyles({
 });
 
 function getDetail(request: OfficePermissionRequest): string {
+  const safeRequest = OfficePermissionRequestSchema.catch(request).parse(request);
   return JSON.stringify({
-    permission: request.permission,
-    target: permissionTarget(request),
-    input: request.metadata.input,
-    patterns: request.patterns,
-    metadata: request.metadata,
+    permission: safeRequest.permission,
+    target: permissionTarget(safeRequest),
+    input: safeRequest.metadata.input,
+    patterns: safeRequest.patterns,
+    metadata: safeRequest.metadata,
   }, null, 2);
 }
 
@@ -114,9 +130,10 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
   onDecision,
 }) => {
   const styles = useStyles();
-  const target = permissionTarget(request);
-  const meta = KIND_META[permissionKind(request)] || KIND_META.generic;
-  const detail = getDetail(request);
+  const safeRequest = OfficePermissionRequestSchema.catch(request).parse(request);
+  const target = permissionTarget(safeRequest);
+  const meta = KIND_META[permissionKind(safeRequest)] || KIND_META.generic;
+  const detail = getDetail(safeRequest);
   const requester = sessionTitle && sessionTitle.trim() ? sessionTitle.trim() : null;
 
   return (
@@ -130,7 +147,7 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
         </div>
 
         <div className={styles.intention}>
-          {request.permission === "doom_loop"
+          {safeRequest.permission === "doom_loop"
             ? "OpenCode wants confirmation before repeating the same tool call again."
             : `OpenCode wants permission to use ${target || "this tool"}.`}
           {requester ? ` Requested by ${requester}.` : ""}

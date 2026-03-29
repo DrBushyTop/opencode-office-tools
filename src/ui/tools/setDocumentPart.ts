@@ -1,5 +1,7 @@
 import type { Tool } from "./types";
+import { z } from "zod";
 import {
+  getZodErrorMessage,
   getHeaderFooterBody,
   isValidSectionSelector,
   isWordDesktopRequirementSetSupported,
@@ -8,8 +10,25 @@ import {
   toolFailure,
 } from "./wordShared";
 
-type Operation = "replace" | "append" | "clear" | "insert" | "configure";
 type TocInsertLocation = "replace" | "before" | "after" | "start" | "end";
+
+const setDocumentPartArgsSchema = z.object({
+  address: z.string(),
+  operation: z.enum(["replace", "append", "clear", "insert", "configure"]).optional().default("replace"),
+  html: z.string().optional(),
+  differentFirstPage: z.boolean().optional(),
+  oddAndEvenPages: z.boolean().optional(),
+  headerDistance: z.number().finite().min(0).optional(),
+  footerDistance: z.number().finite().min(0).optional(),
+  location: z.enum(["replace", "before", "after", "start", "end"]).optional().default("replace"),
+  upperHeadingLevel: z.number().int().min(1).max(9).optional().default(1),
+  lowerHeadingLevel: z.number().int().min(1).max(9).optional().default(3),
+  includePageNumbers: z.boolean().optional().default(true),
+  rightAlignPageNumbers: z.boolean().optional().default(true),
+  useHyperlinksOnWeb: z.boolean().optional().default(true),
+});
+
+export type SetDocumentPartArgs = z.infer<typeof setDocumentPartArgsSchema>;
 
 function resolveInsertLocation(location: TocInsertLocation) {
   switch (location) {
@@ -119,44 +138,30 @@ Use flat options for section configuration and TOC insertion.`,
     required: ["address"],
   },
   handler: async (args) => {
+    const parsedArgs = setDocumentPartArgsSchema.safeParse(args ?? {});
+    if (!parsedArgs.success) {
+      return toolFailure(getZodErrorMessage(parsedArgs.error));
+    }
+
     const {
       address,
-      operation = "replace",
+      operation,
       html,
       differentFirstPage,
       oddAndEvenPages,
       headerDistance,
       footerDistance,
-      location = "replace",
-      upperHeadingLevel = 1,
-      lowerHeadingLevel = 3,
-      includePageNumbers = true,
-      rightAlignPageNumbers = true,
-      useHyperlinksOnWeb = true,
-    } = args as {
-      address: string;
-      operation?: Operation;
-      html?: string;
-      differentFirstPage?: boolean;
-      oddAndEvenPages?: boolean;
-      headerDistance?: number;
-      footerDistance?: number;
-      location?: TocInsertLocation;
-      upperHeadingLevel?: number;
-      lowerHeadingLevel?: number;
-      includePageNumbers?: boolean;
-      rightAlignPageNumbers?: boolean;
-      useHyperlinksOnWeb?: boolean;
-    };
+      location,
+      upperHeadingLevel,
+      lowerHeadingLevel,
+      includePageNumbers,
+      rightAlignPageNumbers,
+      useHyperlinksOnWeb,
+    } = parsedArgs.data;
 
     const parsed = parseDocumentPartAddress(address);
     if (!parsed) {
       return toolFailure("Unsupported document part address. Try section[1].header.primary, section[*], or table_of_contents.");
-    }
-
-    if ((headerDistance !== undefined && (!Number.isFinite(headerDistance) || headerDistance < 0))
-      || (footerDistance !== undefined && (!Number.isFinite(footerDistance) || footerDistance < 0))) {
-      return toolFailure("headerDistance and footerDistance must be non-negative finite numbers.");
     }
 
     if (parsed.kind === "headersFootersOverview") {
