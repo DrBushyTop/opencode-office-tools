@@ -16,6 +16,7 @@ import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
+import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
@@ -323,6 +324,7 @@ export const App: React.FC = () => {
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
   const [runtimeMode, setRuntimeMode] = useState<string>("");
+  const [usage, setUsage] = useState<SessionUsage | null>(null);
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
@@ -335,6 +337,7 @@ export const App: React.FC = () => {
   const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
+  const usageSummary = useMemo(() => formatTokenUsage(usage, availableModels), [availableModels, usage]);
   const sessionCreatedAt = useRef<string>("");
   const run = useRef<AbortController | null>(null);
   const liveRef = useRef<Message[]>([]);
@@ -476,6 +479,7 @@ export const App: React.FC = () => {
     setCurrentActivity("");
     setDebugEvents([]);
     setIsTyping(false);
+    setUsage(restored?.usage || null);
     setPermission(null);
     setPermissionSessionTitle(null);
     setLiveMessages([]);
@@ -626,6 +630,8 @@ export const App: React.FC = () => {
         }
 
         if (event.type === "assistant.message") {
+          const nextUsage = sessionUsageSchema.nullish().catch(null).parse(data.usage);
+          if (nextUsage) setUsage(nextUsage);
           const parts = Array.isArray(data.parts) ? data.parts : [];
           const mapped = mapAssistantParts(parts, Date.now());
           const kept = carry(liveRef.current, mapped);
@@ -841,6 +847,7 @@ export const App: React.FC = () => {
             qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
             subtitle={headerSubtitle}
+            usageSummary={usageSummary || undefined}
           />
 
           <MessageList

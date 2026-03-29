@@ -9,6 +9,9 @@ const OFFICE_ROOT = path.resolve(__dirname, '..', '..');
 const runtimeModelSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
+  limit: z.object({
+    context: z.number().optional(),
+  }).passthrough().optional(),
 }).passthrough();
 
 const runtimeProviderSchema = z.object({
@@ -53,6 +56,7 @@ function toModelInfo(provider, model) {
     label: `${provider.name || provider.id} / ${model.name || model.id}`,
     providerID: provider.id,
     modelID: model.id,
+    limitContext: model.limit?.context,
   };
 }
 
