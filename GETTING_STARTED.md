@@ -22,14 +22,14 @@ Install the following software:
 
 ```bash
 cd /path/to/opencode-officeplugins
-npm install
+bun install
 ```
 
 Optional but useful checks:
 
 ```bash
-npm test
-npm run build
+bun run test
+bun run build
 ```
 
 ### 2. Register the Add-in
@@ -49,7 +49,7 @@ This trusts the SSL certificate and registers the manifest with Office.
 ### 3. Start the Tray Application
 
 ```bash
-npm run start:tray
+bun run start:tray
 ```
 
 You should see the OpenCode icon appear in your system tray (Windows) or menu bar (macOS).
@@ -57,8 +57,8 @@ You should see the OpenCode icon appear in your system tray (Windows) or menu ba
 For a direct development flow instead of the tray app, run:
 
 ```bash
-npm run build
-npm run dev
+bun run build
+bun run dev
 ```
 
 That starts the local add-in server and points the spawned OpenCode runtime at the bundled `.opencode` config.
@@ -104,7 +104,7 @@ https://github.com/user-attachments/assets/5bb771d3-0bf6-4b7b-8e6c-757a085b3131
 
 ### Want to use the dev server with hot reload instead?
 ```bash
-npm run dev
+bun run dev
 ```
 This starts the development server on port 52390 with hot reload and a local Office bridge on port 52391.
 

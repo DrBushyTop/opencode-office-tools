@@ -75,7 +75,7 @@ echo ""
 
 echo -e "\033[36mSetup complete! Next steps:\033[0m"
 echo "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
-echo "2. Start the tray app: npm run start:tray"
+echo "2. Start the tray app: bun run start:tray"
 echo "3. Open Word, PowerPoint, Excel, or OneNote"
 echo "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 echo ""
