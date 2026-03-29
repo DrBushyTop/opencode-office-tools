@@ -5,9 +5,13 @@ import { manageSlideShapes } from "./manageSlideShapes";
 import { setPowerPointContextSnapshot } from "./powerpointContext";
 
 function createPresentationBase64(entries: Record<string, string>) {
-  return Buffer.from(zipSync(Object.fromEntries(
+  let binary = "";
+  zipSync(Object.fromEntries(
     Object.entries(entries).map(([path, contents]) => [path, strToU8(contents)]),
-  ))).toString("base64");
+  )).forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
 
 if (typeof DOMParser === "undefined") {
