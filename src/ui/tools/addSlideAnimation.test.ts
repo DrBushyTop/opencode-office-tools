@@ -77,6 +77,7 @@ describe("addSlideAnimation", () => {
       id: "slide-1",
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: base64 })),
+      delete: vi.fn(),
       shapes: {
         items: [
           { id: "office-shape-100", name: "Title" },
@@ -85,21 +86,22 @@ describe("addSlideAnimation", () => {
         load: vi.fn(),
       },
     };
-    const originalSlide = { id: "slide-1", delete: vi.fn() };
     const insertedSlide = { id: "slide-new" };
     const slides = {
       items: [sourceSlide],
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [sourceSlide][index]),
     } as any;
-    const updatedSlides = {
-      items: [insertedSlide, originalSlide],
+    // After insert + delete batch, only the replacement slide remains.
+    const finalSlides = {
+      items: [insertedSlide],
       load: vi.fn(),
     } as any;
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn((mutated: string) => {
         insertedBase64 = mutated;
-        presentation.slides = updatedSlides;
+        presentation.slides = finalSlides;
       }),
     } as any;
     const context = {

@@ -40,7 +40,7 @@ export const setSlideNotes: Tool = {
 
     try {
       return await PowerPoint.run(async (context) => {
-        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, (base64) => setSpeakerNotesInBase64Presentation(base64, notes));
+        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, (base64, _sourceSlide) => setSpeakerNotesInBase64Presentation(base64, notes));
         return {
           resultType: "success",
           textResultForLlm: `Updated speaker notes on slide ${result.finalSlideIndex + 1}.`,

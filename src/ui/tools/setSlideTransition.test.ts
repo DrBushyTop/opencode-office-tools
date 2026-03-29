@@ -59,6 +59,7 @@ describe("setSlideTransition", () => {
     const slides = {
       items: slidesState,
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => slidesState[index]),
     } as any;
 
     const makeSlide = (id: string) => ({

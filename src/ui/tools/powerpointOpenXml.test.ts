@@ -76,24 +76,27 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       id: "slide-2",
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: "BASE64" })),
+      delete: vi.fn(),
     };
     const slideA = { id: "slide-1", load: vi.fn() };
     const insertedSlide = { id: "slide-new" };
-    const originalSlide = { id: "slide-2", delete: vi.fn() };
     const slides = {
       items: [slideA, sourceSlide],
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [slideA, sourceSlide][index]),
     } as any;
 
-    const updatedSlides = {
-      items: [slideA, insertedSlide, originalSlide],
+    // After insert + delete, the final slides show the replacement in place of the original.
+    const finalSlides = {
+      items: [slideA, insertedSlide],
       load: vi.fn(),
     } as any;
 
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = updatedSlides;
+        // After insert+delete batch, the slides collection reflects the final state.
+        presentation.slides = finalSlides;
       }),
     } as any;
 
@@ -121,7 +124,7 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       formatting: "KeepSourceFormatting",
       targetSlideId: "slide-1",
     });
-    expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-2",
       replacementSlideId: "slide-new",
@@ -134,23 +137,25 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       id: "slide-1",
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: "BASE64" })),
+      delete: vi.fn(),
     };
     const insertedSlide = { id: "slide-new" };
-    const originalSlide = { id: "slide-1", delete: vi.fn() };
     const slides = {
       items: [sourceSlide],
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [sourceSlide][index]),
     } as any;
 
-    const updatedSlides = {
-      items: [insertedSlide, originalSlide],
+    // After insert + delete, only the replacement slide remains.
+    const finalSlides = {
+      items: [insertedSlide],
       load: vi.fn(),
     } as any;
 
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = updatedSlides;
+        presentation.slides = finalSlides;
       }),
     } as any;
 
@@ -177,7 +182,7 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
     });
-    expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-1",
       replacementSlideId: "slide-new",
@@ -190,24 +195,24 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       id: "slide-2",
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: "BASE64" })),
+      delete: vi.fn(),
     };
     const slideA = { id: "slide-1", load: vi.fn() };
     const insertedSlide = { id: "slide-new" };
-    const originalSlide = { id: "slide-2", delete: vi.fn() };
     const slides = {
       items: [slideA, sourceSlide],
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => [slideA, sourceSlide][index]),
     } as any;
-
-    const updatedSlides = {
-      items: [slideA, originalSlide, insertedSlide],
+    const finalSlides = {
+      items: [slideA, insertedSlide],
       load: vi.fn(),
     } as any;
 
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = updatedSlides;
+        presentation.slides = finalSlides;
       }),
     } as any;
 
@@ -231,11 +236,11 @@ describe("replaceSlideWithMutatedOpenXml", () => {
 
     const result = await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
 
-    expect(originalSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-2",
       replacementSlideId: "slide-new",
-      finalSlideIndex: 2,
+      finalSlideIndex: 1,
     });
   });
 
