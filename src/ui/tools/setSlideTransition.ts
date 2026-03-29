@@ -1,11 +1,12 @@
 import type { Tool } from "./types";
 import { replaceSlideWithMutatedOpenXml, setSlideTransitionInBase64Presentation, type SlideTransitionDefinition } from "./powerpointOpenXml";
+import { resolvePowerPointSlideIndexes } from "./powerpointContext";
 import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 const EFFECTS = ["none", "cut", "fade", "dissolve", "random", "randomBar", "push", "wipe", "split", "cover", "pull", "zoom"] as const;
 
 type TransitionArgs = SlideTransitionDefinition & {
-  slideIndex: number | number[];
+  slideIndex?: number | number[];
 };
 
 export const setSlideTransition: Tool = {
@@ -30,15 +31,20 @@ export const setSlideTransition: Tool = {
       orientation: { type: "string", enum: ["horizontal", "vertical"], description: "Optional orientation for split transitions." },
       throughBlack: { type: "boolean", description: "Optional cut-through-black flag for the cut effect." },
     },
-    required: ["slideIndex", "effect"],
+    required: ["effect"],
   },
   handler: async (args) => {
     const transition = args as TransitionArgs;
-    const slideIndexes = Array.isArray(transition.slideIndex) ? transition.slideIndex : [transition.slideIndex];
+    const resolvedSlideIndex = resolvePowerPointSlideIndexes(transition.slideIndex);
+    const transitionArgs = { ...transition, slideIndex: resolvedSlideIndex };
+    const slideIndexes = Array.isArray(transitionArgs.slideIndex) ? transitionArgs.slideIndex : [transitionArgs.slideIndex];
     if (slideIndexes.length === 0) {
       return toolFailure("slideIndex array must not be empty.");
     }
-    if (slideIndexes.some((slideIndex) => !Number.isInteger(slideIndex) || slideIndex < 0)) {
+    if (slideIndexes.some((slideIndex) => slideIndex === undefined)) {
+      return toolFailure("slideIndex is required unless the current PowerPoint slide context is available.");
+    }
+    if (slideIndexes.some((slideIndex) => !Number.isInteger(slideIndex) || (slideIndex as number) < 0)) {
       return toolFailure("slideIndex must be a non-negative integer or a non-empty array of non-negative integers.");
     }
     if (transition.advanceAfterMs !== undefined && (!Number.isFinite(transition.advanceAfterMs) || transition.advanceAfterMs < 0)) {
@@ -65,20 +71,20 @@ export const setSlideTransition: Tool = {
     try {
       return await PowerPoint.run(async (context) => {
         const definition: SlideTransitionDefinition = {
-          effect: transition.effect,
-          speed: transition.speed,
-          advanceOnClick: transition.advanceOnClick,
-          advanceAfterMs: transition.advanceAfterMs,
-          durationMs: transition.durationMs,
-          direction: transition.direction,
-          orientation: transition.orientation,
-          throughBlack: transition.throughBlack,
+          effect: transitionArgs.effect,
+          speed: transitionArgs.speed,
+          advanceOnClick: transitionArgs.advanceOnClick,
+          advanceAfterMs: transitionArgs.advanceAfterMs,
+          durationMs: transitionArgs.durationMs,
+          direction: transitionArgs.direction,
+          orientation: transitionArgs.orientation,
+          throughBlack: transitionArgs.throughBlack,
         };
 
         const results: Array<{ originalSlideId: string; replacementSlideId: string; finalSlideIndex: number }> = [];
 
         for (const slideIndex of slideIndexes) {
-          const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
+          const result = await replaceSlideWithMutatedOpenXml(context, slideIndex as number, (base64) =>
             setSlideTransitionInBase64Presentation(base64, definition),
           );
           results.push(result);
@@ -88,9 +94,9 @@ export const setSlideTransition: Tool = {
           const [result] = results;
           return {
             resultType: "success",
-            textResultForLlm: transition.effect === "none"
+            textResultForLlm: transitionArgs.effect === "none"
               ? `Cleared the transition on slide ${result.finalSlideIndex + 1}.`
-              : `Set the ${transition.effect} transition on slide ${result.finalSlideIndex + 1}.`,
+              : `Set the ${transitionArgs.effect} transition on slide ${result.finalSlideIndex + 1}.`,
             slideIndex: result.finalSlideIndex,
             slideId: result.replacementSlideId,
             toolTelemetry: result,
@@ -100,9 +106,9 @@ export const setSlideTransition: Tool = {
         const slideList = results.map((item) => item.finalSlideIndex + 1).join(", ");
         return {
           resultType: "success",
-          textResultForLlm: transition.effect === "none"
+          textResultForLlm: transitionArgs.effect === "none"
             ? `Cleared transitions on slides ${slideList}.`
-            : `Set the ${transition.effect} transition on slides ${slideList}.`,
+            : `Set the ${transitionArgs.effect} transition on slides ${slideList}.`,
           slideIndexes: results.map((item) => item.finalSlideIndex),
           slideIds: results.map((item) => item.replacementSlideId),
           toolTelemetry: { results },

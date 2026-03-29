@@ -1,7 +1,36 @@
 import type { OfficeHost } from "../sessionStorage";
+import type { PowerPointContextSnapshot } from "../tools/powerpointContext";
 
 export interface OfficeToolExecutor {
   execute(toolName: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+export async function readPowerPointContextSnapshot(): Promise<PowerPointContextSnapshot | null> {
+  if (Office.context.host !== Office.HostType.PowerPoint) return null;
+  if (!Office.context.requirements.isSetSupported("PowerPointApi", "1.5")) return null;
+
+  return await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items/id");
+
+    const selectedSlides = context.presentation.getSelectedSlides();
+    const selectedShapes = context.presentation.getSelectedShapes();
+    selectedSlides.load("items/id");
+    selectedShapes.load("items/id");
+    await context.sync();
+
+    const selectedSlideIds = selectedSlides.items.map((slide) => slide.id || "").filter(Boolean);
+    const selectedShapeIds = selectedShapes.items.map((shape) => shape.id || "").filter(Boolean);
+    const activeSlideId = selectedSlideIds[0];
+    const activeSlideIndex = activeSlideId ? slides.items.findIndex((slide) => slide.id === activeSlideId) : undefined;
+
+    return {
+      selectedSlideIds,
+      selectedShapeIds,
+      activeSlideId,
+      activeSlideIndex: activeSlideIndex !== undefined && activeSlideIndex >= 0 ? activeSlideIndex : undefined,
+    };
+  }).catch(() => null);
 }
 
 export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExecutor) {

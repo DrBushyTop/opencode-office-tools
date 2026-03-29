@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { replaceSlideWithMutatedOpenXml, setSpeakerNotesInBase64Presentation } from "./powerpointOpenXml";
+import { resolvePowerPointSlideIndexes } from "./powerpointContext";
 import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 export const setSlideNotes: Tool = {
@@ -17,17 +18,19 @@ export const setSlideNotes: Tool = {
         description: "Speaker notes text. Use an empty string to clear the notes body.",
       },
     },
-    required: ["slideIndex", "notes"],
+    required: ["notes"],
   },
   handler: async (args) => {
-    const { slideIndex, notes } = args as { slideIndex: number; notes: string };
-    if (!Number.isInteger(slideIndex) || slideIndex < 0) {
+    const { notes } = args as { notes: string };
+    const slideIndex = resolvePowerPointSlideIndexes((args as { slideIndex?: number }).slideIndex);
+    if (!Number.isInteger(slideIndex) || (slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }
+    const resolvedSlideIndex = slideIndex as number;
 
     try {
       return await PowerPoint.run(async (context) => {
-        const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) => setSpeakerNotesInBase64Presentation(base64, notes));
+        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, (base64) => setSpeakerNotesInBase64Presentation(base64, notes));
         return {
           resultType: "success",
           textResultForLlm: `Updated speaker notes on slide ${result.finalSlideIndex + 1}.`,

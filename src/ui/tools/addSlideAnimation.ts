@@ -6,10 +6,11 @@ import {
   type SlideAnimationDefinition,
 } from "./powerpointOpenXml";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
+import { resolvePowerPointTargetingArgs } from "./powerpointContext";
 import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
 
 type AnimationArgs = SlideAnimationDefinition & {
-  slideIndex: number;
+  slideIndex?: number;
   shapeIndex?: number;
   shapeId?: string | number | (string | number)[];
 };
@@ -70,13 +71,14 @@ export const addSlideAnimation: Tool = {
       toColor: { type: "string", description: "Target color for emphasis color animations. Hex without # (e.g. 'FF0000') or theme scheme name (e.g. 'accent2', 'dk1'). Required for complementaryColor, changeFillColor, changeLineColor." },
       colorSpace: { type: "string", enum: ["hsl", "rgb"], description: "Color interpolation space for emphasis color animations. 'hsl' (default) gives smoother transitions." },
     },
-    required: ["slideIndex", "type", "start"],
+    required: ["type", "start"],
   },
   handler: async (args) => {
-    const animation = args as AnimationArgs;
-    if (!Number.isInteger(animation.slideIndex) || animation.slideIndex < 0) {
+    const animation = resolvePowerPointTargetingArgs(args as AnimationArgs);
+    if (!Number.isInteger(animation.slideIndex) || (animation.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }
+    const slideIndex = animation.slideIndex as number;
     if (animation.durationMs !== undefined && (!Number.isFinite(animation.durationMs) || animation.durationMs < 0)) {
       return toolFailure("durationMs must be a non-negative number.");
     }
@@ -119,9 +121,9 @@ export const addSlideAnimation: Tool = {
           // Batch mode: resolve all shape IDs, apply all in one round-trip
           const resolved: { shapeId: string; shapeIndex: number }[] = [];
           for (const sid of shapeIds) {
-            resolved.push(await resolveShapeTarget(context, animation.slideIndex, sid));
-          }
-          const roundTrip = await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) =>
+              resolved.push(await resolveShapeTarget(context, slideIndex, sid));
+            }
+          const roundTrip = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
             addSlideAnimationBatchInBase64Presentation(
               base64,
               { ...animation, shapeId: resolved[0].shapeId },
@@ -144,8 +146,8 @@ export const addSlideAnimation: Tool = {
 
         // Single shape mode
         const singleId = isBatch ? shapeIds![0] : animation.shapeId as string | number | undefined;
-        const resolvedTarget = await resolveShapeTarget(context, animation.slideIndex, singleId, animation.shapeIndex);
-        const roundTrip = await replaceSlideWithMutatedOpenXml(context, animation.slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
+        const resolvedTarget = await resolveShapeTarget(context, slideIndex, singleId, animation.shapeIndex);
+        const roundTrip = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
           ...animation,
           shapeId: resolvedTarget.shapeId,
         }, resolvedTarget.shapeIndex));

@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { clearSlideAnimationsInBase64Presentation, replaceSlideWithMutatedOpenXml } from "./powerpointOpenXml";
+import { resolvePowerPointSlideIndexes } from "./powerpointContext";
 import { roundTripSlideRefreshHint, shouldAddRoundTripRefreshHint, toolFailure } from "./powerpointShared";
 
 export const clearSlideAnimations: Tool = {
@@ -10,17 +11,17 @@ export const clearSlideAnimations: Tool = {
     properties: {
       slideIndex: { type: "number", description: "0-based slide index." },
     },
-    required: ["slideIndex"],
   },
   handler: async (args) => {
-    const { slideIndex } = args as { slideIndex: number };
-    if (!Number.isInteger(slideIndex) || slideIndex < 0) {
+    const slideIndex = resolvePowerPointSlideIndexes((args as { slideIndex?: number }).slideIndex);
+    if (!Number.isInteger(slideIndex) || (slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }
+    const resolvedSlideIndex = slideIndex as number;
 
     try {
       return await PowerPoint.run(async (context) => {
-        const result = await replaceSlideWithMutatedOpenXml(context, slideIndex, clearSlideAnimationsInBase64Presentation);
+        const result = await replaceSlideWithMutatedOpenXml(context, resolvedSlideIndex, clearSlideAnimationsInBase64Presentation);
         return {
           resultType: "success",
           textResultForLlm: `Cleared all animations from slide ${result.finalSlideIndex + 1}.`,

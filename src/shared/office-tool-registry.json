@@ -602,7 +602,7 @@
         "toColor": { "type": "string", "description": "Target color for emphasis color animations. Hex without # (e.g. 'FF0000') or theme scheme name (e.g. 'accent2', 'dk1'). Required for complementaryColor, changeFillColor, changeLineColor." },
         "colorSpace": { "type": "string", "enum": ["hsl", "rgb"], "description": "Color interpolation space for emphasis color animations. 'hsl' (default) gives smoother transitions." }
       },
-      "required": ["slideIndex", "type", "start"]
+      "required": ["type", "start"]
     },
     "ui": { "icon": "🎞️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Adding animation to slide ", "suffix": "" } }
   },
@@ -614,8 +614,7 @@
       "type": "object",
       "properties": {
         "slideIndex": { "type": "number", "description": "0-based slide index." }
-      },
-      "required": ["slideIndex"]
+      }
     },
     "ui": { "icon": "🧹", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Clearing animations on slide ", "suffix": "" } }
   },
@@ -756,7 +755,7 @@
         "marginTop": { "type": "number" },
         "marginBottom": { "type": "number" }
       },
-      "required": ["action", "slideIndex"]
+      "required": ["action"]
     },
     "ui": { "icon": "🎛️", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Managing shapes on slide ", "suffix": "" } }
   },
@@ -910,7 +909,7 @@
         "slideIndex": { "type": "number", "description": "0-based slide index." },
         "notes": { "type": "string", "description": "Speaker notes text. Use an empty string to clear notes." }
       },
-      "required": ["slideIndex", "notes"]
+      "required": ["notes"]
     },
     "ui": { "icon": "📝", "activity": { "type": "static", "text": "Updating slide notes" } }
   },
@@ -937,7 +936,7 @@
         "orientation": { "type": "string", "enum": ["horizontal", "vertical"], "description": "Optional orientation for split transitions." },
         "throughBlack": { "type": "boolean", "description": "Optional cut-through-black flag for cut transitions." }
       },
-      "required": ["slideIndex", "effect"]
+      "required": ["effect"]
     },
     "ui": { "icon": "🎬", "activity": { "type": "static", "text": "Updating slide transitions" } }
   },
