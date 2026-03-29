@@ -85,6 +85,7 @@ export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string
             data: {
               toolName: part.tool,
               arguments: part.state.input || {},
+              metadata: part.state.metadata || {},
             },
           },
         ];
@@ -99,6 +100,7 @@ export function normalizeOpencodeEvent(event: any, partTypes: Map<string, string
               toolName: part.tool,
               result: part.state.output,
               error: part.state.error,
+              metadata: part.state.metadata || {},
             },
           },
         ];

@@ -117,11 +117,14 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "12px",
     padding: "12px",
-    background: "var(--oc-bg)",
-    color: "var(--oc-text)",
-    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg, #1b1818)",
+    backgroundColor: "var(--oc-bg, #1b1818)",
+    color: "var(--oc-text, #f1ecec)",
+    border: "1px solid var(--oc-border, rgba(255,255,255,0.10))",
     borderRadius: "12px",
-    boxShadow: "var(--oc-shadow)",
+    boxShadow: "var(--oc-shadow, 0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.24))",
+    position: "relative",
+    zIndex: 20,
   },
   menuTitle: {
     fontSize: "12px",
@@ -226,7 +229,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       </div>
 
       <div className={styles.group}>
-        <Popover positioning="below-end">
+        <Popover positioning="below-end" inline>
           <PopoverTrigger disableButtonEnhancement>
             <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
           </PopoverTrigger>
@@ -234,24 +237,24 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <div className={styles.menuTitle}>Options</div>
             <div className={styles.item}>
               <div className={styles.row}>
-                <div className={styles.label}>show thinking</div>
+                <div className={styles.label}>Show Thinking</div>
                 <Switch checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
               </div>
             </div>
             <div className={styles.item}>
               <div className={styles.row}>
-                <div className={styles.label}>show raw tool responses in expand</div>
+                <div className={styles.label}>Show Raw Tool Responses in Expand</div>
                 <Switch checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
               </div>
             </div>
             <div className={styles.item}>
               <div className={styles.row}>
-                <div className={styles.label}>show debug events</div>
+                <div className={styles.label}>Show Debug Events</div>
                 <Switch checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
               </div>
             </div>
             <div className={styles.item}>
-              <div className={styles.label}>qa subagent model</div>
+              <div className={styles.label}>QA Subagent Model</div>
               <Combobox
                 className={styles.dropdown}
                 appearance="filled-darker"
