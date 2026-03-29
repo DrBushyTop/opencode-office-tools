@@ -47,7 +47,7 @@ export class OpenXmlPackage {
   }
 
   toBase64(): string {
-    return encodeBase64(zipSync(this.entries, { level: 6 }));
+    return encodeBase64(zipSync(this.entries, { level: 1 }));
   }
 }
 

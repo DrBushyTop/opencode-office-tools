@@ -61,6 +61,51 @@ async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex
   return { shapeId: slide.shapes.items[shapeIndex].id, shapeIndex };
 }
 
+/**
+ * Resolve multiple shape IDs on the same slide in a single batch, avoiding
+ * redundant slides.load / shapes.load / context.sync round-trips.
+ */
+async function resolveShapeTargetsBatch(
+  context: PowerPoint.RequestContext,
+  slideIndex: number,
+  shapeIds: (string | number)[],
+): Promise<{ shapeId: string; shapeIndex: number }[]> {
+  const slides = context.presentation.slides;
+  slides.load("items");
+  await context.sync();
+  if (slideIndex < 0 || slideIndex >= slides.items.length) {
+    throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
+  }
+
+  const slide = slides.items[slideIndex];
+  slide.shapes.load("items/id,name");
+  await context.sync();
+
+  // Try direct matching first for all shapes before falling back to XML export
+  const results: { shapeId: string; shapeIndex: number }[] = [];
+  const needXmlFallback: { id: string | number; index: number }[] = [];
+
+  for (let i = 0; i < shapeIds.length; i++) {
+    const requestedId = String(shapeIds[i]);
+    const directMatchIdx = slide.shapes.items.findIndex((s) => s.id === requestedId);
+    if (directMatchIdx >= 0) {
+      results[i] = { shapeId: slide.shapes.items[directMatchIdx].id, shapeIndex: directMatchIdx };
+    } else {
+      needXmlFallback.push({ id: shapeIds[i], index: i });
+    }
+  }
+
+  if (needXmlFallback.length > 0) {
+    // Export once for all XML fallback lookups
+    for (const entry of needXmlFallback) {
+      const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, entry.id);
+      results[entry.index] = { shapeId: resolved.shapeId, shapeIndex: resolved.shapeIndex };
+    }
+  }
+
+  return results;
+}
+
 export const addSlideAnimation: Tool = {
   name: "add_slide_animation",
   description: "Add a PowerPoint slide animation through an Open XML slide round-trip. Supports motion paths, scale emphasis, and rotation with timing control. Also supports entrance animations: appear (instant), fade (opacity), flyIn (from direction), wipe (reveal), zoomIn (scale in), floatIn (float up with fade), riseUp (rise from bottom), peekIn (fade with slight upward slide), and growAndTurn (fade with bounce from below). Entrance animations make shapes start hidden and reveal them. Emphasis color animations (complementaryColor, changeFillColor, changeLineColor) smoothly transition a shape's fill or line color. Use afterPrevious with delayMs for staggered reveal sequences. This replaces the slide in the deck and may change slide identity.",
@@ -143,11 +188,8 @@ export const addSlideAnimation: Tool = {
     try {
       return await PowerPoint.run(async (context) => {
         if (shapeIds && shapeIds.length > 1) {
-          // Batch mode: resolve all shape IDs, apply all in one round-trip
-          const resolved: { shapeId: string; shapeIndex: number }[] = [];
-          for (const sid of shapeIds) {
-              resolved.push(await resolveShapeTarget(context, slideIndex, sid));
-            }
+          // Batch mode: resolve all shape IDs with minimal round-trips, apply all in one round-trip
+          const resolved = await resolveShapeTargetsBatch(context, slideIndex, shapeIds);
           const roundTrip = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
             addSlideAnimationBatchInBase64Presentation(
               base64,
