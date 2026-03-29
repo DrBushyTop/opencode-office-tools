@@ -13,7 +13,7 @@ import { PermissionDialog, type PermissionDecision } from "./components/Permissi
 import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
-import { createOfficeToolBridge } from "./lib/office-tool-bridge";
+import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
@@ -258,34 +258,6 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
   return `${base} Current PowerPoint context: ${contextBits.join("; ")}.`;
 }
 
-async function fetchPowerPointContextSnapshot(): Promise<PowerPointContextSnapshot | null> {
-  if (Office.context.host !== Office.HostType.PowerPoint) return null;
-  if (!Office.context.requirements.isSetSupported("PowerPointApi", "1.5")) return null;
-
-  return await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    slides.load("items/id");
-
-    const selectedSlides = context.presentation.getSelectedSlides();
-    const selectedShapes = context.presentation.getSelectedShapes();
-    selectedSlides.load("items/id");
-    selectedShapes.load("items/id");
-    await context.sync();
-
-    const selectedSlideIds = selectedSlides.items.map((slide) => slide.id || "").filter(Boolean);
-    const selectedShapeIds = selectedShapes.items.map((shape) => shape.id || "").filter(Boolean);
-    const activeSlideId = selectedSlideIds[0];
-    const activeSlideIndex = activeSlideId ? slides.items.findIndex((slide) => slide.id === activeSlideId) : undefined;
-
-    return {
-      selectedSlideIds,
-      selectedShapeIds,
-      activeSlideId,
-      activeSlideIndex: activeSlideIndex !== undefined && activeSlideIndex >= 0 ? activeSlideIndex : undefined,
-    };
-  }).catch(() => null);
-}
-
 function toPromptParts(text: string, images: Array<{ path: string; name: string; mime: string }>) {
   return [
     { type: "text" as const, text: text || "Here are some images for you to analyze." },
@@ -375,7 +347,7 @@ export const App: React.FC = () => {
     }
 
     const update = async () => {
-      const snapshot = await fetchPowerPointContextSnapshot();
+      const snapshot = await readPowerPointContextSnapshot();
       setPptContext(snapshot);
       setPowerPointContextSnapshot(snapshot);
       if (snapshot) {

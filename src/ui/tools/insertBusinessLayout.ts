@@ -1,6 +1,6 @@
 import type { Tool } from "./types";
 import { resolvePowerPointTargetingArgs } from "./powerpointContext";
-import { createSlideWithLayout } from "./createSlideFromTemplate";
+import { applyTemplateBindingsToSlide, createSlideWithLayout } from "./createSlideFromTemplate";
 import { getSlideByIndex } from "./powerpointNativeContent";
 import { loadShapeSummaries, loadThemeColors, pickThemeColor, toolFailure } from "./powerpointShared";
 
@@ -214,6 +214,9 @@ export const insertBusinessLayout: Tool = {
             const created = await createSlideWithLayout(context, templateLayout);
             slide = created.slide;
             slideIndex = created.slideIndex;
+            if (layoutArgs.title) {
+              await applyTemplateBindingsToSlide(context, slide, [{ placeholderType: "Title", text: layoutArgs.title }]);
+            }
           } else {
             context.presentation.slides.add();
             await context.sync();

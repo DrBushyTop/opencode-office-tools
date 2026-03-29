@@ -2,6 +2,7 @@ import { DOMParser as XmldomParser, XMLSerializer as XmldomSerializer } from "@x
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it, vi } from "vitest";
 import { manageSlideShapes } from "./manageSlideShapes";
+import { setPowerPointContextSnapshot } from "./powerpointContext";
 
 function createPresentationBase64(entries: Record<string, string>) {
   return Buffer.from(zipSync(Object.fromEntries(
@@ -18,6 +19,32 @@ if (typeof XMLSerializer === "undefined") {
 }
 
 describe("manageSlideShapes", () => {
+  it("uses the active slide and selected shape context when slideIndex and shapeId are omitted", async () => {
+    const shape = { id: "shape-1", name: "Title", left: 0 } as unknown as PowerPoint.Shape & { left: number };
+    const slide = {
+      shapes: {
+        items: [shape],
+        load: vi.fn(),
+      },
+    };
+    const contextStub = {
+      presentation: { slides: { load: vi.fn(), items: [slide] } },
+      sync: vi.fn().mockResolvedValue(undefined),
+    };
+    const requirementsStub = {
+      isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.3"),
+    };
+    const runStub = vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub));
+
+    vi.stubGlobal("Office", { context: { requirements: requirementsStub } });
+    vi.stubGlobal("PowerPoint", { run: runStub });
+    setPowerPointContextSnapshot({ selectedSlideIds: ["slide-1"], selectedShapeIds: ["shape-1"], activeSlideId: "slide-1", activeSlideIndex: 0 });
+
+    await expect(manageSlideShapes.handler({ action: "update", left: 24 })).resolves.toBe("Updated shape on slide 1.");
+    expect(shape.left).toBe(24);
+    setPowerPointContextSnapshot(null);
+  });
+
   it("rejects create on hosts without PowerPointApi 1.4", async () => {
     const slide = {};
     const contextStub = {

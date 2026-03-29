@@ -3,7 +3,7 @@ import { powerpoint } from "../lib/office-powerpoint"
 
 export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.", {
   action: tool.schema.enum(["create", "update", "delete", "group", "ungroup"]).describe("Shape operation to perform."),
-  slideIndex: tool.schema.union([tool.schema.number(), tool.schema.array(tool.schema.number())]).describe("0-based slide index or array of slide indexes. When an array is provided, the same transition is applied to each slide in sequence."),
+  slideIndex: tool.schema.union([tool.schema.number(), tool.schema.array(tool.schema.number())]).optional().describe("0-based slide index or array of slide indexes. When an array is provided, the same transition is applied to each slide in sequence."),
   shapeId: tool.schema.string().optional().describe("Existing shape id. Preferred over shapeIndex when available."),
   shapeIndex: tool.schema.number().optional().describe("Existing 0-based shape index on the slide."),
   shapeIds: tool.schema.array(tool.schema.union([tool.schema.string(), tool.schema.number()])).optional().describe("Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes."),

@@ -47,7 +47,7 @@ export async function createSlideWithLayout(
   return { slide: finalSlide, slideIndex: finalIndex };
 }
 
-async function applyTemplateBindingsToSlide(
+export async function applyTemplateBindingsToSlide(
   context: PowerPoint.RequestContext,
   slide: PowerPoint.Slide,
   bindings: TemplateBinding[],
@@ -172,5 +172,3 @@ export const createSlideFromTemplate: Tool = {
     }
   },
 };
-
-export { applyTemplateBindingsToSlide };

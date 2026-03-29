@@ -40,3 +40,12 @@ export function resolvePowerPointTargetingArgs<T extends PowerPointTargetingArgs
 
   return next;
 }
+
+export function resolvePowerPointSlideIndexes(slideIndex: number | number[] | undefined): number | number[] | undefined {
+  if (slideIndex !== undefined) return slideIndex;
+  const snapshot = getPowerPointContextSnapshot();
+  if (!snapshot) return undefined;
+  if (snapshot.activeSlideIndex !== undefined) return snapshot.activeSlideIndex;
+  if (snapshot.selectedSlideIds.length === 1 && snapshot.activeSlideIndex !== undefined) return snapshot.activeSlideIndex;
+  return undefined;
+}
