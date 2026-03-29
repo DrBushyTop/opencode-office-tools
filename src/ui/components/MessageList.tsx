@@ -87,12 +87,12 @@ function countTools(items: z.infer<typeof SessionMessageItemSchema>[]) {
 }
 
 function lastDoneTool(items: z.infer<typeof SessionMessageItemSchema>[]) {
-  return items
+  const parts = items
     .flatMap((item) => item.info?.role === "assistant" && Array.isArray(item.parts) ? item.parts : [])
     .filter((part) => part.type === "tool" && !!part.tool)
     .filter((part) => part.state?.status === "completed" || part.state?.status === "error")
-    .sort((a, b) => (a.state?.time?.end || a.state?.time?.start || 0) - (b.state?.time?.end || b.state?.time?.start || 0))
-    .at(-1);
+    .sort((a, b) => (a.state?.time?.end || a.state?.time?.start || 0) - (b.state?.time?.end || b.state?.time?.start || 0));
+  return parts[parts.length - 1];
 }
 
 function durationText(ms: number) {
@@ -266,6 +266,7 @@ const useStyles = makeStyles({
     alignSelf: "flex-start",
     maxWidth: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     wordWrap: "break-word",
     overflowWrap: "anywhere",
     display: "grid",
@@ -284,6 +285,7 @@ const useStyles = makeStyles({
   assistantBody: {
     width: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     lineHeight: "1.6",
     color: "var(--oc-text)",
     "& pre": {
@@ -304,6 +306,7 @@ const useStyles = makeStyles({
     width: "100%",
     maxWidth: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     padding: "10px 12px",
     borderRadius: "12px",
     border: "1px solid rgba(130, 118, 255, 0.18)",
@@ -373,6 +376,7 @@ const useStyles = makeStyles({
     width: "100%",
     maxWidth: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
@@ -391,6 +395,7 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     minWidth: 0,
     gap: "12px",
   },
@@ -409,6 +414,10 @@ const useStyles = makeStyles({
     color: "var(--oc-text)",
     fontSize: "13px",
     fontWeight: 600,
+    overflowWrap: "anywhere",
+  },
+  taskTitleText: {
+    minWidth: 0,
     overflowWrap: "anywhere",
   },
   taskMeta: {
@@ -700,7 +709,7 @@ const TaskToolMessage: React.FC<{
         <div className={styles.taskBody}>
           <div className={styles.taskTitle}>
             <span className={styles.toolIcon}>🧠</span>
-            <span>{summarizeTaskTool(message.toolArgs || {})}</span>
+            <span className={styles.taskTitleText}>{summarizeTaskTool(message.toolArgs || {})}</span>
           </div>
           <div className={styles.taskMeta}>
             <span className={styles.taskCount}>{meta}</span>
