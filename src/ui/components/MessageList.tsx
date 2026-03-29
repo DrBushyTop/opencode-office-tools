@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { makeStyles } from "@fluentui/react-components";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -15,6 +15,8 @@ export interface Message {
   toolArgs?: Record<string, unknown>;
   toolResult?: unknown;
   toolError?: string;
+  toolMeta?: Record<string, unknown>;
+  toolStatus?: "running" | "completed" | "error";
   images?: Array<{ dataUrl: string; name: string }>;
 }
 
@@ -29,6 +31,73 @@ function summarizeTaskTool(args: Record<string, unknown>) {
   const description = typeof args.description === "string" ? args.description : "Working";
   const prefix = /fresh[ -]?eyes|verif|review|qa/i.test(description) ? "Verification" : "Subagent";
   return `${prefix}: ${subagentType}: ${description}`;
+}
+
+function taskSessionId(message: Message) {
+  const meta = message.toolMeta?.sessionId;
+  if (typeof meta === "string" && meta) return meta;
+
+  const input = message.toolArgs?.task_id;
+  if (typeof input === "string" && input) return input;
+
+  if (typeof message.toolResult !== "string") return "";
+  const match = message.toolResult.match(/task_id:\s+([^\s]+)/);
+  return match?.[1] || "";
+}
+
+function countTools(items: any[]) {
+  return items.reduce((sum, item) => {
+    if (item?.info?.role !== "assistant" || !Array.isArray(item.parts)) return sum;
+    return sum + item.parts.filter((part: any) => part?.type === "tool").length;
+  }, 0);
+}
+
+function toolCountText(count: number, running: boolean) {
+  if (count === 0) return running ? "Waiting for first tool call" : "No tool calls used";
+  const label = `${count} tool call${count === 1 ? "" : "s"}`;
+  return running ? `${label} so far` : label;
+}
+
+function useTaskToolCount(sessionId: string, active: boolean) {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setCount(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/opencode/session/${encodeURIComponent(sessionId)}/messages`);
+        if (!response.ok) return;
+        const items = await response.json();
+        if (!cancelled) setCount(countTools(items));
+      } catch {
+        if (!cancelled) setCount(null);
+      }
+    };
+
+    void load();
+    if (!active) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const timer = window.setInterval(() => {
+      void load();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [sessionId, active]);
+
+  return count;
 }
 
 interface MessageListProps {
@@ -229,6 +298,94 @@ const useStyles = makeStyles({
       backgroundColor: "var(--oc-bg-soft-hover)",
     },
   },
+  messageTask: {
+    alignSelf: "flex-start",
+    width: "100%",
+    maxWidth: "100%",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "linear-gradient(180deg, rgba(18, 125, 117, 0.10), rgba(18, 125, 117, 0.04))",
+    border: "1px solid rgba(18, 125, 117, 0.18)",
+    transition: "background-color 0.15s, border-color 0.15s",
+    ":hover": {
+      background: "linear-gradient(180deg, rgba(18, 125, 117, 0.14), rgba(18, 125, 117, 0.06))",
+      border: "1px solid rgba(18, 125, 117, 0.28)",
+    },
+  },
+  taskHead: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "12px",
+  },
+  taskBody: {
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  taskTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--oc-text)",
+    fontSize: "13px",
+    fontWeight: 600,
+  },
+  taskMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "var(--oc-text-muted)",
+    fontSize: "12px",
+    flexWrap: "wrap",
+  },
+  taskCount: {
+    color: "#127d75",
+    fontWeight: 600,
+  },
+  taskBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "4px 8px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    background: "rgba(18, 125, 117, 0.10)",
+    color: "#0b6e67",
+    border: "1px solid rgba(18, 125, 117, 0.16)",
+    whiteSpace: "nowrap",
+  },
+  taskBadgeDone: {
+    background: "rgba(20, 124, 64, 0.10)",
+    color: "#147c40",
+    border: "1px solid rgba(20, 124, 64, 0.16)",
+  },
+  taskBadgeError: {
+    background: "rgba(196, 64, 64, 0.10)",
+    color: "#b42318",
+    border: "1px solid rgba(196, 64, 64, 0.16)",
+  },
+  taskSpinner: {
+    width: "10px",
+    height: "10px",
+    borderRadius: "50%",
+    border: "2px solid rgba(11, 110, 103, 0.18)",
+    borderTopColor: "#0b6e67",
+    animationName: {
+      from: { transform: "rotate(0deg)" },
+      to: { transform: "rotate(360deg)" },
+    },
+    animationDuration: "0.8s",
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  },
   toolIcon: {
     fontSize: "14px",
   },
@@ -426,6 +583,109 @@ const TrafficCounter: React.FC = () => {
   );
 };
 
+const TaskToolMessage: React.FC<{
+  message: Message;
+  expanded: boolean;
+  toggle: () => void;
+  showToolResponses: boolean;
+}> = ({ message, expanded, toggle, showToolResponses }) => {
+  const styles = useStyles();
+  const sessionId = taskSessionId(message);
+  const running = message.toolStatus === "running";
+  const done = message.toolStatus === "completed";
+  const failed = message.toolStatus === "error";
+  const count = useTaskToolCount(sessionId, running);
+  const summary = toolCountText(count ?? 0, running);
+
+  return (
+    <div className={styles.messageTask} onClick={toggle} title="Click to show details">
+      <div className={styles.taskHead}>
+        <div className={styles.taskBody}>
+          <div className={styles.taskTitle}>
+            <span className={styles.toolIcon}>🧠</span>
+            <span>{summarizeTaskTool(message.toolArgs || {})}</span>
+          </div>
+          <div className={styles.taskMeta}>
+            <span className={styles.taskCount}>{summary}</span>
+            {sessionId && <span>session {sessionId.slice(0, 8)}</span>}
+          </div>
+        </div>
+
+        <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
+          {running && <span className={styles.taskSpinner} />}
+          <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className={styles.toolDetail}>
+          <div>
+            <div className={styles.toolLabel}>Input</div>
+            <div className={styles.toolArgs}>{message.text}</div>
+          </div>
+          {showToolResponses && typeof message.toolResult !== "undefined" && (
+            <div>
+              <div className={styles.toolLabel}>Response</div>
+              <div className={styles.toolArgs}>{typeof message.toolResult === "string" ? message.toolResult : JSON.stringify(message.toolResult, null, 2)}</div>
+            </div>
+          )}
+          {showToolResponses && message.toolError && (
+            <div>
+              <div className={styles.toolLabel}>Error</div>
+              <div className={styles.toolArgs}>{message.toolError}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ToolMessage: React.FC<{
+  message: Message;
+  expanded: boolean;
+  toggle: () => void;
+  showToolResponses: boolean;
+}> = ({ message, expanded, toggle, showToolResponses }) => {
+  const styles = useStyles();
+  const toolDisplay = message.toolName
+    ? formatToolCall(message.toolName, message.toolArgs || {})
+    : null;
+
+  if (message.toolName === "task") {
+    return <TaskToolMessage message={message} expanded={expanded} toggle={toggle} showToolResponses={showToolResponses} />;
+  }
+
+  if (!toolDisplay) return null;
+
+  return (
+    <div className={styles.messageTool} onClick={toggle} title="Click to show details">
+      <span className={styles.toolIcon}>{toolDisplay.icon}</span>
+      <span>{toolDisplay.description}</span>
+      {expanded && (
+        <div className={styles.toolDetail}>
+          <div>
+            <div className={styles.toolLabel}>Input</div>
+            <div className={styles.toolArgs}>{message.text}</div>
+          </div>
+          {showToolResponses && typeof message.toolResult !== "undefined" && (
+            <div>
+              <div className={styles.toolLabel}>Response</div>
+              <div className={styles.toolArgs}>{typeof message.toolResult === "string" ? message.toolResult : JSON.stringify(message.toolResult, null, 2)}</div>
+            </div>
+          )}
+          {showToolResponses && message.toolError && (
+            <div>
+              <div className={styles.toolLabel}>Error</div>
+              <div className={styles.toolArgs}>{message.toolError}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   liveMessages = [],
@@ -438,11 +698,29 @@ export const MessageList: React.FC<MessageListProps> = ({
   showToolResponses = false,
 }) => {
   const styles = useStyles();
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatRef.current;
+    if (!el) return;
+
+    const near = () => el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+    const onScroll = () => {
+      stickRef.current = near();
+    };
+
+    stickRef.current = near();
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!stickRef.current) return;
+    const el = chatRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [liveMessages, messages]);
 
   const toggleTool = (id: string) => {
@@ -464,7 +742,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   );
 
   return (
-    <div className={styles.chatContainer}>
+    <div ref={chatRef} className={styles.chatContainer}>
       <div className={styles.content}>
         {messages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
@@ -480,48 +758,23 @@ export const MessageList: React.FC<MessageListProps> = ({
         )}
 
         {[...visibleHistory, ...visibleLive].map((message) => {
-        // Format tool calls nicely
-        const toolDisplay = message.toolName 
-          ? formatToolCall(message.toolName, message.toolArgs || {})
-          : null;
-        
         return (
         <div
           key={message.id}
           className={
             message.sender === "user" ? styles.messageUser : 
-             message.sender === "tool" ? styles.messageTool :
-             message.sender === "thinking" ? styles.messageThinking :
-             styles.messageAssistant
-           }
-          onClick={message.toolName ? () => toggleTool(message.id) : undefined}
-          title={message.toolName ? "Click to show details" : undefined}
+             message.sender === "tool" ? undefined :
+              message.sender === "thinking" ? styles.messageThinking :
+              styles.messageAssistant
+            }
         >
-          {toolDisplay ? (
-            <>
-              <span className={styles.toolIcon}>{toolDisplay.icon}</span>
-              <span>{toolDisplay.description}</span>
-              {expandedTools.has(message.id) && (
-                <div className={styles.toolDetail}>
-                  <div>
-                    <div className={styles.toolLabel}>Input</div>
-                    <div className={styles.toolArgs}>{message.text}</div>
-                  </div>
-                  {showToolResponses && typeof message.toolResult !== "undefined" && (
-                    <div>
-                      <div className={styles.toolLabel}>Response</div>
-                      <div className={styles.toolArgs}>{typeof message.toolResult === "string" ? message.toolResult : JSON.stringify(message.toolResult, null, 2)}</div>
-                    </div>
-                  )}
-                  {showToolResponses && message.toolError && (
-                    <div>
-                      <div className={styles.toolLabel}>Error</div>
-                      <div className={styles.toolArgs}>{message.toolError}</div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+          {message.sender === "tool" ? (
+            <ToolMessage
+              message={message}
+              expanded={expandedTools.has(message.id)}
+              toggle={() => toggleTool(message.id)}
+              showToolResponses={showToolResponses}
+            />
           ) : message.sender === "assistant" ? (
             <>
               <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
@@ -593,7 +846,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        <div ref={chatEndRef} />
+        <div />
       </div>
     </div>
   );

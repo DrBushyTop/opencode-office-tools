@@ -14,7 +14,7 @@ import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
-import { makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
+import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
@@ -300,6 +300,11 @@ export const App: React.FC = () => {
   const sessionCreatedAt = useRef<string>("");
   const started = useRef(false);
   const run = useRef<AbortController | null>(null);
+  const liveRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    liveRef.current = liveMessages;
+  }, [liveMessages]);
 
   const fetchModels = async () => {
     try {
@@ -579,20 +584,21 @@ export const App: React.FC = () => {
         if (event.type === "assistant.message") {
           const parts = Array.isArray(data.parts) ? data.parts : [];
           const mapped = mapAssistantParts(parts, Date.now());
+          const kept = carry(liveRef.current, mapped);
           setLiveMessages([]);
           setCurrentActivity("");
           if (mapped.length > 0) {
-            setMessages((prev) => [...prev, ...mapped]);
+            setMessages((prev) => [...prev, ...kept, ...mapped]);
             continue;
           }
           const text = String(data.content || "");
-          if (text) {
-            setMessages((prev) => [...prev, {
+          if (text || kept.length > 0) {
+            setMessages((prev) => [...prev, ...kept, ...(!text ? [] : [{
               id: String(event.id || crypto.randomUUID()),
               text,
-              sender: "assistant",
+              sender: "assistant" as const,
               timestamp: new Date(event.timestamp || Date.now()),
-            }]);
+            }])]);
           }
           continue;
         }
@@ -601,6 +607,7 @@ export const App: React.FC = () => {
           const toolName = String(data.toolName || "tool");
           const toolArgs = (data.arguments || {}) as Record<string, unknown>;
           const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
+          const toolMeta = redactSensitiveFields((data.metadata || {}) as Record<string, unknown>) as Record<string, unknown>;
           setCurrentActivity(describeToolActivity(toolName, toolArgs));
           setLiveMessages((prev) => mergeLiveMessages(prev, {
             id: String(event.id || crypto.randomUUID()),
@@ -608,6 +615,8 @@ export const App: React.FC = () => {
             sender: "tool",
             toolName,
             toolArgs: safeToolArgs,
+            toolMeta,
+            toolStatus: "running",
             timestamp: new Date(),
           }));
           continue;
@@ -627,8 +636,10 @@ export const App: React.FC = () => {
                 sender: "tool",
                 toolName: String(data.toolName || tool?.toolName || "tool"),
                 toolArgs: tool?.toolArgs || {},
+                toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
                 toolResult: undefined,
                 toolError: text,
+                toolStatus: "error",
                 timestamp: new Date(),
               });
             });
@@ -642,8 +653,10 @@ export const App: React.FC = () => {
               sender: "tool",
               toolName: String(data.toolName || tool?.toolName || "tool"),
               toolArgs: tool?.toolArgs || {},
+              toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
               toolResult: data.result,
               toolError: undefined,
+              toolStatus: "completed",
               timestamp: new Date(),
             });
           });
@@ -747,17 +760,13 @@ export const App: React.FC = () => {
     ? [
         pptContext?.activeSlideIndex !== undefined ? `Slide ${pptContext.activeSlideIndex + 1}` : "No active slide",
         pptContext?.selectedShapeIds.length ? `${pptContext.selectedShapeIds.length} shape${pptContext.selectedShapeIds.length === 1 ? "" : "s"} selected` : "No shapes selected",
-      ].join(" - ")
+      ].join(" • ")
     : undefined;
 
-  const powerpointQuickActions = officeHost === "powerpoint"
-    ? [
-        { label: "Edit selection", prompt: "Edit the selected PowerPoint shapes using the current selection context." },
-        { label: "Use current slide", prompt: "Work on the current PowerPoint slide." },
-        { label: "Insert timeline", prompt: "Insert a project timeline using editable native PowerPoint content." },
-        { label: "Insert estimate table", prompt: "Insert an estimate summary table using editable native PowerPoint content." },
-      ]
-    : [];
+  const headerSubtitle = [
+    runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`,
+    powerpointContextLabel,
+  ].filter(Boolean).join(" • ");
 
   return (
     <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
@@ -780,7 +789,7 @@ export const App: React.FC = () => {
             onShowToolResponsesChange={setShowToolResponses}
             qaSubagentModel={qaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
-            subtitle={runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`}
+            subtitle={headerSubtitle}
           />
 
           <MessageList
@@ -805,9 +814,6 @@ export const App: React.FC = () => {
             isRunning={isTyping}
             images={images}
             onImagesChange={setImages}
-            contextLabel={powerpointContextLabel}
-            quickActions={powerpointQuickActions}
-            onQuickAction={(prompt) => setInputValue(prompt)}
           />
           {permission && (
             <PermissionDialog

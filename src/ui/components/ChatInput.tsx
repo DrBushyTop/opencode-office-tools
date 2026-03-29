@@ -19,9 +19,6 @@ interface ChatInputProps {
   isRunning?: boolean;
   images?: ImageAttachment[];
   onImagesChange?: (images: ImageAttachment[]) => void;
-  contextLabel?: string;
-  quickActions?: Array<{ label: string; prompt: string }>;
-  onQuickAction?: (prompt: string) => void;
 }
 
 const useStyles = makeStyles({
@@ -45,6 +42,9 @@ const useStyles = makeStyles({
   },
   input: {
     flex: 1,
+    width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
     padding: "8px 10px",
     borderRadius: "0",
     border: "none !important",
@@ -60,6 +60,7 @@ const useStyles = makeStyles({
   },
   inputWrap: {
     flex: 1,
+    width: "100%",
     minWidth: 0,
     borderRadius: "10px",
     background: "var(--oc-bg)",
@@ -114,30 +115,6 @@ const useStyles = makeStyles({
       backgroundColor: "var(--oc-bg-soft-hover)",
     },
   },
-  contextBar: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: "8px",
-    padding: "10px 10px 0",
-  },
-  contextLabel: {
-    fontSize: "11px",
-    color: "var(--oc-text-muted)",
-    padding: "4px 8px",
-    borderRadius: "999px",
-    background: "var(--oc-bg-soft)",
-    border: "1px solid var(--oc-border)",
-  },
-  quickAction: {
-    minHeight: "26px",
-    padding: "0 10px",
-    borderRadius: "999px",
-    background: "var(--oc-bg)",
-    border: "1px solid var(--oc-border)",
-    color: "var(--oc-text)",
-    fontSize: "11px",
-  },
 });
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -148,9 +125,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isRunning = false,
   images = [],
   onImagesChange,
-  contextLabel,
-  quickActions = [],
-  onQuickAction,
 }) => {
   const styles = useStyles();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -203,21 +177,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <div className={styles.inputContainer}>
-      {(contextLabel || quickActions.length > 0) && (
-        <div className={styles.contextBar}>
-          {contextLabel && <div className={styles.contextLabel}>{contextLabel}</div>}
-          {quickActions.map((action) => (
-            <Button
-              key={action.label}
-              appearance="subtle"
-              className={styles.quickAction}
-              onClick={() => onQuickAction?.(action.prompt)}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
       {images.length > 0 && (
         <div className={styles.imagePreviewContainer}>
           {images.map(image => (

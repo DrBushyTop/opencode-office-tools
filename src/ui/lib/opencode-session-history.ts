@@ -44,7 +44,13 @@ function images(parts: any[] = []) {
 export const sessionHistoryInternals = {
   text,
   images,
+  carry,
 };
+
+export function carry(live: Message[], next: Message[]) {
+  const ids = new Set(next.map((item) => item.id));
+  return live.filter((item) => item.sender !== "assistant" && !ids.has(item.id));
+}
 
 export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Message[] {
   return (parts || []).flatMap((part: any, index: number): Message[] => {
@@ -60,6 +66,8 @@ export function mapAssistantParts(parts: any[] = [], fallbackTime?: number): Mes
         toolArgs: part.state?.input || {},
         toolResult: part.state?.output,
         toolError: part.state?.error,
+        toolMeta: part.state?.metadata || {},
+        toolStatus: part.state?.status === "error" || part.state?.error ? "error" : part.state?.status === "pending" || part.state?.status === "running" ? "running" : "completed",
         timestamp: time,
       }];
     }

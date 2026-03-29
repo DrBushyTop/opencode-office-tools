@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeSessionTitle, mapMessages, sessionHistoryInternals } from "./opencode-session-history";
+import { carry, makeSessionTitle, mapMessages, sessionHistoryInternals } from "./opencode-session-history";
 
 describe("opencode session history", () => {
   it("builds host-aware titles", () => {
@@ -38,5 +38,27 @@ describe("opencode session history", () => {
       { type: "file", mime: "image/png", url: "a", filename: "a.png" },
       { type: "file", mime: "text/plain", url: "b", filename: "b.txt" },
     ])).toEqual([{ dataUrl: "a", name: "a.png" }]);
+  });
+
+  it("keeps live tool history when final assistant text omits it", () => {
+    expect(carry([
+      { id: "t1", text: "{}", sender: "tool", toolName: "read", timestamp: new Date(1) },
+      { id: "a1", text: "partial", sender: "assistant", timestamp: new Date(1) },
+      { id: "r1", text: "thinking", sender: "thinking", timestamp: new Date(1) },
+    ], [
+      { id: "m1", text: "Done", sender: "assistant", timestamp: new Date(2) },
+    ])).toMatchObject([
+      { id: "t1", sender: "tool" },
+      { id: "r1", sender: "thinking" },
+    ]);
+  });
+
+  it("drops live tool rows already present in final assistant parts", () => {
+    expect(carry([
+      { id: "t1", text: "{}", sender: "tool", toolName: "read", timestamp: new Date(1) },
+    ], [
+      { id: "t1", text: "{}", sender: "tool", toolName: "read", timestamp: new Date(2) },
+      { id: "m1", text: "Done", sender: "assistant", timestamp: new Date(2) },
+    ])).toEqual([]);
   });
 });
