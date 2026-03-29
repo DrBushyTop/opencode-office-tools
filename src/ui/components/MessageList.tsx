@@ -13,6 +13,8 @@ export interface Message {
   timestamp: Date;
   toolName?: string;
   toolArgs?: Record<string, unknown>;
+  toolResult?: unknown;
+  toolError?: string;
   images?: Array<{ dataUrl: string; name: string }>;
 }
 
@@ -38,6 +40,7 @@ interface MessageListProps {
   debugEvents?: DebugEvent[];
   hostLabel?: string;
   showThinking?: boolean;
+  showToolResponses?: boolean;
 }
 
 const toolConfig: Record<string, { icon: string; format: (args: Record<string, unknown>) => string }> = {
@@ -236,6 +239,19 @@ const useStyles = makeStyles({
     marginTop: "4px",
     color: "var(--oc-text-faint)",
   },
+  toolDetail: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    width: "100%",
+  },
+  toolLabel: {
+    fontSize: "10px",
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
+  },
   attachmentContainer: {
     display: "flex",
     flexWrap: "wrap",
@@ -419,6 +435,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   debugEvents,
   hostLabel,
   showThinking = true,
+  showToolResponses = false,
 }) => {
   const styles = useStyles();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -485,7 +502,24 @@ export const MessageList: React.FC<MessageListProps> = ({
               <span className={styles.toolIcon}>{toolDisplay.icon}</span>
               <span>{toolDisplay.description}</span>
               {expandedTools.has(message.id) && (
-                <div className={styles.toolArgs}>{message.text}</div>
+                <div className={styles.toolDetail}>
+                  <div>
+                    <div className={styles.toolLabel}>Input</div>
+                    <div className={styles.toolArgs}>{message.text}</div>
+                  </div>
+                  {showToolResponses && typeof message.toolResult !== "undefined" && (
+                    <div>
+                      <div className={styles.toolLabel}>Response</div>
+                      <div className={styles.toolArgs}>{typeof message.toolResult === "string" ? message.toolResult : JSON.stringify(message.toolResult, null, 2)}</div>
+                    </div>
+                  )}
+                  {showToolResponses && message.toolError && (
+                    <div>
+                      <div className={styles.toolLabel}>Error</div>
+                      <div className={styles.toolArgs}>{message.toolError}</div>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           ) : message.sender === "assistant" ? (

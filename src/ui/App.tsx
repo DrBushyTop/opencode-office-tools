@@ -12,7 +12,7 @@ import { SessionHistory } from "./components/SessionHistory";
 import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
 import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
-import { createOpencodeClient, ModelInfo, SessionInfo } from "./lib/opencode-client";
+import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge } from "./lib/office-tool-bridge";
 import { makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
@@ -175,6 +175,39 @@ function mergeLiveMessages(
   return previous.map((item, current) => current === index ? { ...item, ...next } : item);
 }
 
+function qaModel(config: OpencodeConfig) {
+  const value = config.agent?.["visual-qa"]?.model;
+  return typeof value === "string" ? value : "";
+}
+
+function mergeQaModel(config: OpencodeConfig, model: ModelType) {
+  const next = {
+    ...config,
+    agent: {
+      ...(config.agent || {}),
+      "visual-qa": {
+        ...(config.agent?.["visual-qa"] || {}),
+      },
+    },
+  } satisfies OpencodeConfig;
+
+  if (model) {
+    next.agent!["visual-qa"] = {
+      ...next.agent!["visual-qa"],
+      model,
+    };
+    return next;
+  }
+
+  if (next.agent?.["visual-qa"]) {
+    const visual = { ...next.agent["visual-qa"] };
+    delete visual.model;
+    next.agent["visual-qa"] = visual;
+  }
+
+  return next;
+}
+
 function previewEvent(eventType: string, data: Record<string, unknown>) {
   if (eventType === "assistant.message_delta") return String(data.deltaContent || "").slice(0, 80);
   if (eventType === "assistant.message") return String(data.content || "").slice(0, 80);
@@ -235,7 +268,9 @@ export const App: React.FC = () => {
   const [officeHost, setOfficeHost] = useState<OfficeHost>("word");
   const [debugEnabled, setDebugEnabled] = useLocalStorage<boolean>("opencode-debug", false);
   const [showThinking, setShowThinking] = useLocalStorage<boolean>("opencode-show-thinking", true);
+  const [showToolResponses, setShowToolResponses] = useLocalStorage<boolean>("opencode-show-tool-responses", false);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
+  const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
   const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
@@ -260,6 +295,13 @@ export const App: React.FC = () => {
       if (!selectedModel || !FALLBACK_MODELS.some((model) => model.key === selectedModel)) {
         setSelectedModel(pickDefaultModel(FALLBACK_MODELS));
       }
+    }
+
+    try {
+      const config = await client.getConfig();
+      setQaSubagentModel(qaModel(config));
+    } catch {
+      setQaSubagentModel("");
     }
   };
 
@@ -384,6 +426,18 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleQaSubagentModelChange = async (model: ModelType) => {
+    const previous = qaSubagentModel;
+    setQaSubagentModel(model);
+
+    try {
+      const config = await client.getConfig();
+      await client.updateConfig(mergeQaModel(config, model));
+    } catch {
+      setQaSubagentModel(previous);
+    }
+  };
+
   const handleSend = async () => {
     if (isTyping || (!inputValue.trim() && images.length === 0) || !currentSessionId) return;
 
@@ -503,17 +557,39 @@ export const App: React.FC = () => {
         }
 
         if (event.type === "tool.execution_complete") {
+          const toolId = String(event.id || crypto.randomUUID());
+
           if (data.error) {
             const text = String(data.error);
             setCurrentActivity("");
-            setLiveMessages((prev) => mergeLiveMessages(prev, {
-              id: String(event.id || `tool-error-${Date.now()}`),
-              text: `Tool failed: ${text}`,
-              sender: "assistant",
-              timestamp: new Date(),
-            }));
+            setLiveMessages((prev) => {
+              const tool = prev.find((item) => item.id === toolId);
+              return mergeLiveMessages(prev, {
+                id: toolId,
+                text: tool?.text || "{}",
+                sender: "tool",
+                toolName: String(data.toolName || tool?.toolName || "tool"),
+                toolArgs: tool?.toolArgs || {},
+                toolResult: undefined,
+                toolError: text,
+                timestamp: new Date(),
+              });
+            });
             continue;
           }
+          setLiveMessages((prev) => {
+            const tool = prev.find((item) => item.id === toolId);
+            return mergeLiveMessages(prev, {
+              id: toolId,
+              text: tool?.text || "{}",
+              sender: "tool",
+              toolName: String(data.toolName || tool?.toolName || "tool"),
+              toolArgs: tool?.toolArgs || {},
+              toolResult: data.result,
+              toolError: undefined,
+              timestamp: new Date(),
+            });
+          });
           setCurrentActivity("Processing result...");
           continue;
         }
@@ -627,6 +703,10 @@ export const App: React.FC = () => {
             onDebugChange={setDebugEnabled}
             showThinking={showThinking}
             onShowThinkingChange={setShowThinking}
+            showToolResponses={showToolResponses}
+            onShowToolResponsesChange={setShowToolResponses}
+            qaSubagentModel={qaSubagentModel}
+            onQaSubagentModelChange={handleQaSubagentModelChange}
             subtitle={runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`}
           />
 
@@ -639,6 +719,7 @@ export const App: React.FC = () => {
             debugEvents={debugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}
             showThinking={showThinking}
+            showToolResponses={showToolResponses}
           />
 
           {error && <div className={styles.error}>{error}</div>}
