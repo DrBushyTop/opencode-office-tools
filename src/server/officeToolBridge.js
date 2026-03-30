@@ -4,6 +4,7 @@ class OfficeToolBridge {
     this.clientSessions = new Map();
     this.executors = new Map();
     this.pending = new Map();
+    this.waiting = new Map();
   }
 
   issueClientSession() {
@@ -29,6 +30,7 @@ class OfficeToolBridge {
         if (executor.sessionToken !== sessionToken && Date.now() - executor.lastSeen < 15000) {
           throw new Error(`An active ${host} Office executor is already registered`);
         }
+        this.clearWait(executorId);
         this.executors.delete(executorId);
       }
     }
@@ -41,6 +43,7 @@ class OfficeToolBridge {
   unregister(executorId, sessionToken) {
     const executor = this.getExecutor(executorId, sessionToken);
     this.executors.delete(executorId);
+    this.clearWait(executorId);
 
     for (const item of this.pending.values()) {
       if (item.assignedExecutorId === executorId) {
@@ -61,6 +64,7 @@ class OfficeToolBridge {
       throw new Error('Office executor session mismatch');
     }
     if (Date.now() - executor.lastSeen >= 15000 && !this.hasAssignedPendingWork(String(executorId || ''))) {
+      this.clearWait(String(executorId || ''));
       this.executors.delete(String(executorId || ''));
       throw new Error('Office executor expired');
     }
@@ -116,16 +120,70 @@ class OfficeToolBridge {
           reject(error instanceof Error ? error : new Error(String(error)));
         },
       });
+
+      this.wake(host);
     });
   }
 
-  poll(executorId, sessionToken) {
-    const executor = this.heartbeat(executorId, sessionToken);
-    const item = Array.from(this.pending.values()).find((pending) => pending.host === executor.host && (!pending.assignedExecutorId || pending.assignedExecutorId === executorId)) || null;
+  claim(executorId, host) {
+    const item = Array.from(this.pending.values()).find((pending) => pending.host === host && (!pending.assignedExecutorId || pending.assignedExecutorId === executorId)) || null;
     if (item) {
       item.assignedExecutorId = executorId;
     }
     return item;
+  }
+
+  wake(host) {
+    for (const [executorId, executor] of this.executors.entries()) {
+      if (executor.host !== host) continue;
+      const wait = this.waiting.get(executorId);
+      if (!wait) continue;
+      const item = this.claim(executorId, host);
+      if (!item) continue;
+      this.finishWait(executorId, item);
+      return;
+    }
+  }
+
+  clearWait(executorId) {
+    const wait = this.waiting.get(executorId);
+    if (!wait) return;
+    clearTimeout(wait.timeout);
+    wait.signal?.removeEventListener('abort', wait.abort);
+    this.waiting.delete(executorId);
+  }
+
+  finishWait(executorId, value) {
+    const wait = this.waiting.get(executorId);
+    if (!wait) return;
+    this.clearWait(executorId);
+    wait.resolve(value);
+  }
+
+  poll(executorId, sessionToken, signal) {
+    const executor = this.heartbeat(executorId, sessionToken);
+    const item = this.claim(executorId, executor.host);
+    if (item) return item;
+
+    return new Promise((resolve) => {
+      this.finishWait(executorId, null);
+
+      const abort = () => {
+        this.finishWait(executorId, null);
+      };
+      const timeout = setTimeout(() => {
+        this.finishWait(executorId, null);
+      }, 10000);
+
+      this.waiting.set(executorId, {
+        resolve,
+        timeout,
+        signal,
+        abort,
+      });
+
+      signal?.addEventListener('abort', abort, { once: true });
+    });
   }
 
   respond(id, executorId, sessionToken, payload) {
@@ -157,6 +215,7 @@ class OfficeToolBridge {
     for (const [executorId, executor] of this.executors.entries()) {
       if (now - executor.lastSeen >= 15000 && !this.hasAssignedPendingWork(executorId)) {
         this.executors.delete(executorId);
+        this.finishWait(executorId, null);
         for (const item of this.pending.values()) {
           if (item.assignedExecutorId === executorId) {
             item.assignedExecutorId = null;
