@@ -370,7 +370,7 @@ export const manageSlideShapes: Tool = {
       validateRange("fillTransparency", update.fillTransparency, { min: 0, max: 1 }),
       validateRange("lineWeight", update.lineWeight, { min: 0 }),
       validateRange("lineTransparency", update.lineTransparency, { min: 0, max: 1 }),
-      validateRange("fontSize", update.fontSize, { min: 1 }),
+      validateRange("fontSize", update.fontSize, { min: 0 }),
       validateRange("indentLevel", update.indentLevel, { min: 0 }),
       validateRange("marginLeft", update.marginLeft, { min: 0 }),
       validateRange("marginRight", update.marginRight, { min: 0 }),

@@ -7,7 +7,7 @@ const applyStyleToSelectionArgsSchema = z.object({
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
   strikethrough: z.boolean().optional(),
-  fontSize: z.number().finite().positive().optional(),
+  fontSize: z.number().finite().nonnegative().optional(),
   fontName: z.string().optional(),
   fontColor: z.string().optional(),
   highlightColor: z.string().optional(),

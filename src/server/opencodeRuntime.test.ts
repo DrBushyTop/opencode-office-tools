@@ -10,7 +10,7 @@ describe("opencode runtime helpers", () => {
           id: "anthropic",
           name: "Anthropic",
           models: {
-            "claude-sonnet-4-5": { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
+            "claude-sonnet-4-5": { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", limit: { context: 200000 } },
             "claude-opus-4": { id: "claude-opus-4", name: "Claude Opus 4" },
           },
         },
@@ -30,18 +30,21 @@ describe("opencode runtime helpers", () => {
         label: "Anthropic / Claude Sonnet 4.5",
         providerID: "anthropic",
         modelID: "claude-sonnet-4-5",
+        limitContext: 200000,
       },
       {
         key: "anthropic/claude-opus-4",
         label: "Anthropic / Claude Opus 4",
         providerID: "anthropic",
         modelID: "claude-opus-4",
+        limitContext: undefined,
       },
       {
         key: "openai/gpt-5.4",
         label: "OpenAI / GPT-5.4",
         providerID: "openai",
         modelID: "gpt-5.4",
+        limitContext: undefined,
       },
     ]);
   });

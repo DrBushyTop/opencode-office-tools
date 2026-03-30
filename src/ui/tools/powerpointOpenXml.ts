@@ -20,6 +20,7 @@ const RELATIONSHIP_TYPE_NOTES_MASTER = "http://schemas.openxmlformats.org/office
 const CONTENT_TYPE_NOTES_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
 const ANIMATABLE_SHAPE_LOCAL_NAMES = new Set(["sp", "cxnSp", "pic", "graphicFrame", "grpSp", "contentPart"]);
 const ELEMENT_NODE = 1;
+const EMUS_PER_POINT = 12700;
 
 const EXCLUDED_NOTE_PLACEHOLDER_TYPES = new Set(["sldImg", "hdr", "dt", "ftr", "sldNum"]);
 
@@ -208,6 +209,34 @@ function getXmlShapeId(shape: Element, shapeIndex: number) {
   return xmlShapeId;
 }
 
+function getXmlShapeName(shape: Element) {
+  return shape.getElementsByTagNameNS(NS_P, "cNvPr")[0]?.getAttribute("name") || "";
+}
+
+function getXmlShapeBoxInPoints(shape: Element) {
+  const xfrm = shape.getElementsByTagNameNS(NS_A, "xfrm")[0];
+  const off = xfrm?.getElementsByTagNameNS(NS_A, "off")[0];
+  const ext = xfrm?.getElementsByTagNameNS(NS_A, "ext")[0];
+  const left = Number(off?.getAttribute("x"));
+  const top = Number(off?.getAttribute("y"));
+  const width = Number(ext?.getAttribute("cx"));
+  const height = Number(ext?.getAttribute("cy"));
+  if (![left, top, width, height].every(Number.isFinite)) {
+    return null;
+  }
+
+  return {
+    left: left / EMUS_PER_POINT,
+    top: top / EMUS_PER_POINT,
+    width: width / EMUS_PER_POINT,
+    height: height / EMUS_PER_POINT,
+  };
+}
+
+function isNearlyEqual(left: number, right: number, tolerance = 0.5) {
+  return Math.abs(left - right) <= tolerance;
+}
+
 function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: number) {
   const shapes = getSlideShapeElementsInOrder(slideDoc);
   const shape = shapes[shapeIndex];
@@ -230,33 +259,67 @@ export function listXmlShapeIdsInBase64Presentation(base64: string) {
   return getSlideShapeElementsInOrder(slideDoc).map((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex));
 }
 
+export interface SlideShapeLookupTarget {
+  name?: string | null;
+  left?: number | null;
+  top?: number | null;
+  width?: number | null;
+  height?: number | null;
+}
+
+export function resolveXmlShapeIdByMetadataInBase64Presentation(
+  base64: string,
+  target: SlideShapeLookupTarget,
+  fallbackShapeIndex?: number,
+) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slideDoc } = getFirstSlideDocument(pkg);
+  const shapes = getSlideShapeElementsInOrder(slideDoc);
+  const candidates = shapes
+    .map((shape, shapeIndex) => {
+      const box = getXmlShapeBoxInPoints(shape);
+      const matchesName = !!target.name && getXmlShapeName(shape) === target.name;
+      const hasTargetBox = [target.left, target.top, target.width, target.height].every((value) => Number.isFinite(value));
+      const matchesBox = !!box
+        && hasTargetBox
+        && isNearlyEqual(box.left, target.left as number)
+        && isNearlyEqual(box.top, target.top as number)
+        && isNearlyEqual(box.width, target.width as number)
+        && isNearlyEqual(box.height, target.height as number);
+      if (!matchesName && !matchesBox) {
+        return null;
+      }
+
+      return {
+        score: (matchesBox ? 10 : 0) + (matchesName ? 4 : 0),
+        xmlShapeId: getXmlShapeId(shape, shapeIndex),
+      };
+    })
+    .filter((candidate): candidate is { score: number; xmlShapeId: string } => candidate !== null)
+    .sort((left, right) => right.score - left.score);
+
+  if (candidates.length > 0) {
+    const best = candidates[0];
+    const isUniqueBest = candidates.length === 1 || candidates[1].score < best.score;
+    if (isUniqueBest) {
+      return best.xmlShapeId;
+    }
+  }
+
+  if (fallbackShapeIndex !== undefined) {
+    return resolveAnimationTargetXmlShapeId(slideDoc, fallbackShapeIndex);
+  }
+
+  return null;
+}
+
 export const openXmlRoundTripResultSchema = z.object({
   originalSlideId: z.string(),
   replacementSlideId: z.string(),
   finalSlideIndex: z.number(),
-  shapeIdMap: z.record(z.string(), z.string()).optional(),
 });
 
 export type OpenXmlRoundTripResult = z.infer<typeof openXmlRoundTripResultSchema>;
-
-function buildShapeIdMap(beforeBase64: string, afterBase64: string): Record<string, string> | undefined {
-  let beforeShapeIds: string[];
-  let afterShapeIds: string[];
-  try {
-    beforeShapeIds = listXmlShapeIdsInBase64Presentation(beforeBase64);
-    afterShapeIds = listXmlShapeIdsInBase64Presentation(afterBase64);
-  } catch {
-    return undefined;
-  }
-  if (beforeShapeIds.length === 0 || afterShapeIds.length === 0) return undefined;
-
-  const map: Record<string, string> = {};
-  const count = Math.min(beforeShapeIds.length, afterShapeIds.length);
-  for (let index = 0; index < count; index += 1) {
-    map[beforeShapeIds[index]] = afterShapeIds[index];
-  }
-  return Object.keys(map).length ? map : undefined;
-}
 
 function extractTextBody(textBody: Element | null) {
   if (!textBody) return "";
@@ -1094,10 +1157,11 @@ function buildShapeAnimationPar(
 
   cTn.setAttribute("nodeType", nodeType);
 
-  // Always add stCondLst with delay="0" (or the animation's delay for afterPrevious)
+  // Shape-level timing stays at zero. Group-level sequencing/delay is handled by
+  // the containing timing-group p:par so batched shapes can share one sequence slot.
   const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
   const cond = doc.createElementNS(NS_P, "p:cond");
-  cond.setAttribute("delay", nodeType === "afterEffect" && animation.delayMs ? String(animation.delayMs) : "0");
+  cond.setAttribute("delay", "0");
   stCondLst.appendChild(cond);
   cTn.appendChild(stCondLst);
 
@@ -1253,7 +1317,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
     if (lastClickGroup) {
       const clickGroupCtn = lastClickGroup.getElementsByTagNameNS(NS_P, "cTn")[0];
       const clickGroupChildren = getOrCreateChild(clickGroupCtn, NS_P, "p:childTnLst");
-      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, "0");
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, animation.delayMs ? String(animation.delayMs) : "0");
       const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
       const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
       timingGroupChildren.appendChild(shapePar);
@@ -1262,7 +1326,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
       // No click group — create one
       const clickGroup = buildClickGroupPar(slideDoc, allocTimeNodeId);
       const clickGroupChildren = clickGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
-      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId);
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, animation.delayMs ? String(animation.delayMs) : "0");
       const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
       const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
       timingGroupChildren.appendChild(shapePar);
@@ -1444,6 +1508,17 @@ export function addSlideAnimationInBase64Presentation(base64: string, animation:
   return pkg.toBase64();
 }
 
+export function addSlideAnimationToXmlShapeIdInBase64Presentation(base64: string, animation: SlideAnimationDefinition, targetXmlShapeId: string) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
+  addSlideAnimationInDocument(slideDoc, {
+    ...animation,
+    targetXmlShapeId,
+  });
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+  return pkg.toBase64();
+}
+
 /**
  * Batch-add the same animation to multiple shapes in a single Open XML round-trip.
  * The first shape uses the specified `start` trigger; all subsequent shapes use `withPrevious`.
@@ -1458,10 +1533,30 @@ export function addSlideAnimationBatchInBase64Presentation(
   for (let i = 0; i < shapeIndexes.length; i++) {
     const anim: SlideAnimationDefinition = i === 0
       ? animation
-      : { ...animation, start: "withPrevious" };
+      : { ...animation, start: "withPrevious", delayMs: undefined };
     addSlideAnimationInDocument(slideDoc, {
       ...anim,
       targetXmlShapeId: resolveAnimationTargetXmlShapeId(slideDoc, shapeIndexes[i]),
+    });
+  }
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+  return pkg.toBase64();
+}
+
+export function addSlideAnimationBatchToXmlShapeIdsInBase64Presentation(
+  base64: string,
+  animation: SlideAnimationDefinition,
+  targetXmlShapeIds: string[],
+) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
+  for (let i = 0; i < targetXmlShapeIds.length; i++) {
+    const anim: SlideAnimationDefinition = i === 0
+      ? animation
+      : { ...animation, start: "withPrevious", delayMs: undefined };
+    addSlideAnimationInDocument(slideDoc, {
+      ...anim,
+      targetXmlShapeId: targetXmlShapeIds[i],
     });
   }
   pkg.writeText(slidePath, serializeXml(slideDoc));
@@ -1500,89 +1595,218 @@ function wrapRoundTripError(error: unknown, step: string, slideIndex: number): E
   return new Error(`Slide ${slideIndex + 1} round-trip failed while ${step} slide: ${msg}${codeLabel}`);
 }
 
+// ── Slide export cache ──────────────────────────────────────────────────
+// After a successful round-trip, cache the mutated base64 so that the next
+// round-trip targeting the same slide can skip the expensive exportAsBase64()
+// call.  The cache entry is keyed by the replacement slide ID and expires
+// after a short TTL to avoid serving stale data if the user edits the slide
+// manually between tool calls.
+
+interface SlideExportCacheEntry {
+  /** The mutated base64 that was last inserted for this slide. */
+  base64: string;
+  /** Office.js slide ID of the replacement slide (cache key). */
+  slideId: string;
+  /** Slide index at the time of caching. */
+  slideIndex: number;
+  /** All slide IDs in the deck at the time of caching (for staleness detection). */
+  allSlideIds: string[];
+  /** Timestamp when the cache entry was created. */
+  timestamp: number;
+}
+
+/** TTL for cache entries in milliseconds.  Tool calls from the bridge arrive
+ *  roughly every ~750ms, so 30s gives ample headroom for a burst of
+ *  consecutive mutations while still expiring before the user is likely to
+ *  have made manual edits. */
+const SLIDE_EXPORT_CACHE_TTL_MS = 30_000;
+
+let slideExportCache: SlideExportCacheEntry | null = null;
+
+/** Exposed for testing – clear the module-level cache. */
+export function clearSlideExportCache() {
+  slideExportCache = null;
+}
+
+/** Exposed for testing – read the current cache state. */
+export function getSlideExportCache(): Readonly<SlideExportCacheEntry> | null {
+  return slideExportCache;
+}
+
+/**
+ * Try to match the cache against the current deck state.
+ * Returns the cached base64 if the cache is valid, or null if it's stale.
+ */
+function matchSlideExportCache(
+  slideIndex: number,
+  currentSlideIds: string[],
+): string | null {
+  if (!slideExportCache) return null;
+  if (Date.now() - slideExportCache.timestamp > SLIDE_EXPORT_CACHE_TTL_MS) {
+    slideExportCache = null;
+    return null;
+  }
+  // The cached slide must still be at the same index with the same ID.
+  if (slideExportCache.slideIndex !== slideIndex) return null;
+  if (currentSlideIds[slideIndex] !== slideExportCache.slideId) return null;
+  // Deck structure must not have changed (slides added/removed/reordered).
+  if (
+    currentSlideIds.length !== slideExportCache.allSlideIds.length ||
+    !currentSlideIds.every((id, i) => id === slideExportCache!.allSlideIds[i])
+  ) {
+    slideExportCache = null;
+    return null;
+  }
+  return slideExportCache.base64;
+}
+
+export interface RoundTripOptions {
+  /** Queue extra loads on the source slide proxy before the first sync.
+   *  For example, loading shapes so they're available to the mutate callback. */
+  preload?: (sourceSlide: PowerPoint.Slide) => void;
+}
+
 export async function replaceSlideWithMutatedOpenXml(
   context: PowerPoint.RequestContext,
   slideIndex: number,
-  mutate: (base64: string) => string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  options?: RoundTripOptions,
 ): Promise<OpenXmlRoundTripResult> {
   if (!isPowerPointRequirementSetSupported("1.8")) {
     throw new Error("PowerPoint Open XML slide round-tripping requires PowerPointApi 1.8.");
   }
 
+  // ── Phase 1: Load slide IDs + (maybe) export source slide in one sync ──
+  // Use getItemAt() to obtain a proxy for the source slide (and the slide
+  // before it) so that operations can be batched with the ID loads.
+  //
+  // When the slide export cache holds a valid entry for this slide, we skip
+  // the expensive exportAsBase64() call and reuse the cached base64 instead.
+  // The sync is still needed for slide ID loads, preload hooks, and to obtain
+  // the source slide proxy for deletion.
   const slides = context.presentation.slides;
-  slides.load("items");
-  await context.sync();
+  slides.load("items/id");
+  const sourceSlide = slides.getItemAt(slideIndex);
+  sourceSlide.load("id");
+  // Conditionally queue the export — we may be able to skip it if the cache hits.
+  // We always queue it here because we can't know yet if the cache is valid
+  // (we need slide IDs from the sync to check). The Office.js host will
+  // execute it regardless, but we structure the code so the cache check
+  // happens after sync. In a future optimisation we could speculatively skip
+  // the export if cache looks likely, but for now we accept the export cost
+  // as a baseline and rely on the cache for the *data* only.
+  //
+  // UPDATE: We can actually skip the export when the cache looks promising.
+  // Queue it conditionally: only when there's no cache or the cache targets a
+  // different slide index.  After sync, if the full cache validation fails we
+  // fall back to the exported value (which we queued anyway).
+  const cacheCandidate = slideExportCache?.slideIndex === slideIndex;
+  const exported = cacheCandidate ? null : sourceSlide.exportAsBase64();
+  let targetSlideProxy: PowerPoint.Slide | undefined;
+  if (slideIndex > 0) {
+    targetSlideProxy = slides.getItemAt(slideIndex - 1);
+    targetSlideProxy.load("id");
+  }
+  // Allow callers to piggyback extra loads (e.g. shapes) onto this first sync.
+  options?.preload?.(sourceSlide);
+  try {
+    await context.sync();
+  } catch (e) {
+    // Index-out-of-range from getItemAt or export failure both surface here.
+    // Invalidate cache on any error to avoid cascading stale hits.
+    slideExportCache = null;
+    throw wrapRoundTripError(e, "loading and exporting", slideIndex);
+  }
 
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
     throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
-  const sourceSlide = slides.items[slideIndex];
-  const previousSlideIds = slides.items.map((slide) => slide.id).filter(Boolean);
-  sourceSlide.load("id");
-  await context.sync();
-
   const sourceSlideId = sourceSlide.id;
-  let targetSlideId: string | undefined;
+  const previousSlideIds = slides.items.map((slide) => slide.id).filter(Boolean);
+  const targetSlideId = targetSlideProxy?.id;
 
-  if (slideIndex > 0) {
-    const previousSlide = slides.items[slideIndex - 1];
-    previousSlide.load("id");
+  // Check if the cache is valid now that we have slide IDs.
+  const cachedBase64 = matchSlideExportCache(slideIndex, previousSlideIds);
+  const sourceBase64 = cachedBase64 ?? exported?.value;
+  if (!sourceBase64) {
+    // Cache miss AND we didn't queue the export (shouldn't happen given the
+    // cacheCandidate guard, but handle it defensively).  We need a second sync
+    // to export.
+    const fallbackExported = sourceSlide.exportAsBase64();
     await context.sync();
-    targetSlideId = previousSlide.id;
+    if (!fallbackExported.value) {
+      throw new Error(`Slide ${slideIndex + 1} round-trip: failed to export slide and no cache available.`);
+    }
+    // Use the fallback; continue with the rest of the flow.
+    return replaceSlideWithMutatedOpenXmlPhase2(
+      context, slideIndex, sourceSlideId, previousSlideIds, targetSlideId,
+      sourceSlide, fallbackExported.value, mutate, slides,
+    );
   }
 
-  const exported = sourceSlide.exportAsBase64();
-  try {
-    await context.sync();
-  } catch (e) {
-    throw wrapRoundTripError(e, "exporting", slideIndex);
-  }
+  return replaceSlideWithMutatedOpenXmlPhase2(
+    context, slideIndex, sourceSlideId, previousSlideIds, targetSlideId,
+    sourceSlide, sourceBase64, mutate, slides,
+  );
+}
 
-  const mutated = mutate(exported.value);
-  const shapeIdMap = buildShapeIdMap(exported.value, mutated);
+/** Phase 2+3: Mutate the package and replace the slide.  Factored out so both
+ *  the normal and cache-miss-fallback paths can share the same logic. */
+async function replaceSlideWithMutatedOpenXmlPhase2(
+  context: PowerPoint.RequestContext,
+  slideIndex: number,
+  sourceSlideId: string,
+  previousSlideIds: string[],
+  targetSlideId: string | undefined,
+  sourceSlide: PowerPoint.Slide,
+  sourceBase64: string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  _slides: PowerPoint.SlideCollection,
+): Promise<OpenXmlRoundTripResult> {
+  // ── Phase 2: Mutate the exported (or cached) package ──────────────────
+  const mutated = mutate(sourceBase64, sourceSlide);
 
+  // ── Phase 3: Insert mutated slide, delete original, load final state ──
+  // Batch all three operations into a single sync to minimize IPC round-trips.
+  // Office.js executes queued operations sequentially within a sync, so the
+  // load will reflect the state after both insert and delete.
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
     ...(targetSlideId ? { targetSlideId } : {}),
   });
-  try {
-    await context.sync();
-  } catch (e) {
-    throw wrapRoundTripError(e, "inserting mutated", slideIndex);
-  }
-
-  const updatedSlides = context.presentation.slides;
-  updatedSlides.load("items/id");
-  await context.sync();
-
-  const originalSlide = updatedSlides.items.find((slide) => slide.id === sourceSlideId);
-  if (!originalSlide) {
-    throw new Error("Failed to locate the original slide after Open XML round-trip insertion.");
-  }
-
-  const replacementSlide = updatedSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
-  if (!replacementSlide) {
-    throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
-  }
-
-  originalSlide.delete();
-  try {
-    await context.sync();
-  } catch (e) {
-    throw wrapRoundTripError(e, "deleting original", slideIndex);
-  }
-
+  sourceSlide.delete();
   const finalSlides = context.presentation.slides;
   finalSlides.load("items/id");
-  await context.sync();
+  try {
+    await context.sync();
+  } catch (e) {
+    // Invalidate cache on any error during insertion.
+    slideExportCache = null;
+    throw wrapRoundTripError(e, "inserting mutated and deleting original", slideIndex);
+  }
+
+  // The replacement slide is the one whose ID wasn't in the original slide collection.
+  const replacementSlide = finalSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
+  if (!replacementSlide) {
+    slideExportCache = null;
+    throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
+  }
   const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
+
+  // ── Update cache with the mutated base64 for the next round-trip ──────
+  slideExportCache = {
+    base64: mutated,
+    slideId: replacementSlide.id,
+    slideIndex: finalSlideIndex,
+    allSlideIds: finalSlides.items.map((slide) => slide.id).filter(Boolean),
+    timestamp: Date.now(),
+  };
 
   return openXmlRoundTripResultSchema.parse({
     originalSlideId: sourceSlideId,
     replacementSlideId: replacementSlide.id,
     finalSlideIndex,
-    shapeIdMap,
   });
 }
 
@@ -1593,13 +1817,12 @@ export async function exportSlideAsBase64(context: PowerPoint.RequestContext, sl
 
   const slides = context.presentation.slides;
   slides.load("items");
+  const exported = slides.getItemAt(slideIndex).exportAsBase64();
   await context.sync();
   if (slideIndex < 0 || slideIndex >= slides.items.length) {
     throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
   }
 
-  const exported = slides.items[slideIndex].exportAsBase64();
-  await context.sync();
   return exported.value;
 }
 
@@ -1722,6 +1945,27 @@ const NODE_TYPE_TO_START: Record<string, string> = {
   afterEffect: "afterPrevious",
 };
 
+function readTimingDelayFromConditionList(conditionList: Element | undefined) {
+  if (!conditionList) return null;
+  const conds = conditionList.getElementsByTagNameNS(NS_P, "cond");
+  for (let j = 0; j < conds.length; j++) {
+    const delay = conds[j].getAttribute("delay");
+    if (delay && delay !== "0" && delay !== "indefinite" && !conds[j].hasAttribute("evt")) {
+      return Number.parseInt(delay, 10);
+    }
+  }
+  return null;
+}
+
+function getContainingTimingGroupCtn(shapeCtn: Element) {
+  const shapePar = shapeCtn.parentNode;
+  const timingGroupChildList = shapePar?.parentNode;
+  const timingGroupCtn = timingGroupChildList?.parentNode;
+  return timingGroupCtn?.nodeType === ELEMENT_NODE && (timingGroupCtn as Element).namespaceURI === NS_P && (timingGroupCtn as Element).localName === "cTn"
+    ? timingGroupCtn as Element
+    : null;
+}
+
 export function extractSlideAnimationSummaryFromBase64Presentation(base64: string): AnimationSummary {
   const pkg = new OpenXmlPackage(base64);
   const slidePath = getFirstSlidePath(pkg);
@@ -1783,17 +2027,14 @@ export function extractSlideAnimationSummaryFromBase64Presentation(base64: strin
       }
     }
 
-    // Get delay from stCondLst
-    let delayMs: number | null = null;
-    const stCondLst = getDirectChildByTagName(cTn, NS_P, "stCondLst");
-    if (stCondLst) {
-      const conds = stCondLst.getElementsByTagNameNS(NS_P, "cond");
-      for (let j = 0; j < conds.length; j++) {
-        const delay = conds[j].getAttribute("delay");
-        if (delay && delay !== "0" && delay !== "indefinite" && !conds[j].hasAttribute("evt")) {
-          delayMs = Number.parseInt(delay, 10);
-        }
-      }
+    // Delay can be expressed either on the shape effect cTn or on the containing
+    // timing group. The latter keeps batched shapes in one sequence step.
+    let delayMs = readTimingDelayFromConditionList(getDirectChildByTagName(cTn, NS_P, "stCondLst"));
+    if (delayMs === null) {
+      const timingGroupCtn = getContainingTimingGroupCtn(cTn);
+      delayMs = readTimingDelayFromConditionList(
+        timingGroupCtn ? getDirectChildByTagName(timingGroupCtn, NS_P, "stCondLst") : undefined,
+      );
     }
 
     animations.push({

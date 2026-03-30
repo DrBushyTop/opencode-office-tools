@@ -23,11 +23,21 @@ module.exports = defineConfig({
   build: {
     outDir: '../../dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'src/ui/index.html'),
         commands: path.resolve(__dirname, 'src/ui/commands.html'),
+      },
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('/react/') || id.includes('/react-dom/')) return 'react';
+          if (id.includes('/@fluentui/')) return 'fluentui';
+          if (id.includes('/react-markdown/') || id.includes('/remark-gfm/') || id.includes('/mdast-') || id.includes('/micromark') || id.includes('/unified/') || id.includes('/remark-') || id.includes('/rehype-')) return 'markdown';
+          if (id.includes('/zod/')) return 'zod';
+          if (id.includes('/@opencode-ai/sdk/')) return 'opencode-sdk';
+          return 'vendor';
+        },
       },
     },
   },

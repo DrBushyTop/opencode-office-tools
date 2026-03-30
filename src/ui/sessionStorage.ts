@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sessionUsageSchema } from "./lib/opencode-usage";
 
 const dateSchema = z.preprocess((value) => {
   if (value instanceof Date) return value;
@@ -35,6 +36,7 @@ export const savedSessionSchema = z.object({
   title: z.string(),
   model: z.string(),
   messages: z.array(savedMessageSchema),
+  usage: sessionUsageSchema.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

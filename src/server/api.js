@@ -69,6 +69,13 @@ function bridgeAccessToken(req) {
   return String(req.get('x-office-bridge-token') || '');
 }
 
+function disableOfficeToolCaching(_req, res, next) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+}
+
 function sendExecuteResponse(res, bridge, body, token) {
   return (async () => {
     const args = body && Object.prototype.hasOwnProperty.call(body, 'args') ? body.args : {};
@@ -87,6 +94,7 @@ function readRecentLogs(limit = 200) {
 function createApiRouter(runtime, bridge) {
   const apiRouter = express.Router();
   apiRouter.use(express.json({ limit: '50mb' }));
+  apiRouter.use('/office-tools', disableOfficeToolCaching);
   apiRouter.use((req, res, next) => {
     const startedAt = Date.now();
     const requestId = Math.random().toString(36).slice(2, 8);
@@ -466,11 +474,18 @@ function createApiRouter(runtime, bridge) {
     res.json({ sessionToken: bridge.issueClientSession() });
   });
 
-  apiRouter.get('/office-tools/poll', (req, res) => {
+  apiRouter.get('/office-tools/poll', async (req, res) => {
     try {
-      res.json({ request: bridge.poll(bridgeExecutorId(req), bridgeSessionToken(req)) });
+      const controller = new AbortController();
+      res.on('close', () => controller.abort());
+      const request = await bridge.poll(bridgeExecutorId(req), bridgeSessionToken(req), controller.signal);
+      if (!res.writableEnded) {
+        res.json({ request });
+      }
     } catch (error) {
-      res.status(401).json({ error: error.message });
+      if (!res.writableEnded) {
+        res.status(401).json({ error: error.message });
+      }
     }
   });
 
@@ -503,6 +518,7 @@ function createApiRouter(runtime, bridge) {
 function createBridgeRouter(bridge) {
   const bridgeRouter = express.Router();
   bridgeRouter.use(express.json({ limit: '5mb' }));
+  bridgeRouter.use('/office-tools', disableOfficeToolCaching);
 
   bridgeRouter.post('/office-tools/execute', async (req, res) => {
     try {

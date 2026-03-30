@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getLatestSessionUsage } from "./opencode-usage";
 import { jsonObjectSchema, opencodeMessagePartSchema, type OpencodeMessage, opencodeMessageSchema } from "./opencode-schemas";
 
 export const uiEventSchema = z.object({
@@ -199,12 +200,13 @@ export function getLatestAssistantMessage(messages: unknown[]): UiEvent | null {
 
   const content = getAssistantText(latest);
   const parts = getAssistantParts(latest);
+  const usage = getLatestSessionUsage([latest]);
   if (!content && parts.length === 0) return null;
 
   return {
     type: "assistant.message",
     id: latest.info.id,
     timestamp: new Date(latest.info.time.completed || latest.info.time.created || Date.now()).toISOString(),
-    data: { content, parts },
+    data: { content, parts, usage: usage || undefined },
   };
 }

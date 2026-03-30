@@ -87,12 +87,12 @@ function countTools(items: z.infer<typeof SessionMessageItemSchema>[]) {
 }
 
 function lastDoneTool(items: z.infer<typeof SessionMessageItemSchema>[]) {
-  return items
+  const parts = items
     .flatMap((item) => item.info?.role === "assistant" && Array.isArray(item.parts) ? item.parts : [])
     .filter((part) => part.type === "tool" && !!part.tool)
     .filter((part) => part.state?.status === "completed" || part.state?.status === "error")
-    .sort((a, b) => (a.state?.time?.end || a.state?.time?.start || 0) - (b.state?.time?.end || b.state?.time?.start || 0))
-    .at(-1);
+    .sort((a, b) => (a.state?.time?.end || a.state?.time?.start || 0) - (b.state?.time?.end || b.state?.time?.start || 0));
+  return parts[parts.length - 1];
 }
 
 function durationText(ms: number) {
@@ -209,21 +209,39 @@ function formatToolCall(toolName: string, args: Record<string, unknown>): { icon
 const useStyles = makeStyles({
   chatContainer: {
     flex: 1,
-    overflowY: "scroll",
-    padding: "20px 14px 14px",
+    minHeight: 0,
+    overflowY: "auto",
+    padding: "14px 0 0",
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
+    gap: "18px",
     scrollbarColor: "var(--oc-text-faint) transparent",
     scrollbarWidth: "thin",
+    "&::-webkit-scrollbar": {
+      width: "8px",
+    },
+    "&::-webkit-scrollbar-track": {
+      backgroundColor: "transparent",
+    },
+    "&::-webkit-scrollbar-thumb": {
+      backgroundColor: "var(--oc-text-faint)",
+      borderRadius: "999px",
+      border: "2px solid transparent",
+      backgroundClip: "content-box",
+    },
+    "&::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "var(--oc-text-muted)",
+    },
   },
   content: {
     width: "100%",
     maxWidth: "760px",
     margin: "0 auto",
+    padding: "0 14px 24px",
+    boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
-    gap: "24px",
+    gap: "18px",
     minHeight: "100%",
   },
   emptyState: {
@@ -234,46 +252,56 @@ const useStyles = makeStyles({
     height: "100%",
     minHeight: "100%",
     textAlign: "center",
-    color: "var(--oc-text-faint)",
-    gap: "8px",
+    color: "var(--text-weak)",
+    gap: "10px",
   },
   emptyTitle: {
-    fontSize: "28px",
+    fontSize: "26px",
     lineHeight: "1.2",
-    color: "var(--oc-text)",
+    color: "var(--text-strong)",
     fontWeight: "500",
   },
   emptyMeta: {
     fontSize: "13px",
-    color: "var(--oc-text-muted)",
+    color: "var(--text-base)",
   },
   assistantIcon: {
-    width: "24px",
-    height: "24px",
-    borderRadius: "6px",
+    display: "none",
   },
   messageUser: {
-    alignSelf: "flex-end",
-    backgroundColor: "var(--oc-accent-bg)",
-    color: "var(--oc-text)",
-    padding: "10px 14px",
-    borderRadius: "12px",
-    maxWidth: "70%",
-    wordWrap: "break-word",
-    border: "1px solid rgba(3, 76, 255, 0.10)",
+    alignSelf: "stretch",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "8px",
+    width: "100%",
+    color: "var(--text-strong)",
+  },
+  userBody: {
+    width: "fit-content",
+    maxWidth: "min(82%, 64ch)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "8px",
+  },
+  userText: {
+    display: "inline-block",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    background: "var(--oc-user-bubble)",
+    border: "1px solid var(--oc-user-border)",
+    padding: "8px 12px",
+    borderRadius: "6px",
+    maxWidth: "100%",
   },
   messageAssistant: {
-    alignSelf: "flex-start",
-    maxWidth: "100%",
+    alignSelf: "stretch",
+    width: "100%",
     minWidth: 0,
-    wordWrap: "break-word",
-    overflowWrap: "anywhere",
-    display: "grid",
-    gridTemplateColumns: "24px 1fr",
-    gap: "10px",
-    alignItems: "start",
-    justifyItems: "center",
-    color: "var(--oc-text)",
+    boxSizing: "border-box",
+    color: "var(--text-strong)",
     "& p:first-child": {
       marginTop: 0,
     },
@@ -284,8 +312,9 @@ const useStyles = makeStyles({
   assistantBody: {
     width: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     lineHeight: "1.6",
-    color: "var(--oc-text)",
+    color: "var(--text-strong)",
     "& pre": {
       background: "var(--oc-bg-strong)",
       border: "1px solid var(--oc-border)",
@@ -293,44 +322,45 @@ const useStyles = makeStyles({
       padding: "10px 12px",
       overflowX: "auto",
     },
-    "& code": {
+    "& :not(pre) > code": {
       background: "var(--oc-bg-soft)",
       borderRadius: "6px",
       padding: "1px 4px",
     },
   },
   messageThinking: {
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
     width: "100%",
-    maxWidth: "100%",
     minWidth: 0,
-    padding: "10px 12px",
-    borderRadius: "12px",
-    border: "1px solid rgba(130, 118, 255, 0.18)",
-    background: "linear-gradient(180deg, rgba(130, 118, 255, 0.08), rgba(130, 118, 255, 0.03))",
-    color: "var(--oc-text-muted)",
-    fontSize: "13px",
+    boxSizing: "border-box",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "var(--oc-thinking-bg)",
+    border: "1px solid var(--oc-thinking-border)",
+    color: "var(--text-weak)",
+    fontSize: "14px",
   },
   thinkingHeader: {
     display: "flex",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: "8px",
     marginBottom: "8px",
     fontSize: "12px",
-    color: "#9b7b67",
-    fontStyle: "italic",
+    letterSpacing: "0.02em",
+    color: "var(--oc-thinking-label)",
+  },
+  thinkingLabel: {
+    color: "var(--oc-thinking-label)",
   },
   thinkingTitle: {
-    fontWeight: 600,
-    fontStyle: "normal",
-    color: "#b28b63",
+    fontWeight: 500,
+    color: "var(--oc-thinking-title)",
     overflowWrap: "anywhere",
   },
   thinkingBody: {
     minWidth: 0,
     lineHeight: "1.6",
-    color: "var(--oc-text-muted)",
+    color: "var(--text-weak)",
     overflowWrap: "anywhere",
     "& p:first-child": {
       marginTop: 0,
@@ -345,117 +375,118 @@ const useStyles = makeStyles({
       padding: "10px 12px",
       overflowX: "auto",
     },
-    "& code": {
+    "& :not(pre) > code": {
       background: "var(--oc-bg-soft)",
       borderRadius: "6px",
       padding: "1px 4px",
     },
-  },
-  messageTool: {
-    alignSelf: "flex-start",
-    fontSize: "12px",
-    color: "var(--oc-text-muted)",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "6px 10px",
-    borderRadius: "999px",
-    backgroundColor: "var(--oc-bg-soft)",
-    border: "1px solid var(--oc-border)",
-    transition: "background-color 0.15s",
-    ":hover": {
-      backgroundColor: "var(--oc-bg-soft-hover)",
+    "& h1, & h2, & h3, & h4, & h5, & h6": {
+      color: "var(--oc-thinking-title)",
     },
   },
-  messageTask: {
-    alignSelf: "flex-start",
+  messageTool: {
+    alignSelf: "stretch",
     width: "100%",
-    maxWidth: "100%",
-    minWidth: 0,
-    cursor: "pointer",
+  },
+  messageTask: {
+    alignSelf: "stretch",
+    width: "100%",
+  },
+  toolCard: {
+    width: "100%",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    padding: "12px 14px",
-    borderRadius: "14px",
-    background: "linear-gradient(180deg, rgba(18, 125, 117, 0.10), rgba(18, 125, 117, 0.04))",
-    border: "1px solid rgba(18, 125, 117, 0.18)",
-    transition: "background-color 0.15s, border-color 0.15s",
-    ":hover": {
-      background: "linear-gradient(180deg, rgba(18, 125, 117, 0.14), rgba(18, 125, 117, 0.06))",
-      border: "1px solid rgba(18, 125, 117, 0.28)",
-    },
+  },
+  toolTrigger: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "8px",
+    width: "100%",
+    minWidth: 0,
+  },
+  toolToggle: {
+    appearance: "none",
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    margin: 0,
+    width: "100%",
+    textAlign: "left",
+    cursor: "pointer",
+    color: "inherit",
+    font: "inherit",
+  },
+  toolMain: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "8px",
+    minWidth: 0,
+    flexWrap: "wrap",
+    color: "var(--text-base)",
+    fontSize: "14px",
+    lineHeight: "1.5",
+  },
+  toolTitleText: {
+    color: "var(--text-strong)",
+    fontWeight: 500,
+  },
+  toolMetaText: {
+    color: "var(--text-base)",
+    minWidth: 0,
+    overflowWrap: "anywhere",
+  },
+  toolStatus: {
+    marginLeft: "auto",
+    color: "var(--text-weak)",
+    fontSize: "12px",
+    whiteSpace: "nowrap",
   },
   taskHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    minWidth: 0,
-    gap: "12px",
+    display: "contents",
   },
   taskBody: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
+    display: "contents",
   },
   taskTitle: {
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-    gap: "8px",
-    color: "var(--oc-text)",
-    fontSize: "13px",
-    fontWeight: 600,
-    overflowWrap: "anywhere",
+    display: "contents",
+  },
+  taskTitleText: {
+    color: "var(--text-strong)",
+    fontWeight: 500,
   },
   taskMeta: {
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-    gap: "8px",
-    color: "var(--oc-text-muted)",
-    fontSize: "12px",
-    flexWrap: "wrap",
-    overflowWrap: "anywhere",
+    display: "contents",
   },
   taskCount: {
-    color: "#127d75",
-    fontWeight: 600,
+    color: "var(--text-base)",
+    fontWeight: 400,
   },
   taskBadge: {
-    flexShrink: 0,
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
-    padding: "4px 8px",
+    padding: "2px 8px",
     borderRadius: "999px",
     fontSize: "11px",
-    fontWeight: 700,
-    letterSpacing: "0.02em",
-    background: "rgba(18, 125, 117, 0.10)",
-    color: "#0b6e67",
-    border: "1px solid rgba(18, 125, 117, 0.16)",
+    fontWeight: 600,
+    background: "var(--oc-bg-soft)",
+    color: "var(--text-weak)",
+    border: "1px solid var(--oc-border)",
     whiteSpace: "nowrap",
   },
   taskBadgeDone: {
-    background: "rgba(20, 124, 64, 0.10)",
-    color: "#147c40",
-    border: "1px solid rgba(20, 124, 64, 0.16)",
+    color: "var(--oc-success)",
   },
   taskBadgeError: {
-    background: "rgba(196, 64, 64, 0.10)",
-    color: "#b42318",
-    border: "1px solid rgba(196, 64, 64, 0.16)",
+    color: "var(--oc-danger-text)",
   },
   taskSpinner: {
     width: "10px",
     height: "10px",
     borderRadius: "50%",
-    border: "2px solid rgba(11, 110, 103, 0.18)",
-    borderTopColor: "#0b6e67",
+    border: "2px solid var(--oc-border)",
+    borderTopColor: "var(--oc-accent)",
     animationName: {
       from: { transform: "rotate(0deg)" },
       to: { transform: "rotate(360deg)" },
@@ -466,39 +497,45 @@ const useStyles = makeStyles({
   },
   toolIcon: {
     fontSize: "14px",
+    flexShrink: 0,
   },
   toolArgs: {
-    fontSize: "11px",
-    fontFamily: "monospace",
+    fontSize: "12px",
+    fontFamily: '"IBM Plex Mono", "SFMono-Regular", "Consolas", monospace',
     whiteSpace: "pre-wrap",
-    marginTop: "4px",
-    color: "var(--oc-text-faint)",
+    color: "var(--text-base)",
+    overflowWrap: "anywhere",
   },
   toolDetail: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "10px",
     width: "100%",
+    marginLeft: "22px",
+    padding: "12px",
+    borderRadius: "12px",
+    background: "var(--oc-bg-soft)",
+    border: "1px solid var(--oc-border)",
   },
   toolLabel: {
     fontSize: "10px",
     fontWeight: 700,
     letterSpacing: "0.04em",
     textTransform: "uppercase",
-    color: "var(--oc-text-faint)",
+    color: "var(--text-weak)",
   },
   attachmentContainer: {
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
-    marginTop: "8px",
+    justifyContent: "flex-end",
   },
   attachmentThumbnail: {
-    width: "120px",
-    height: "120px",
-    borderRadius: "8px",
+    width: "64px",
+    height: "64px",
+    borderRadius: "10px",
     objectFit: "cover",
-    border: "2px solid rgba(255, 255, 255, 0.3)",
+    border: "1px solid var(--oc-border)",
   },
   attachmentBadge: {
     fontSize: "11px",
@@ -509,7 +546,7 @@ const useStyles = makeStyles({
     gap: "4px",
   },
   streamingIndicator: {
-    color: "var(--oc-text-muted)",
+    color: "var(--text-weak)",
     display: "flex",
     alignItems: "center",
     gap: "4px",
@@ -530,7 +567,7 @@ const StreamingDots: React.FC = () => {
             width: 4px;
             height: 4px;
             border-radius: 50%;
-            background-color: var(--colorNeutralForeground3, #666);
+            background-color: var(--text-weak, #666);
             animation: pulse-dot 1.4s ease-in-out infinite;
           }
           @keyframes progress-slide {
@@ -541,7 +578,7 @@ const StreamingDots: React.FC = () => {
             height: 2px;
             width: 100%;
             border-radius: 1px;
-            background: var(--colorNeutralBackground3, #e0e0e0);
+            background: var(--oc-bg-soft, #e0e0e0);
             overflow: hidden;
             margin-top: 6px;
           }
@@ -549,7 +586,7 @@ const StreamingDots: React.FC = () => {
             height: 100%;
             width: 25%;
             border-radius: 1px;
-            background: var(--colorBrandBackground, #0078d4);
+            background: var(--oc-accent, #0078d4);
             animation: progress-slide 1.5s ease-in-out infinite;
           }
         `}
@@ -579,7 +616,7 @@ const ElapsedTime: React.FC = () => {
 
   if (elapsed < 3) return null;
   return (
-    <span style={{ fontSize: '11px', color: 'var(--colorNeutralForeground3, #999)', marginLeft: '6px' }}>
+    <span style={{ fontSize: '11px', color: 'var(--text-weak, #999)', marginLeft: '6px' }}>
       {elapsed}s
     </span>
   );
@@ -599,29 +636,40 @@ function cleanThinking(value: string) {
     .trim();
 }
 
-function thinkingHeading(text: string) {
+function leadingThinkingHeading(text: string) {
   const markdown = text.replace(/\r\n?/g, "\n");
-  const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+  const html = markdown.match(/^\s*<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*(?:\n+)?/i);
   if (html?.[1]) {
     const value = cleanThinking(html[1].replace(/<[^>]+>/g, " "));
-    if (value) return value;
+    if (value) return { title: value, length: html[0].length };
   }
-  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
+  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?\s*(?:\n+)?/);
   if (atx?.[1]) {
     const value = cleanThinking(atx[1]);
-    if (value) return value;
+    if (value) return { title: value, length: atx[0].length };
   }
-  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*$/m);
+  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*\n*(?:\n+)?/);
   if (setext?.[1]) {
     const value = cleanThinking(setext[1]);
-    if (value) return value;
+    if (value) return { title: value, length: setext[0].length };
   }
-  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/m);
+  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*\n*(?:\n+)?/);
   if (strong?.[1]) {
     const value = cleanThinking(strong[1]);
-    if (value) return value;
+    if (value) return { title: value, length: strong[0].length };
   }
-  return "";
+  return null;
+}
+
+function thinkingHeading(text: string) {
+  return leadingThinkingHeading(text)?.title || "";
+}
+
+function stripThinkingHeading(text: string) {
+  const markdown = text.replace(/\r\n?/g, "\n");
+  const match = leadingThinkingHeading(markdown);
+  if (!match) return markdown;
+  return markdown.slice(match.length).trim();
 }
 
 // Live traffic counter that polls trafficStats (reset by App before each query)
@@ -649,11 +697,11 @@ const TrafficCounter: React.FC = () => {
       gap: '6px',
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: 'var(--colorNeutralForeground3, #999)',
+      color: 'var(--text-weak, #999)',
       marginLeft: '8px',
       transition: 'color 0.2s',
     }}>
-      <span style={{ color: flash ? 'var(--colorBrandBackground, #0078d4)' : undefined, transition: 'color 0.2s' }}>
+      <span style={{ color: flash ? 'var(--oc-accent, #0078d4)' : undefined, transition: 'color 0.2s' }}>
         ↓{formatBytes(stats.bytesIn)}
       </span>
       <span>↑{formatBytes(stats.bytesOut)}</span>
@@ -695,22 +743,21 @@ const TaskToolMessage: React.FC<{
     : [toolCountText(info.count ?? 0, false), elapsed].filter(Boolean).join(" • ");
 
   return (
-    <div className={styles.messageTask} onClick={toggle} title="Click to show details">
-      <div className={styles.taskHead}>
-        <div className={styles.taskBody}>
-          <div className={styles.taskTitle}>
+    <div className={styles.messageTask}>
+      <div className={styles.toolCard}>
+        <button type="button" className={styles.toolToggle} onClick={toggle} aria-expanded={expanded} title="Click to show details">
+          <div className={styles.toolTrigger}>
             <span className={styles.toolIcon}>🧠</span>
-            <span>{summarizeTaskTool(message.toolArgs || {})}</span>
+            <div className={styles.toolMain}>
+              <span className={styles.taskTitleText}>{summarizeTaskTool(message.toolArgs || {})}</span>
+              <span className={styles.toolMetaText}>{meta}</span>
+            </div>
+            <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
+              {running && <span className={styles.taskSpinner} />}
+              <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
+            </div>
           </div>
-          <div className={styles.taskMeta}>
-            <span className={styles.taskCount}>{meta}</span>
-          </div>
-        </div>
-
-        <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
-          {running && <span className={styles.taskSpinner} />}
-          <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
-        </div>
+        </button>
       </div>
 
       {expanded && (
@@ -747,6 +794,7 @@ const ToolMessage: React.FC<{
   const toolDisplay = message.toolName
     ? formatToolCall(message.toolName, message.toolArgs || {})
     : null;
+  const toolTitle = message.toolName ? message.toolName.replace(/_/g, " ") : "tool";
 
   if (message.toolName === "task") {
     return <TaskToolMessage message={message} expanded={expanded} toggle={toggle} showToolResponses={showToolResponses} />;
@@ -755,9 +803,19 @@ const ToolMessage: React.FC<{
   if (!toolDisplay) return null;
 
   return (
-    <div className={styles.messageTool} onClick={toggle} title="Click to show details">
-      <span className={styles.toolIcon}>{toolDisplay.icon}</span>
-      <span>{toolDisplay.description}</span>
+    <div className={styles.messageTool}>
+      <div className={styles.toolCard}>
+        <button type="button" className={styles.toolToggle} onClick={toggle} aria-expanded={expanded} title="Click to show details">
+          <div className={styles.toolTrigger}>
+            <span className={styles.toolIcon}>{toolDisplay.icon}</span>
+            <div className={styles.toolMain}>
+              <span className={styles.toolTitleText}>{toolTitle}</span>
+              <span className={styles.toolMetaText}>{toolDisplay.description}</span>
+            </div>
+            <span className={styles.toolStatus}>{message.toolStatus === "running" ? "Running" : message.toolStatus === "error" ? "Error" : "Done"}</span>
+          </div>
+        </button>
+      </div>
       {expanded && (
         <div className={styles.toolDetail}>
           <div>
@@ -846,10 +904,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={styles.content}>
-        {safeMessages.length === 0 && !isConnecting && (
+        {visibleHistory.length === 0 && visibleLive.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
             <div className={styles.emptyTitle}>What can I do for you?</div>
-            <div className={styles.emptyMeta}>{hostLabel ? `${hostLabel} workspace` : "Open document workspace"}</div>
+            <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}` : "Connected to your document"}</div>
           </div>
         )}
 
@@ -860,58 +918,60 @@ export const MessageList: React.FC<MessageListProps> = ({
         )}
 
         {[...visibleHistory, ...visibleLive].map((message) => {
-        return (
-        <div
-          key={message.id}
-          className={
-            message.sender === "user" ? styles.messageUser : 
-             message.sender === "tool" ? undefined :
-              message.sender === "thinking" ? styles.messageThinking :
-              styles.messageAssistant
-            }
-        >
-          {message.sender === "tool" ? (
-            <ToolMessage
-              message={message}
-              expanded={expandedTools.has(message.id)}
-              toggle={() => toggleTool(message.id)}
-              showToolResponses={showToolResponses}
-            />
-          ) : message.sender === "assistant" ? (
-            <>
-              <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
-              <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
-            </>
-          ) : message.sender === "thinking" ? (
-            <>
-              <div className={styles.thinkingHeader}>
-                <span>Thinking:</span>
-                <span className={styles.thinkingTitle}>{thinkingHeading(message.text) || currentActivity || "Reasoning"}</span>
-              </div>
-              <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
-            </>
-          ) : (
-            <>
-              {message.text}
-              {message.images && message.images.length > 0 && (
-                <div className={styles.attachmentContainer}>
-                  {message.images.map((img, idx) => (
-                    <div key={idx}>
-                      <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
-                      <div className={styles.attachmentBadge}>📎 {img.name}</div>
+          const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
+          const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
+
+          return (
+            <div
+              key={message.id}
+              className={
+                message.sender === "user"
+                  ? styles.messageUser
+                  : message.sender === "tool"
+                    ? undefined
+                    : message.sender === "thinking"
+                      ? styles.messageThinking
+                      : styles.messageAssistant
+              }
+            >
+              {message.sender === "tool" ? (
+                <ToolMessage
+                  message={message}
+                  expanded={expandedTools.has(message.id)}
+                  toggle={() => toggleTool(message.id)}
+                  showToolResponses={showToolResponses}
+                />
+              ) : message.sender === "assistant" ? (
+                <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
+              ) : message.sender === "thinking" ? (
+                <>
+                  <div className={styles.thinkingHeader}>
+                    <span className={styles.thinkingLabel}>Thinking</span>
+                    <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
+                  </div>
+                  {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
+                </>
+              ) : (
+                <div className={styles.userBody}>
+                  {message.images && message.images.length > 0 && (
+                    <div className={styles.attachmentContainer}>
+                      {message.images.map((img, idx) => (
+                        <div key={idx}>
+                          <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
+                          <div className={styles.attachmentBadge}>📎 {img.name}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  <div className={styles.userText}>{message.text}</div>
                 </div>
               )}
-            </>
-          )}
-        </div>
-      );
+            </div>
+          );
         })}
 
         {isTyping && visibleLive.length === 0 && (
           <div className={styles.messageAssistant}>
-            <img src="/icon-32.png" alt="" className={styles.assistantIcon} />
             <div className={styles.assistantBody}>
               <>
                 <span className={styles.streamingIndicator}>
@@ -922,20 +982,20 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
               </>
               <TrafficCounter />
-               {safeDebugEvents && safeDebugEvents.length > 0 && (
-                <div style={{
-                  marginTop: '8px',
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  fontSize: '10px',
-                  fontFamily: 'monospace',
-                  lineHeight: '1.6',
-                  color: 'var(--oc-text-faint, #999)',
-                  backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
-                  border: '1px solid var(--oc-border, #e5e5e5)',
-                }}>
+                {safeDebugEvents && safeDebugEvents.length > 0 && (
+                 <div style={{
+                   marginTop: '8px',
+                   maxHeight: '120px',
+                   overflowY: 'auto',
+                   fontSize: '10px',
+                   fontFamily: 'monospace',
+                   lineHeight: '1.6',
+                   color: 'var(--text-weak, #999)',
+                   backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
+                   borderRadius: '8px',
+                   padding: '6px 8px',
+                   border: '1px solid var(--oc-border, #e5e5e5)',
+                 }}>
                   {safeDebugEvents.map((ev, i) => (
                     <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <span style={{ color: 'var(--oc-accent, #0078d4)' }}>{ev.type}</span>

@@ -15,7 +15,10 @@ import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
-import { trafficStats } from "./lib/opencode-events";
+import { trafficStats, type UiEvent } from "./lib/opencode-events";
+import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
+import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
+import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions } from "./lib/ui-theme";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
@@ -62,10 +65,9 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    padding: "10px",
     boxSizing: "border-box",
-    background: "var(--oc-page)",
-    color: "var(--oc-text)",
+    background: "var(--background-base)",
+    color: "var(--text-strong)",
     fontFamily: '"Inter", "Segoe UI", sans-serif',
   },
   shell: {
@@ -73,16 +75,14 @@ const useStyles = makeStyles({
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
-    borderRadius: "14px",
-    background: "var(--oc-bg)",
-    border: "1px solid var(--oc-border)",
-    boxShadow: "var(--oc-shadow)",
+    background: "var(--background-stronger)",
     overflow: "hidden",
   },
   error: {
-    margin: "0 12px 8px",
-    padding: "10px 12px",
-    borderRadius: "10px",
+    margin: "0 auto 12px",
+    width: "min(100%, 760px)",
+    padding: "12px 14px",
+    borderRadius: "12px",
     background: "var(--oc-danger-bg)",
     border: "1px solid var(--oc-danger-border)",
     color: "var(--oc-danger-text)",
@@ -93,28 +93,19 @@ function getHostLabel(host: OfficeHost) {
   return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : host === "onenote" ? "OneNote" : "Word";
 }
 
-function getSurfaceVars(isDarkMode: boolean): React.CSSProperties {
-  return {
-    "--oc-page": isDarkMode ? "#131010" : "#f3f3f3",
-    "--oc-bg": isDarkMode ? "#1b1818" : "#fcfcfc",
-    "--oc-bg-strong": isDarkMode ? "#252121" : "#f8f8f8",
-    "--oc-bg-soft": isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-    "--oc-bg-soft-hover": isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
-    "--oc-border": isDarkMode ? "rgba(255,255,255,0.10)" : "#e5e5e5",
-    "--oc-border-strong": isDarkMode ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.14)",
-    "--oc-text": isDarkMode ? "#f1ecec" : "#171717",
-    "--oc-text-muted": isDarkMode ? "#b7b1b1" : "#6f6f6f",
-    "--oc-text-faint": isDarkMode ? "#7f7979" : "#8f8f8f",
-    "--oc-accent": isDarkMode ? "#89b5ff" : "#034cff",
-    "--oc-accent-strong": isDarkMode ? "#2558d0" : "#0443de",
-    "--oc-accent-bg": isDarkMode ? "rgba(137,181,255,0.16)" : "#ecf3ff",
-    "--oc-shadow": isDarkMode
-      ? "0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.24)"
-      : "0 0 0 1px rgba(0,0,0,0.05), 0 16px 48px rgba(0,0,0,0.06)",
-    "--oc-danger-bg": isDarkMode ? "rgba(252, 83, 58, 0.14)" : "#fff2f0",
-    "--oc-danger-border": isDarkMode ? "rgba(252, 83, 58, 0.28)" : "rgba(252, 83, 58, 0.24)",
-    "--oc-danger-text": isDarkMode ? "#fe806a" : "#ed4831",
-  } as React.CSSProperties;
+function isDarkHex(value: string) {
+  const normalized = value.replace("#", "");
+  const expanded = normalized.length === 3
+    ? normalized.split("").map((char) => `${char}${char}`).join("")
+    : normalized;
+
+  if (expanded.length !== 6) return false;
+
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance < 140;
 }
 
 const FALLBACK_MODELS: ModelInfo[] = [
@@ -204,6 +195,14 @@ function mergeLiveMessages(
   const index = previous.findIndex((item) => item.id === next.id);
   if (index === -1) return [...previous, next];
   return previous.map((item, current) => current === index ? { ...item, ...next } : item);
+}
+
+function mergeMessages(previous: Message[], next: Message[]) {
+  return next.reduce((result, item) => {
+    const index = result.findIndex((entry) => entry.id === item.id);
+    if (index === -1) return [...result, item];
+    return result.map((entry, current) => current === index ? { ...entry, ...item } : entry);
+  }, previous);
 }
 
 function qaModel(config: OpencodeConfig) {
@@ -302,6 +301,12 @@ function toPromptParts(text: string, images: Array<{ path: string; name: string;
   ];
 }
 
+type SessionStream = {
+  sessionId: string;
+  ready: Promise<void>;
+  close: () => void;
+};
+
 export const App: React.FC = () => {
   const styles = useStyles();
   const client = useMemo(() => createOpencodeClient(), []);
@@ -321,39 +326,251 @@ export const App: React.FC = () => {
   const [showThinking, setShowThinking] = useLocalStorage<boolean>("opencode-show-thinking", true);
   const [showToolResponses, setShowToolResponses] = useLocalStorage<boolean>("opencode-show-tool-responses", false);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
+  const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
-  const [runtimeMode, setRuntimeMode] = useState<string>("");
+  const [usage, setUsage] = useState<SessionUsage | null>(null);
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
+  const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
   const isDarkMode = useIsDarkMode();
   const safeSelectedModel = PersistedModelSchema.catch("").parse(selectedModel);
   const safeDebugEnabled = PersistedBooleanSchema.catch(false).parse(debugEnabled);
   const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
   const safeShowToolResponses = PersistedBooleanSchema.catch(false).parse(showToolResponses);
   const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
+  const safeSelectedThemeId = themeOptions.some((theme) => theme.id === selectedThemeId) ? selectedThemeId : defaultThemeId;
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
+  const usageSummary = useMemo(() => formatTokenUsage(usage, availableModels), [availableModels, usage]);
+  const enabledToolCount = useMemo(
+    () => Object.values(getEnabledTools(officeHost)).filter(Boolean).length,
+    [officeHost],
+  );
+  const themeMode = isDarkMode ? "dark" : "light";
+  const resolvedTheme = useMemo(() => resolveThemeTokens(safeSelectedThemeId), [safeSelectedThemeId]);
+  const fluentTheme = isDarkHex(resolvedTheme[themeMode].background) ? webDarkTheme : webLightTheme;
+  const surfaceVars = useMemo(
+    () => getThemeCssVars(safeSelectedThemeId, themeMode) as React.CSSProperties,
+    [safeSelectedThemeId, themeMode],
+  );
+  const connectionStatus = useMemo(() => deriveConnectionIndicator(connectionState), [connectionState]);
   const sessionCreatedAt = useRef<string>("");
-  const started = useRef(false);
-  const run = useRef<AbortController | null>(null);
+  const messagesRef = useRef<Message[]>([]);
   const liveRef = useRef<Message[]>([]);
+  const streamRef = useRef<SessionStream | null>(null);
+  const eventHandlerRef = useRef<(event: UiEvent) => void>(() => undefined);
+
+  useEffect(() => {
+    if (safeSelectedThemeId !== selectedThemeId) {
+      setSelectedThemeId(safeSelectedThemeId);
+    }
+  }, [safeSelectedThemeId, selectedThemeId, setSelectedThemeId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     liveRef.current = liveMessages;
   }, [liveMessages]);
 
+  const upsertStreamMessage = (next: Message) => {
+    if (messagesRef.current.some((item) => item.id === next.id)) {
+      setMessages((prev) => mergeMessages(prev, [next]));
+      return;
+    }
+
+    setLiveMessages((prev) => mergeLiveMessages(prev, next));
+  };
+
+  eventHandlerRef.current = (event: UiEvent) => {
+    const data = event.data || {};
+    const preview = previewEvent(event.type, data);
+
+    setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
+    setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
+
+    if (event.type === "assistant.message_delta") {
+      setIsTyping(true);
+      upsertStreamMessage({
+        id: String(event.id || `assistant-${Date.now()}`),
+        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("");
+      return;
+    }
+
+    if (event.type === "assistant.message") {
+      const nextUsage = sessionUsageSchema.nullish().catch(null).parse(data.usage);
+      if (nextUsage) setUsage(nextUsage);
+      const parts = Array.isArray(data.parts) ? data.parts : [];
+      const mapped = mapAssistantParts(parts, Date.now());
+      const kept = carry(liveRef.current, mapped);
+      setLiveMessages([]);
+      setCurrentActivity("");
+      if (mapped.length > 0) {
+        setMessages((prev) => mergeMessages(prev, [...kept, ...mapped]));
+        return;
+      }
+      const text = String(data.content || "");
+      if (text || kept.length > 0) {
+        setMessages((prev) => mergeMessages(prev, [...kept, ...(!text ? [] : [{
+          id: String(event.id || crypto.randomUUID()),
+          text,
+          sender: "assistant" as const,
+          timestamp: new Date(event.timestamp || Date.now()),
+        }])]));
+      }
+      return;
+    }
+
+    if (event.type === "tool.execution_start") {
+      setIsTyping(true);
+      const toolName = String(data.toolName || "tool");
+      const toolArgs = (data.arguments || {}) as Record<string, unknown>;
+      const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
+      const toolMeta = redactSensitiveFields((data.metadata || {}) as Record<string, unknown>) as Record<string, unknown>;
+      setCurrentActivity(describeToolActivity(toolName, toolArgs));
+      upsertStreamMessage({
+        id: String(event.id || crypto.randomUUID()),
+        text: JSON.stringify(safeToolArgs, null, 2),
+        sender: "tool",
+        startedAt: new Date(),
+        toolName,
+        toolArgs: safeToolArgs,
+        toolMeta,
+        toolStatus: "running",
+        timestamp: new Date(),
+      });
+      return;
+    }
+
+    if (event.type === "tool.execution_complete") {
+      setIsTyping(true);
+      const toolId = String(event.id || crypto.randomUUID());
+
+      if (data.error) {
+        const text = String(data.error);
+        setCurrentActivity("");
+        const tool = [...messagesRef.current, ...liveRef.current].find((item) => item.id === toolId);
+        upsertStreamMessage({
+          id: toolId,
+          text: tool?.text || "{}",
+          sender: "tool",
+          startedAt: tool?.startedAt,
+          finishedAt: new Date(),
+          toolName: String(data.toolName || tool?.toolName || "tool"),
+          toolArgs: tool?.toolArgs || {},
+          toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
+          toolResult: undefined,
+          toolError: text,
+          toolStatus: "error",
+          timestamp: new Date(),
+        });
+        return;
+      }
+
+      const tool = [...messagesRef.current, ...liveRef.current].find((item) => item.id === toolId);
+      upsertStreamMessage({
+        id: toolId,
+        text: tool?.text || "{}",
+        sender: "tool",
+        startedAt: tool?.startedAt,
+        finishedAt: new Date(),
+        toolName: String(data.toolName || tool?.toolName || "tool"),
+        toolArgs: tool?.toolArgs || {},
+        toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
+        toolResult: data.result,
+        toolError: undefined,
+        toolStatus: "completed",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("Processing result...");
+      return;
+    }
+
+    if (event.type === "assistant.reasoning_delta") {
+      setIsTyping(true);
+      upsertStreamMessage({
+        id: String(event.id || `thinking-${Date.now()}`),
+        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+        sender: "thinking",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("Thinking...");
+      return;
+    }
+
+    if (event.type === "assistant.turn_start") {
+      setIsTyping(true);
+      setCurrentActivity((current) => current || "Starting response...");
+      return;
+    }
+
+    if (event.type === "assistant.turn_end") {
+      setIsTyping(false);
+      setCurrentActivity("");
+      return;
+    }
+
+    if (event.type === "session.error") {
+      const text = String(data.message || "Unknown session error");
+      setIsTyping(false);
+      setCurrentActivity("");
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        text: `⚠️ Session error: ${text}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const ensureSessionStream = async (sessionId: string) => {
+    if (streamRef.current?.sessionId === sessionId) {
+      await streamRef.current.ready;
+      return;
+    }
+
+    streamRef.current?.close();
+
+    const controller = new AbortController();
+    const subscription = client.subscribe(sessionId, {
+      onEvent: (event) => {
+        eventHandlerRef.current(event);
+      },
+    }, { signal: controller.signal });
+    const next = {
+      sessionId,
+      ready: subscription.ready,
+      close: () => {
+        controller.abort();
+        subscription.close();
+      },
+    } satisfies SessionStream;
+
+    streamRef.current = next;
+    await next.ready;
+  };
+
   const fetchModels = async () => {
+    setConnectionState((current) => ({ ...current, isLoading: true, hasFailed: false }));
+
     try {
       const status = await client.getStatus();
-      setRuntimeMode(status.mode);
+      setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
       if (!safeSelectedModel || !models.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(models));
       }
     } catch {
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       setAvailableModels(FALLBACK_MODELS);
       if (!safeSelectedModel || !FALLBACK_MODELS.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(FALLBACK_MODELS));
@@ -459,6 +676,31 @@ export const App: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [client, currentSessionId]);
 
+  useEffect(() => {
+    if (!currentSessionId) {
+      streamRef.current?.close();
+      streamRef.current = null;
+      return;
+    }
+
+    void ensureSessionStream(currentSessionId).catch((err) => {
+      const text = err instanceof Error ? err.message : String(err);
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        text: `❌ Error: ${text}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      }]);
+    });
+
+    return () => {
+      if (streamRef.current?.sessionId !== currentSessionId) return;
+      streamRef.current.close();
+      streamRef.current = null;
+    };
+  }, [currentSessionId]);
+
   const handlePermissionDecision = async (decision: PermissionDecision) => {
     if (!permission) return;
     const reply = decision === "deny" ? "reject" : decision === "always" ? "always" : "once";
@@ -477,6 +719,7 @@ export const App: React.FC = () => {
     setCurrentActivity("");
     setDebugEvents([]);
     setIsTyping(false);
+    setUsage(restored?.usage || null);
     setPermission(null);
     setPermissionSessionTitle(null);
     setLiveMessages([]);
@@ -491,20 +734,10 @@ export const App: React.FC = () => {
 
     if (restored) {
       setCurrentSessionId(restored.id);
-      const status = await client.getStatus().catch(() => null);
-      if (status?.mode) setRuntimeMode(status.mode);
       return;
     }
 
-    try {
-      const session = await client.createSession({ title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat` });
-      setCurrentSessionId(session.id);
-    } catch (err) {
-      setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    const status = await client.getStatus().catch(() => null);
-    if (status?.mode) setRuntimeMode(status.mode);
+    await client.getStatus().catch(() => null);
     if (!safeSelectedModel && availableModels.length > 0) {
       setSelectedModel(pickDefaultModel(availableModels));
     }
@@ -515,17 +748,19 @@ export const App: React.FC = () => {
     void startNewSession(safeSelectedModel, restored);
   };
 
-  useEffect(() => {
-    if (!safeSelectedModel || started.current) return;
-    started.current = true;
-    void startNewSession(safeSelectedModel);
-  }, [safeSelectedModel]);
-
   const handleModelChange = (model: ModelType) => {
     setSelectedModel(model);
-    if (!currentSessionId) {
-      void startNewSession(model);
-    }
+  };
+
+  const ensureSession = async () => {
+    if (currentSessionId) return currentSessionId;
+
+    const office = getHostFromOfficeHost(Office.context.host);
+    const session = await client.createSession({
+      title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat`,
+    });
+    setCurrentSessionId(session.id);
+    return session.id;
   };
 
   const handleQaSubagentModelChange = async (model: ModelType) => {
@@ -541,35 +776,53 @@ export const App: React.FC = () => {
   };
 
   const handleSend = async () => {
-    if (isTyping || (!inputValue.trim() && images.length === 0) || !currentSessionId) return;
+    if (!inputValue.trim() && images.length === 0) return;
 
     const userInput = inputValue;
     const userImages = [...images];
     const isFirstUserTurn = !messages.some((message) => message.sender === "user");
+    const wasTyping = isTyping;
+    const carried = wasTyping ? liveRef.current : [];
 
-    setMessages((prev) => [
-      ...prev,
-      {
+    let sessionId = currentSessionId;
+
+    try {
+      sessionId = await ensureSession();
+    } catch (err) {
+      setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    setMessages((prev) => {
+      const next = mergeMessages(prev, carried);
+      return [...next, {
         id: crypto.randomUUID(),
         text: userInput || `Sent ${userImages.length} image${userImages.length === 1 ? "" : "s"}`,
         sender: "user",
         timestamp: new Date(),
         images: userImages.length > 0 ? userImages.map((image) => ({ dataUrl: image.dataUrl, name: image.name })) : undefined,
-      },
-    ]);
+      }];
+    });
 
     setInputValue("");
     setImages([]);
     setIsTyping(true);
     setCurrentActivity("Processing...");
-    setLiveMessages([]);
-    setDebugEvents([]);
     setError("");
-    trafficStats.reset();
+
+    if (carried.length > 0) {
+      setLiveMessages([]);
+    }
+
+    if (!wasTyping) {
+      setLiveMessages([]);
+      setDebugEvents([]);
+      trafficStats.reset();
+    }
 
     try {
-      const ctl = new AbortController();
-      run.current = ctl;
+      await ensureSessionStream(sessionId);
+
       const uploads: Array<{ path: string; name: string; mime: string }> = [];
 
       for (const image of userImages) {
@@ -593,164 +846,18 @@ export const App: React.FC = () => {
       const tools = getEnabledTools(officeHost);
 
       if (isFirstUserTurn && userInput.trim()) {
-        updateSessionTitle(currentSessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+        updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
       }
 
-      let count = 0;
-
-      for await (const event of client.query(currentSessionId, {
+      await client.sendMessage(sessionId, {
         model: { providerID: model.providerID, modelID: model.modelID },
         agent: officeHost,
         system: getSystemMessage(Office.context.host),
         parts,
         tools,
-      }, { signal: ctl.signal })) {
-        count += 1;
-        const data = event.data || {};
-        const preview = previewEvent(event.type, data);
-
-        setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
-
-        if (event.type === "assistant.message_delta") {
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || `assistant-${Date.now()}`),
-            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-            sender: "assistant",
-            timestamp: new Date(),
-          }));
-          setCurrentActivity("");
-          continue;
-        }
-
-        if (event.type === "assistant.message") {
-          const parts = Array.isArray(data.parts) ? data.parts : [];
-          const mapped = mapAssistantParts(parts, Date.now());
-          const kept = carry(liveRef.current, mapped);
-          setLiveMessages([]);
-          setCurrentActivity("");
-          if (mapped.length > 0) {
-            setMessages((prev) => [...prev, ...kept, ...mapped]);
-            continue;
-          }
-          const text = String(data.content || "");
-          if (text || kept.length > 0) {
-            setMessages((prev) => [...prev, ...kept, ...(!text ? [] : [{
-              id: String(event.id || crypto.randomUUID()),
-              text,
-              sender: "assistant" as const,
-              timestamp: new Date(event.timestamp || Date.now()),
-            }])]);
-          }
-          continue;
-        }
-
-        if (event.type === "tool.execution_start") {
-          const toolName = String(data.toolName || "tool");
-          const toolArgs = (data.arguments || {}) as Record<string, unknown>;
-          const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
-          const toolMeta = redactSensitiveFields((data.metadata || {}) as Record<string, unknown>) as Record<string, unknown>;
-          setCurrentActivity(describeToolActivity(toolName, toolArgs));
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || crypto.randomUUID()),
-            text: JSON.stringify(safeToolArgs, null, 2),
-            sender: "tool",
-            startedAt: new Date(),
-            toolName,
-            toolArgs: safeToolArgs,
-            toolMeta,
-            toolStatus: "running",
-            timestamp: new Date(),
-          }));
-          continue;
-        }
-
-        if (event.type === "tool.execution_complete") {
-          const toolId = String(event.id || crypto.randomUUID());
-
-          if (data.error) {
-            const text = String(data.error);
-            setCurrentActivity("");
-            setLiveMessages((prev) => {
-              const tool = prev.find((item) => item.id === toolId);
-              return mergeLiveMessages(prev, {
-                id: toolId,
-                text: tool?.text || "{}",
-                sender: "tool",
-                startedAt: tool?.startedAt,
-                finishedAt: new Date(),
-                toolName: String(data.toolName || tool?.toolName || "tool"),
-                toolArgs: tool?.toolArgs || {},
-                toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
-                toolResult: undefined,
-                toolError: text,
-                toolStatus: "error",
-                timestamp: new Date(),
-              });
-            });
-            continue;
-          }
-          setLiveMessages((prev) => {
-            const tool = prev.find((item) => item.id === toolId);
-            return mergeLiveMessages(prev, {
-              id: toolId,
-              text: tool?.text || "{}",
-              sender: "tool",
-              startedAt: tool?.startedAt,
-              finishedAt: new Date(),
-              toolName: String(data.toolName || tool?.toolName || "tool"),
-              toolArgs: tool?.toolArgs || {},
-              toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
-              toolResult: data.result,
-              toolError: undefined,
-              toolStatus: "completed",
-              timestamp: new Date(),
-            });
-          });
-          setCurrentActivity("Processing result...");
-          continue;
-        }
-
-        if (event.type === "assistant.reasoning_delta") {
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || `thinking-${Date.now()}`),
-            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-            sender: "thinking",
-            timestamp: new Date(),
-          }));
-          setCurrentActivity("Thinking...");
-          continue;
-        }
-
-        if (event.type === "assistant.turn_start") {
-          setCurrentActivity((current) => current || "Starting response...");
-          continue;
-        }
-
-        if (event.type === "assistant.turn_end") {
-          setCurrentActivity("");
-          continue;
-        }
-
-        if (event.type === "session.error") {
-          const text = String(data.message || "Unknown session error");
-          setMessages((prev) => [...prev, {
-            id: `error-${Date.now()}`,
-            text: `⚠️ Session error: ${text}`,
-            sender: "assistant",
-            timestamp: new Date(),
-          }]);
-        }
-      }
-
-      if (count === 0 && !ctl.signal.aborted) {
-        setMessages((prev) => [...prev, {
-          id: `debug-${Date.now()}`,
-          text: "⚠️ No events received from the OpenCode runtime.",
-          sender: "assistant",
-          timestamp: new Date(),
-        }]);
-      }
+      });
     } catch (err) {
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       const text = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, {
         id: `error-${Date.now()}`,
@@ -758,11 +865,10 @@ export const App: React.FC = () => {
         sender: "assistant",
         timestamp: new Date(),
       }]);
-    } finally {
-      run.current = null;
-      setIsTyping(false);
-      setCurrentActivity("");
-      setLiveMessages([]);
+      if (!wasTyping) {
+        setIsTyping(false);
+        setCurrentActivity("");
+      }
     }
   };
 
@@ -772,8 +878,10 @@ export const App: React.FC = () => {
 
     try {
       await client.abortSession(currentSessionId);
-      run.current?.abort();
+      setMessages((prev) => mergeMessages(prev, liveRef.current));
       setLiveMessages([]);
+      setIsTyping(false);
+      setCurrentActivity("");
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, {
@@ -788,35 +896,31 @@ export const App: React.FC = () => {
 
   if (showHistory) {
     return (
-      <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-        <div style={getSurfaceVars(isDarkMode)}>
-          <SessionHistory
+      <FluentProvider theme={fluentTheme}>
+        <div className={styles.container} style={surfaceVars}>
+          <div className={styles.shell}>
+            <SessionHistory
               host={officeHost}
               shared={safeSharedHistory}
               onSharedChange={setSharedHistory}
               onSelectSession={handleRestoreSession}
               onClose={() => setShowHistory(false)}
-          />
+            />
+          </div>
         </div>
       </FluentProvider>
     );
   }
 
-  const powerpointContextLabel = officeHost === "powerpoint"
-    ? [
-        pptContext?.activeSlideIndex !== undefined ? `Slide ${pptContext.activeSlideIndex + 1}` : "No active slide",
-        pptContext?.selectedShapeIds.length ? `${pptContext.selectedShapeIds.length} shape${pptContext.selectedShapeIds.length === 1 ? "" : "s"} selected` : "No shapes selected",
-      ].join(" • ")
-    : undefined;
-
-  const headerSubtitle = [
-    runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`,
-    powerpointContextLabel,
-  ].filter(Boolean).join(" • ");
+  const headerSubtitle = buildHeaderSubtitle({
+    host: officeHost,
+    enabledToolCount,
+  });
+  const headerContext = officeHost === "powerpoint" ? buildPowerPointContextLabel(pptContext) : undefined;
 
   return (
-    <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-      <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
+    <FluentProvider theme={fluentTheme}>
+      <div className={styles.container} style={surfaceVars}>
         <div className={styles.shell}>
           <HeaderBar
             onNewChat={() => {
@@ -835,14 +939,20 @@ export const App: React.FC = () => {
             onShowToolResponsesChange={setShowToolResponses}
             qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
+            themes={themeOptions}
+            selectedThemeId={safeSelectedThemeId}
+            onThemeChange={setSelectedThemeId}
+            connectionStatus={connectionStatus}
             subtitle={headerSubtitle}
+            contextLabel={headerContext}
+            usageSummary={usageSummary || undefined}
           />
 
           <MessageList
             messages={messages}
             liveMessages={liveMessages}
             isTyping={isTyping}
-            isConnecting={!currentSessionId && !error}
+            isConnecting={connectionStatus.state === "connecting"}
             currentActivity={currentActivity}
             debugEvents={safeDebugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}

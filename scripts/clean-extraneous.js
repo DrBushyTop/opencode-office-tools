@@ -16,12 +16,11 @@ const packagesToRemove = [
 
 console.log('Cleaning extraneous packages...');
 
-// Run npm prune first
 try {
-  console.log('Running npm prune...');
-  execSync('npm prune', { stdio: 'inherit' });
+  console.log('Syncing dependencies with bun install...');
+  execSync('bun install --silent', { stdio: 'inherit' });
 } catch (err) {
-  console.log('npm prune completed with warnings (this is usually fine)');
+  console.log('bun install completed with warnings (this is usually fine)');
 }
 
 // Remove each package manually if it still exists

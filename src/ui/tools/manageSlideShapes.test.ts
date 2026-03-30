@@ -5,9 +5,13 @@ import { manageSlideShapes } from "./manageSlideShapes";
 import { setPowerPointContextSnapshot } from "./powerpointContext";
 
 function createPresentationBase64(entries: Record<string, string>) {
-  return Buffer.from(zipSync(Object.fromEntries(
+  let binary = "";
+  zipSync(Object.fromEntries(
     Object.entries(entries).map(([path, contents]) => [path, strToU8(contents)]),
-  ))).toString("base64");
+  )).forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
 
 if (typeof DOMParser === "undefined") {
@@ -151,5 +155,49 @@ describe("manageSlideShapes", () => {
     })).resolves.toBe("Updated shape on slide 1.");
 
     expect(shape.left).toBe(10);
+  });
+
+  it("accepts fontSize zero when forwarding text formatting updates", async () => {
+    const font = { size: 12 };
+    const frame = {
+      isNullObject: false,
+      hasText: true,
+      textRange: {
+        text: "Hello",
+        load: vi.fn(),
+        font,
+        paragraphFormat: {},
+      },
+      load: vi.fn(),
+    };
+    const shape = {
+      getTextFrameOrNullObject: vi.fn(() => frame),
+    } as unknown as PowerPoint.Shape;
+    const slide = {
+      shapes: {
+        items: [shape],
+        load: vi.fn(),
+      },
+    };
+    const contextStub = {
+      presentation: { slides: { load: vi.fn(), items: [slide] } },
+      sync: vi.fn().mockResolvedValue(undefined),
+    };
+    const requirementsStub = {
+      isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.3"),
+    };
+    const runStub = vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub));
+
+    vi.stubGlobal("Office", { context: { requirements: requirementsStub } });
+    vi.stubGlobal("PowerPoint", { run: runStub });
+
+    await expect(manageSlideShapes.handler({
+      action: "update",
+      slideIndex: 0,
+      shapeIndex: 0,
+      fontSize: 0,
+    })).resolves.toBe("Updated shape on slide 1.");
+
+    expect(font.size).toBe(0);
   });
 });

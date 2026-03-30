@@ -3,6 +3,8 @@ import type { OfficePermissionRequest } from "./office-metadata";
 export { officePermissionRequestSchema } from "./office-metadata";
 export type { OfficePermissionRequest } from "./office-metadata";
 
+const OUTPUT_DIR = /(^|[\\/])opencode-office-tool-output([\\/]|$)/;
+
 export function toolName(request: OfficePermissionRequest) {
   return String(request.metadata.tool || request.patterns[0] || "")
 }
@@ -38,6 +40,13 @@ export function permissionKind(request: OfficePermissionRequest) {
 
 export function canAutoApprove(request: OfficePermissionRequest) {
   if (request.permission === "doom_loop") return false
-  if (request.permission !== "tool") return false
-  return isReadOnlyOfficeTool(toolName(request))
+  if (request.permission === "tool") {
+    return isReadOnlyOfficeTool(toolName(request))
+  }
+
+  if (request.permission === "read" || request.permission === "external_directory") {
+    return request.patterns.some((item) => OUTPUT_DIR.test(item))
+  }
+
+  return false
 }

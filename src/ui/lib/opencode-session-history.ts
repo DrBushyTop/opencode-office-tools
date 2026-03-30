@@ -1,6 +1,7 @@
 import type { Message } from "../components/MessageList";
 import type { ModelType } from "../components/HeaderBar";
 import { savedSessionSchema, type OfficeHost, type SavedSession } from "../sessionStorage";
+import { getLatestSessionUsage } from "./opencode-usage";
 import { opencodeMessagePartSchema, opencodeMessageSchema, opencodeSessionInfoSchema, type OpencodeMessagePart } from "./opencode-schemas";
 import { z } from "zod";
 
@@ -163,6 +164,7 @@ export async function restoreSession(id: string, model: ModelType): Promise<Save
     title: session.title,
     model,
     messages: mapMessages(messages),
+    usage: getLatestSessionUsage(messages),
     createdAt: new Date(session.time.created).toISOString(),
     updatedAt: new Date(session.time.updated).toISOString(),
   });

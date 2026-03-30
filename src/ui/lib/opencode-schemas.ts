@@ -8,6 +8,17 @@ export const timeRangeSchema = z.object({
   start: timestampValueSchema.optional(),
 }).passthrough();
 
+const opencodeTokenSchema = z.object({
+  total: z.number().optional(),
+  input: z.number(),
+  output: z.number(),
+  reasoning: z.number(),
+  cache: z.object({
+    read: z.number(),
+    write: z.number(),
+  }),
+});
+
 export const opencodePartStateSchema = z.object({
   status: z.string().optional(),
   input: jsonObjectSchema.optional(),
@@ -39,6 +50,10 @@ export const opencodeMessageInfoSchema = z.object({
     created: timestampValueSchema,
     completed: timestampValueSchema.optional(),
   }).passthrough(),
+  providerID: z.string().optional(),
+  modelID: z.string().optional(),
+  cost: z.number().optional(),
+  tokens: opencodeTokenSchema.optional(),
 }).passthrough();
 
 export const opencodeMessageSchema = z.object({
@@ -53,6 +68,7 @@ export const modelInfoSchema = z.object({
   label: z.string(),
   providerID: z.string(),
   modelID: z.string(),
+  limitContext: z.number().nonnegative().optional(),
 });
 
 export const sessionInfoSchema = z.object({

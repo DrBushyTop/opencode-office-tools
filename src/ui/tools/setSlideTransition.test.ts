@@ -1,13 +1,17 @@
 import { DOMParser as XmldomParser, XMLSerializer as XmldomSerializer } from "@xmldom/xmldom";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractSlideTransitionFromBase64Presentation } from "./powerpointOpenXml";
+import { clearSlideExportCache, extractSlideTransitionFromBase64Presentation } from "./powerpointOpenXml";
 import { setSlideTransition } from "./setSlideTransition";
 
 function createPresentationBase64(entries: Record<string, string>) {
-  return Buffer.from(zipSync(Object.fromEntries(
+  let binary = "";
+  zipSync(Object.fromEntries(
     Object.entries(entries).map(([path, contents]) => [path, strToU8(contents)]),
-  ))).toString("base64");
+  )).forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
 
 if (typeof DOMParser === "undefined") {
@@ -43,6 +47,7 @@ function baseSlideXml() {
 }
 
 afterEach(() => {
+  clearSlideExportCache();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -59,6 +64,7 @@ describe("setSlideTransition", () => {
     const slides = {
       items: slidesState,
       load: vi.fn(),
+      getItemAt: vi.fn((index: number) => slidesState[index]),
     } as any;
 
     const makeSlide = (id: string) => ({

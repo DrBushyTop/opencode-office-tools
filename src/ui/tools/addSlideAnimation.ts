@@ -1,13 +1,15 @@
 import type { Tool } from "./types";
 import {
-  addSlideAnimationBatchInBase64Presentation,
+  addSlideAnimationBatchToXmlShapeIdsInBase64Presentation,
   addSlideAnimationInBase64Presentation,
+  addSlideAnimationToXmlShapeIdInBase64Presentation,
+  findSlideShapeIndexByXmlShapeIdInBase64Presentation,
   replaceSlideWithMutatedOpenXml,
+  resolveXmlShapeIdByMetadataInBase64Presentation,
   type SlideAnimationDefinition,
 } from "./powerpointOpenXml";
-import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { resolvePowerPointTargetingArgs } from "./powerpointContext";
-import { formatAvailableShapeTargets, invalidSlideIndexMessage, roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
+import { formatAvailableShapeTargets, roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
 import { z } from "zod";
 
 type AnimationArgs = SlideAnimationDefinition & {
@@ -36,29 +38,58 @@ const animationArgsSchema = z.object({
   colorSpace: z.enum(["hsl", "rgb"]).optional(),
 });
 
-async function resolveShapeTarget(context: PowerPoint.RequestContext, slideIndex: number, shapeId?: string | number, shapeIndex?: number) {
-  const slides = context.presentation.slides;
-  slides.load("items");
-  await context.sync();
-  if (slideIndex < 0 || slideIndex >= slides.items.length) {
-    throw new Error(invalidSlideIndexMessage(slideIndex, slides.items.length));
+/**
+ * Resolve a shape ID against already-loaded shapes, with XML fallback using
+ * the exported base64 that's already available in the mutate callback.
+ * This avoids any extra `context.sync()` calls — everything is pre-loaded.
+ */
+function resolveShapeSync(
+  shapes: PowerPoint.Shape[],
+  slideIndex: number,
+  base64: string,
+  requestedId: string | number,
+): { shapeId: string; shapeIndex: number } {
+  const id = String(requestedId);
+
+  // Try direct match against Office.js shape IDs
+  const directIdx = shapes.findIndex((s) => s.id === id);
+  if (directIdx >= 0) {
+    return { shapeId: shapes[directIdx].id, shapeIndex: directIdx };
   }
 
-  const slide = slides.items[slideIndex];
-
-  if (shapeId !== undefined) {
-    const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, shapeId);
-    return { shapeId: resolved.shapeId, shapeIndex: resolved.shapeIndex };
+  // XML fallback: the exported base64 uses different (XML) shape IDs
+  const xmlIdx = findSlideShapeIndexByXmlShapeIdInBase64Presentation(base64, id);
+  if (xmlIdx >= 0 && xmlIdx < shapes.length) {
+    return { shapeId: shapes[xmlIdx].id, shapeIndex: xmlIdx };
   }
 
-  slide.shapes.load("items/id,name");
-  await context.sync();
+  throw new Error(`Shape ${id} was not found on slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, shapes)}`);
+}
 
-  if (shapeIndex === undefined || !Number.isInteger(shapeIndex) || shapeIndex < 0 || shapeIndex >= slide.shapes.items.length) {
-    throw new Error(`Provide a valid shapeId or shapeIndex for slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, slide.shapes.items)}`);
-  }
+function resolveShapeTargetSync(
+  shapes: PowerPoint.Shape[],
+  slideIndex: number,
+  base64: string,
+  requestedId: string | number,
+): { shapeId: string; shapeIndex: number; targetXmlShapeId: string } {
+  const resolved = resolveShapeSync(shapes, slideIndex, base64, requestedId);
+  const targetShape = shapes[resolved.shapeIndex];
+  const targetXmlShapeId = resolveXmlShapeIdByMetadataInBase64Presentation(
+    base64,
+    {
+      name: targetShape.name,
+      left: targetShape.left,
+      top: targetShape.top,
+      width: targetShape.width,
+      height: targetShape.height,
+    },
+    resolved.shapeIndex,
+  ) || String(requestedId);
 
-  return { shapeId: slide.shapes.items[shapeIndex].id, shapeIndex };
+  return {
+    ...resolved,
+    targetXmlShapeId,
+  };
 }
 
 export const addSlideAnimation: Tool = {
@@ -143,50 +174,81 @@ export const addSlideAnimation: Tool = {
     try {
       return await PowerPoint.run(async (context) => {
         if (shapeIds && shapeIds.length > 1) {
-          // Batch mode: resolve all shape IDs, apply all in one round-trip
-          const resolved: { shapeId: string; shapeIndex: number }[] = [];
-          for (const sid of shapeIds) {
-              resolved.push(await resolveShapeTarget(context, slideIndex, sid));
-            }
-          const roundTrip = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) =>
-            addSlideAnimationBatchInBase64Presentation(
-              base64,
-              { ...animation, shapeId: resolved[0].shapeId },
-              resolved.map((r) => r.shapeIndex),
-            ),
+          // Batch mode: preload shapes, resolve all in the mutate callback
+          let resolvedShapeIds: string[] = [];
+          const roundTrip = await replaceSlideWithMutatedOpenXml(
+            context,
+            slideIndex,
+            (base64, sourceSlide) => {
+              const shapes = sourceSlide.shapes.items;
+              const resolved = shapeIds.map((id) => resolveShapeTargetSync(shapes, slideIndex, base64, id));
+              resolvedShapeIds = resolved.map((r) => r.shapeId);
+              return addSlideAnimationBatchToXmlShapeIdsInBase64Presentation(
+                base64,
+                { ...animation, shapeId: resolved[0].shapeId },
+                resolved.map((r) => r.targetXmlShapeId),
+              );
+            },
+            { preload: (slide) => slide.shapes.load("items/id,name,left,top,width,height") },
           );
-          const refreshedShapeIds = resolved.map((entry) => roundTrip.shapeIdMap?.[entry.shapeId] || entry.shapeId);
           return {
             resultType: "success",
-            textResultForLlm: `Added ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting ${resolved.length} shapes.`,
+            textResultForLlm: `Added ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting ${resolvedShapeIds.length} shapes.`,
             slideIndex: roundTrip.finalSlideIndex,
             slideId: roundTrip.replacementSlideId,
-            shapeIds: refreshedShapeIds,
+            shapeIds: resolvedShapeIds,
             toolTelemetry: {
               ...roundTrip,
-              shapeIds: refreshedShapeIds,
+              shapeIds: resolvedShapeIds,
             },
           };
         }
 
-        // Single shape mode
+        // Single shape mode: preload shapes, resolve in the mutate callback
         const singleId = isBatch ? shapeIds![0] : animation.shapeId as string | number | undefined;
-        const resolvedTarget = await resolveShapeTarget(context, slideIndex, singleId, animation.shapeIndex);
-        const roundTrip = await replaceSlideWithMutatedOpenXml(context, slideIndex, (base64) => addSlideAnimationInBase64Presentation(base64, {
-          ...animation,
-          shapeId: resolvedTarget.shapeId,
-        }, resolvedTarget.shapeIndex));
+        let resolvedShapeId = "";
+        const roundTrip = await replaceSlideWithMutatedOpenXml(
+          context,
+          slideIndex,
+          (base64, sourceSlide) => {
+            const shapes = sourceSlide.shapes.items;
+            let targetShapeIndex: number;
+
+            if (singleId !== undefined) {
+              const resolved = resolveShapeTargetSync(shapes, slideIndex, base64, singleId);
+              resolvedShapeId = resolved.shapeId;
+              targetShapeIndex = resolved.shapeIndex;
+              return addSlideAnimationToXmlShapeIdInBase64Presentation(base64, {
+                ...animation,
+                shapeId: resolvedShapeId,
+              }, resolved.targetXmlShapeId);
+            } else {
+              // shapeIndex-only mode
+              if (animation.shapeIndex === undefined || !Number.isInteger(animation.shapeIndex) || animation.shapeIndex < 0 || animation.shapeIndex >= shapes.length) {
+                throw new Error(`Provide a valid shapeId or shapeIndex for slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, shapes)}`);
+              }
+              resolvedShapeId = shapes[animation.shapeIndex].id;
+              targetShapeIndex = animation.shapeIndex;
+            }
+
+            return addSlideAnimationInBase64Presentation(base64, {
+              ...animation,
+              shapeId: resolvedShapeId,
+            }, targetShapeIndex);
+          },
+          { preload: (slide) => slide.shapes.load("items/id,name,left,top,width,height") },
+        );
         return {
           resultType: "success",
-          textResultForLlm: `Added a ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting shape ${resolvedTarget.shapeId}.`,
+          textResultForLlm: `Added a ${animation.type} animation to slide ${roundTrip.finalSlideIndex + 1} targeting shape ${resolvedShapeId}.`,
           slideIndex: roundTrip.finalSlideIndex,
           slideId: roundTrip.replacementSlideId,
-          shapeId: resolvedTarget.shapeId,
-          refreshedShapeId: roundTrip.shapeIdMap?.[resolvedTarget.shapeId] || resolvedTarget.shapeId,
+          shapeId: resolvedShapeId,
+          refreshedShapeId: resolvedShapeId,
           toolTelemetry: {
             ...roundTrip,
-            shapeId: resolvedTarget.shapeId,
-            refreshedShapeId: roundTrip.shapeIdMap?.[resolvedTarget.shapeId] || resolvedTarget.shapeId,
+            shapeId: resolvedShapeId,
+            refreshedShapeId: resolvedShapeId,
           },
         };
       });
