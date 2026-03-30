@@ -17,7 +17,7 @@ import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/off
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
-import { buildHeaderSubtitle, deriveConnectionIndicator } from "./lib/chat-shell";
+import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
 import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions } from "./lib/ui-theme";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
@@ -314,7 +314,6 @@ export const App: React.FC = () => {
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
-  const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [usage, setUsage] = useState<SessionUsage | null>(null);
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
@@ -362,7 +361,6 @@ export const App: React.FC = () => {
 
     try {
       const status = await client.getStatus();
-      setRuntimeMode(status.mode);
       setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
@@ -509,13 +507,10 @@ export const App: React.FC = () => {
 
     if (restored) {
       setCurrentSessionId(restored.id);
-      const status = await client.getStatus().catch(() => null);
-      if (status?.mode) setRuntimeMode(status.mode);
       return;
     }
 
-    const status = await client.getStatus().catch(() => null);
-    if (status?.mode) setRuntimeMode(status.mode);
+    await client.getStatus().catch(() => null);
     if (!safeSelectedModel && availableModels.length > 0) {
       setSelectedModel(pickDefaultModel(availableModels));
     }
@@ -801,6 +796,10 @@ export const App: React.FC = () => {
     try {
       await client.abortSession(currentSessionId);
       run.current?.abort();
+      setMessages((prev) => {
+        const seen = new Set(prev.map((message) => message.id));
+        return [...prev, ...liveRef.current.filter((message) => !seen.has(message.id))];
+      });
       setLiveMessages([]);
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
@@ -834,10 +833,9 @@ export const App: React.FC = () => {
 
   const headerSubtitle = buildHeaderSubtitle({
     host: officeHost,
-    runtimeMode,
     enabledToolCount,
-    powerpointContext: officeHost === "powerpoint" ? pptContext : null,
   });
+  const headerContext = officeHost === "powerpoint" ? buildPowerPointContextLabel(pptContext) : undefined;
 
   return (
     <FluentProvider theme={fluentTheme}>
@@ -865,6 +863,7 @@ export const App: React.FC = () => {
             onThemeChange={setSelectedThemeId}
             connectionStatus={connectionStatus}
             subtitle={headerSubtitle}
+            contextLabel={headerContext}
             usageSummary={usageSummary || undefined}
           />
 

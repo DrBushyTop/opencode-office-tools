@@ -322,7 +322,7 @@ const useStyles = makeStyles({
       padding: "10px 12px",
       overflowX: "auto",
     },
-    "& code": {
+    "& :not(pre) > code": {
       background: "var(--oc-bg-soft)",
       borderRadius: "6px",
       padding: "1px 4px",
@@ -333,6 +333,10 @@ const useStyles = makeStyles({
     width: "100%",
     minWidth: 0,
     boxSizing: "border-box",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "var(--oc-thinking-bg)",
+    border: "1px solid var(--oc-thinking-border)",
     color: "var(--text-weak)",
     fontSize: "14px",
   },
@@ -341,12 +345,16 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     marginBottom: "8px",
-    fontSize: "14px",
-    color: "var(--text-weak)",
+    fontSize: "12px",
+    letterSpacing: "0.02em",
+    color: "var(--oc-thinking-label)",
+  },
+  thinkingLabel: {
+    color: "var(--oc-thinking-label)",
   },
   thinkingTitle: {
-    fontWeight: 400,
-    color: "var(--text-base)",
+    fontWeight: 500,
+    color: "var(--oc-thinking-title)",
     overflowWrap: "anywhere",
   },
   thinkingBody: {
@@ -367,10 +375,13 @@ const useStyles = makeStyles({
       padding: "10px 12px",
       overflowX: "auto",
     },
-    "& code": {
+    "& :not(pre) > code": {
       background: "var(--oc-bg-soft)",
       borderRadius: "6px",
       padding: "1px 4px",
+    },
+    "& h1, & h2, & h3, & h4, & h5, & h6": {
+      color: "var(--oc-thinking-title)",
     },
   },
   messageTool: {
@@ -393,7 +404,18 @@ const useStyles = makeStyles({
     gap: "8px",
     width: "100%",
     minWidth: 0,
+  },
+  toolToggle: {
+    appearance: "none",
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    margin: 0,
+    width: "100%",
+    textAlign: "left",
     cursor: "pointer",
+    color: "inherit",
+    font: "inherit",
   },
   toolMain: {
     display: "flex",
@@ -614,29 +636,40 @@ function cleanThinking(value: string) {
     .trim();
 }
 
-function thinkingHeading(text: string) {
+function leadingThinkingHeading(text: string) {
   const markdown = text.replace(/\r\n?/g, "\n");
-  const html = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+  const html = markdown.match(/^\s*<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*(?:\n+)?/i);
   if (html?.[1]) {
     const value = cleanThinking(html[1].replace(/<[^>]+>/g, " "));
-    if (value) return value;
+    if (value) return { title: value, length: html[0].length };
   }
-  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
+  const atx = markdown.match(/^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?\s*(?:\n+)?/);
   if (atx?.[1]) {
     const value = cleanThinking(atx[1]);
-    if (value) return value;
+    if (value) return { title: value, length: atx[0].length };
   }
-  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*$/m);
+  const setext = markdown.match(/^([^\n]+)\n(?:=+|-+)\s*\n*(?:\n+)?/);
   if (setext?.[1]) {
     const value = cleanThinking(setext[1]);
-    if (value) return value;
+    if (value) return { title: value, length: setext[0].length };
   }
-  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*$/m);
+  const strong = markdown.match(/^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*\n*(?:\n+)?/);
   if (strong?.[1]) {
     const value = cleanThinking(strong[1]);
-    if (value) return value;
+    if (value) return { title: value, length: strong[0].length };
   }
-  return "";
+  return null;
+}
+
+function thinkingHeading(text: string) {
+  return leadingThinkingHeading(text)?.title || "";
+}
+
+function stripThinkingHeading(text: string) {
+  const markdown = text.replace(/\r\n?/g, "\n");
+  const match = leadingThinkingHeading(markdown);
+  if (!match) return markdown;
+  return markdown.slice(match.length).trim();
 }
 
 // Live traffic counter that polls trafficStats (reset by App before each query)
@@ -712,17 +745,19 @@ const TaskToolMessage: React.FC<{
   return (
     <div className={styles.messageTask}>
       <div className={styles.toolCard}>
-        <div className={styles.toolTrigger} onClick={toggle} title="Click to show details">
-          <span className={styles.toolIcon}>🧠</span>
-          <div className={styles.toolMain}>
-            <span className={styles.taskTitleText}>{summarizeTaskTool(message.toolArgs || {})}</span>
-            <span className={styles.toolMetaText}>{meta}</span>
+        <button type="button" className={styles.toolToggle} onClick={toggle} aria-expanded={expanded} title="Click to show details">
+          <div className={styles.toolTrigger}>
+            <span className={styles.toolIcon}>🧠</span>
+            <div className={styles.toolMain}>
+              <span className={styles.taskTitleText}>{summarizeTaskTool(message.toolArgs || {})}</span>
+              <span className={styles.toolMetaText}>{meta}</span>
+            </div>
+            <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
+              {running && <span className={styles.taskSpinner} />}
+              <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
+            </div>
           </div>
-          <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
-            {running && <span className={styles.taskSpinner} />}
-            <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
-          </div>
-        </div>
+        </button>
       </div>
 
       {expanded && (
@@ -770,14 +805,16 @@ const ToolMessage: React.FC<{
   return (
     <div className={styles.messageTool}>
       <div className={styles.toolCard}>
-        <div className={styles.toolTrigger} onClick={toggle} title="Click to show details">
-          <span className={styles.toolIcon}>{toolDisplay.icon}</span>
-          <div className={styles.toolMain}>
-            <span className={styles.toolTitleText}>{toolTitle}</span>
-            <span className={styles.toolMetaText}>{toolDisplay.description}</span>
+        <button type="button" className={styles.toolToggle} onClick={toggle} aria-expanded={expanded} title="Click to show details">
+          <div className={styles.toolTrigger}>
+            <span className={styles.toolIcon}>{toolDisplay.icon}</span>
+            <div className={styles.toolMain}>
+              <span className={styles.toolTitleText}>{toolTitle}</span>
+              <span className={styles.toolMetaText}>{toolDisplay.description}</span>
+            </div>
+            <span className={styles.toolStatus}>{message.toolStatus === "running" ? "Running" : message.toolStatus === "error" ? "Error" : "Done"}</span>
           </div>
-          <span className={styles.toolStatus}>{message.toolStatus === "running" ? "Running" : message.toolStatus === "error" ? "Error" : "Done"}</span>
-        </div>
+        </button>
       </div>
       {expanded && (
         <div className={styles.toolDetail}>
@@ -867,7 +904,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={styles.content}>
-        {safeMessages.length === 0 && !isConnecting && (
+        {visibleHistory.length === 0 && visibleLive.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
             <div className={styles.emptyTitle}>What can I do for you?</div>
             <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}` : "Connected to your document"}</div>
@@ -881,50 +918,56 @@ export const MessageList: React.FC<MessageListProps> = ({
         )}
 
         {[...visibleHistory, ...visibleLive].map((message) => {
-        return (
-        <div
-          key={message.id}
-          className={
-            message.sender === "user" ? styles.messageUser : 
-             message.sender === "tool" ? undefined :
-              message.sender === "thinking" ? styles.messageThinking :
-              styles.messageAssistant
-            }
-        >
-          {message.sender === "tool" ? (
-            <ToolMessage
-              message={message}
-              expanded={expandedTools.has(message.id)}
-              toggle={() => toggleTool(message.id)}
-              showToolResponses={showToolResponses}
-            />
-          ) : message.sender === "assistant" ? (
-            <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
-          ) : message.sender === "thinking" ? (
-            <>
-              <div className={styles.thinkingHeader}>
-                <span>Thinking</span>
-                <span className={styles.thinkingTitle}>{thinkingHeading(message.text) || currentActivity || "Reasoning"}</span>
-              </div>
-              <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown></div>
-            </>
-          ) : (
-            <div className={styles.userBody}>
-              {message.images && message.images.length > 0 && (
-                <div className={styles.attachmentContainer}>
-                  {message.images.map((img, idx) => (
-                    <div key={idx}>
-                      <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
-                      <div className={styles.attachmentBadge}>📎 {img.name}</div>
+          const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
+          const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
+
+          return (
+            <div
+              key={message.id}
+              className={
+                message.sender === "user"
+                  ? styles.messageUser
+                  : message.sender === "tool"
+                    ? undefined
+                    : message.sender === "thinking"
+                      ? styles.messageThinking
+                      : styles.messageAssistant
+              }
+            >
+              {message.sender === "tool" ? (
+                <ToolMessage
+                  message={message}
+                  expanded={expandedTools.has(message.id)}
+                  toggle={() => toggleTool(message.id)}
+                  showToolResponses={showToolResponses}
+                />
+              ) : message.sender === "assistant" ? (
+                <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
+              ) : message.sender === "thinking" ? (
+                <>
+                  <div className={styles.thinkingHeader}>
+                    <span className={styles.thinkingLabel}>Thinking</span>
+                    <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
+                  </div>
+                  {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
+                </>
+              ) : (
+                <div className={styles.userBody}>
+                  {message.images && message.images.length > 0 && (
+                    <div className={styles.attachmentContainer}>
+                      {message.images.map((img, idx) => (
+                        <div key={idx}>
+                          <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
+                          <div className={styles.attachmentBadge}>📎 {img.name}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  <div className={styles.userText}>{message.text}</div>
                 </div>
               )}
-              <div className={styles.userText}>{message.text}</div>
             </div>
-          )}
-        </div>
-      );
+          );
         })}
 
         {isTyping && visibleLive.length === 0 && (

@@ -21,17 +21,17 @@ function powerpointLabel(context: PowerPointContextSnapshot | null | undefined) 
   ];
 }
 
+export function buildPowerPointContextLabel(context: PowerPointContextSnapshot | null | undefined) {
+  return powerpointLabel(context).join(" • ");
+}
+
 export function buildHeaderSubtitle(input: {
   host: OfficeHost;
-  runtimeMode: string;
   enabledToolCount: number;
-  powerpointContext?: PowerPointContextSnapshot | null;
 }) {
   const bits = [
     hostLabel(input.host),
-    input.runtimeMode || undefined,
     `${input.enabledToolCount} tools`,
-    ...(input.host === "powerpoint" ? powerpointLabel(input.powerpointContext) : []),
   ];
 
   return bits.filter(Boolean).join(" • ");
