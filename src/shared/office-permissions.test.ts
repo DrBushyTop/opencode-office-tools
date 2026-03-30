@@ -108,6 +108,35 @@ describe("office permissions", () => {
     })).toBe("subagents/code/reviewer");
   });
 
+  it("auto-approves reads from the Office temp output directory", () => {
+    expect(canAutoApprove({
+      id: "10",
+      sessionID: "s",
+      permission: "read",
+      patterns: ["/var/folders/x/opencode-office-tool-output/slide.png"],
+      metadata: {},
+      always: [],
+    })).toBe(true);
+
+    expect(canAutoApprove({
+      id: "11",
+      sessionID: "s",
+      permission: "external_directory",
+      patterns: ["C:\\Users\\pasi\\AppData\\Local\\Temp\\opencode-office-tool-output\\*"],
+      metadata: {},
+      always: [],
+    })).toBe(true);
+
+    expect(canAutoApprove({
+      id: "12",
+      sessionID: "s",
+      permission: "read",
+      patterns: ["/tmp/other-tool-output/slide.png"],
+      metadata: {},
+      always: [],
+    })).toBe(false);
+  });
+
   it("parses permission requests with the shared schema", () => {
     expect(() => officePermissionRequestSchema.parse({
       id: "9",

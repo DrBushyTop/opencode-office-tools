@@ -63,6 +63,15 @@ function persist(name: string, items: Binary[]) {
   })
 }
 
+function readHint(result: Result, files: string[]) {
+  if (!files.length) return undefined
+  const image = result.binaryResultsForLlm?.every((item) => item.mimeType.startsWith("image/"))
+  if (image) {
+    return `Call the Read tool immediately on ${files.length === 1 ? "the image path above" : "each image path above"} to inspect the returned image content.`
+  }
+  return "Use the Read tool on a file path above to inspect the returned content."
+}
+
 function format(name: string, result: Result) {
   const files = result.binaryResultsForLlm?.length ? persist(name, result.binaryResultsForLlm) : []
   const text = typeof result.textResultForLlm === "string" ? result.textResultForLlm : ""
@@ -71,7 +80,7 @@ function format(name: string, result: Result) {
     text || `Saved ${files.length} file${files.length === 1 ? "" : "s"}.`,
     "Saved tool files:",
     ...files.map((file) => `- ${file}`),
-    "Use the Read tool on a file path above to inspect the returned content.",
+    readHint(result, files),
   ].filter(Boolean).join("\n")
 }
 
