@@ -156,4 +156,48 @@ describe("manageSlideShapes", () => {
 
     expect(shape.left).toBe(10);
   });
+
+  it("accepts fontSize zero when forwarding text formatting updates", async () => {
+    const font = { size: 12 };
+    const frame = {
+      isNullObject: false,
+      hasText: true,
+      textRange: {
+        text: "Hello",
+        load: vi.fn(),
+        font,
+        paragraphFormat: {},
+      },
+      load: vi.fn(),
+    };
+    const shape = {
+      getTextFrameOrNullObject: vi.fn(() => frame),
+    } as unknown as PowerPoint.Shape;
+    const slide = {
+      shapes: {
+        items: [shape],
+        load: vi.fn(),
+      },
+    };
+    const contextStub = {
+      presentation: { slides: { load: vi.fn(), items: [slide] } },
+      sync: vi.fn().mockResolvedValue(undefined),
+    };
+    const requirementsStub = {
+      isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.3"),
+    };
+    const runStub = vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub));
+
+    vi.stubGlobal("Office", { context: { requirements: requirementsStub } });
+    vi.stubGlobal("PowerPoint", { run: runStub });
+
+    await expect(manageSlideShapes.handler({
+      action: "update",
+      slideIndex: 0,
+      shapeIndex: 0,
+      fontSize: 0,
+    })).resolves.toBe("Updated shape on slide 1.");
+
+    expect(font.size).toBe(0);
+  });
 });
