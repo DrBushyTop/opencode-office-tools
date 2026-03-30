@@ -73,12 +73,16 @@ const useStyles = makeStyles({
     minWidth: 0,
     padding: "2px 0",
   },
+  actions: {
+    display: "flex",
+    gap: "8px",
+    alignSelf: "flex-end",
+  },
   sendButton: {
     width: "42px",
     height: "42px",
     minWidth: "42px",
     padding: "0",
-    alignSelf: "flex-end",
     backgroundColor: "var(--oc-accent)",
     border: "none",
     borderRadius: "12px",
@@ -231,19 +235,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             onPaste={handlePaste}
             placeholder="Ask OpenCode to work on the current document..."
             rows={3}
-            disabled={disabled || isRunning}
+            disabled={disabled}
           />
         </div>
-        <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
-          <Button
-            appearance={isRunning ? "secondary" : "primary"}
-            icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
-            onClick={isRunning ? onStop : onSend}
-            disabled={disabled || (isRunning ? !onStop : (!value.trim() && safeImages.length === 0))}
-            aria-label={isRunning ? "Stop response" : "Send message"}
-            className={`${styles.sendButton} ${isRunning ? styles.stopButton : ""}`.trim()}
-          />
-        </Tooltip>
+        <div className={styles.actions}>
+          {isRunning && (
+            <Tooltip content="Stop response" relationship="label">
+              <Button
+                appearance="secondary"
+                icon={<Stop24Regular />}
+                onClick={onStop}
+                disabled={disabled || !onStop}
+                aria-label="Stop response"
+                className={`${styles.sendButton} ${styles.stopButton}`.trim()}
+              />
+            </Tooltip>
+          )}
+          <Tooltip content="Send message" relationship="label">
+            <Button
+              appearance="primary"
+              icon={<Send24Regular />}
+              onClick={onSend}
+              disabled={disabled || (!value.trim() && safeImages.length === 0)}
+              aria-label="Send message"
+              className={styles.sendButton}
+            />
+          </Tooltip>
+        </div>
       </div>
     </div>
   );
