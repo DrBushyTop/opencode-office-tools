@@ -474,11 +474,18 @@ function createApiRouter(runtime, bridge) {
     res.json({ sessionToken: bridge.issueClientSession() });
   });
 
-  apiRouter.get('/office-tools/poll', (req, res) => {
+  apiRouter.get('/office-tools/poll', async (req, res) => {
     try {
-      res.json({ request: bridge.poll(bridgeExecutorId(req), bridgeSessionToken(req)) });
+      const controller = new AbortController();
+      res.on('close', () => controller.abort());
+      const request = await bridge.poll(bridgeExecutorId(req), bridgeSessionToken(req), controller.signal);
+      if (!res.writableEnded) {
+        res.json({ request });
+      }
     } catch (error) {
-      res.status(401).json({ error: error.message });
+      if (!res.writableEnded) {
+        res.status(401).json({ error: error.message });
+      }
     }
   });
 

@@ -57,4 +57,18 @@ describe("office tool bridge", () => {
     const otherSession = bridge.issueClientSession();
     expect(() => bridge.register("word", otherSession)).toThrow(/already registered/);
   });
+
+  it("waits for work and resolves poll immediately when a request arrives", async () => {
+    const bridge = new OfficeToolBridge();
+    const sessionToken = bridge.issueClientSession();
+    const { executorId } = bridge.register("word", sessionToken);
+
+    const requestPromise = bridge.poll(executorId, sessionToken);
+    const pending = bridge.execute("word", "get_document_content", {}, bridge.bridgeToken);
+    const request = await requestPromise;
+
+    expect(request.toolName).toBe("get_document_content");
+    bridge.respond(request.id, executorId, sessionToken, { result: "ok" });
+    await expect(pending).resolves.toEqual({ result: "ok" });
+  });
 });

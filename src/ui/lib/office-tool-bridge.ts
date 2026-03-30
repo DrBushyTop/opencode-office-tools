@@ -57,6 +57,7 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
   let timer = 0;
   let sessionToken = "";
   let executorId = "";
+  let controller: AbortController | null = null;
 
   const bridgeFetch = (input: string, init?: RequestInit) => fetch(input, {
     cache: "no-store",
@@ -99,15 +100,25 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
     throw new Error(await response.text() || response.statusText);
   };
 
+  const schedule = (delay = 0) => {
+    if (stopped) return;
+    timer = window.setTimeout(() => {
+      void tick();
+    }, delay);
+  };
+
   const tick = async () => {
     if (stopped) return;
 
     try {
       await ensureExecutor();
 
+      controller = new AbortController();
       const response = await ensureOk(await bridgeFetch(`/api/office-tools/poll?executorId=${encodeURIComponent(executorId)}`, {
         headers: headers(),
+        signal: controller.signal,
       }));
+      controller = null;
       const data = officeToolPollSchema.parse(await response.json());
 
       if (data.request) {
@@ -126,12 +137,17 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
           }));
         }
       }
+
+      schedule();
+      return;
     } catch {
+      controller = null;
+      if (stopped) return;
       executorId = "";
       sessionToken = "";
+      schedule(1000);
+      return;
     }
-
-    timer = window.setTimeout(tick, 750);
   };
 
   void tick();
@@ -140,6 +156,8 @@ export function createOfficeToolBridge(host: OfficeHost, executor: OfficeToolExe
     stop: async () => {
       stopped = true;
       window.clearTimeout(timer);
+      controller?.abort();
+      controller = null;
       if (executorId && sessionToken) {
         await bridgeFetch(`/api/office-tools/register/${executorId}`, {
           method: "DELETE",
