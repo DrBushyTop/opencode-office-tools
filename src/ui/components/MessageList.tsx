@@ -211,7 +211,7 @@ const useStyles = makeStyles({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "22px 0 0",
+    padding: "14px 0 0",
     display: "flex",
     flexDirection: "column",
     gap: "18px",

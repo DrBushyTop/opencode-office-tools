@@ -62,12 +62,16 @@ const useStyles = makeStyles({
     "::after": {
       display: "none !important",
     },
+    "& textarea": {
+      padding: "0",
+      minHeight: "72px",
+    },
   },
   inputWrap: {
     flex: 1,
     width: "100%",
     minWidth: 0,
-    padding: "2px 4px",
+    padding: "2px 0",
   },
   sendButton: {
     width: "42px",

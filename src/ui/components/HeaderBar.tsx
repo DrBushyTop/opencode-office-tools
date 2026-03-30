@@ -64,8 +64,8 @@ const useStyles = makeStyles({
   header: {
     display: "flex",
     flexDirection: "column",
-    padding: "12px 16px 8px",
-    gap: "6px",
+    padding: "12px 16px 4px",
+    gap: "10px",
     minHeight: "64px",
     borderBottom: "1px solid var(--oc-border)",
     background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-elevated, var(--oc-bg)) 92%, transparent), var(--oc-bg))",
@@ -95,6 +95,7 @@ const useStyles = makeStyles({
   },
   subtitle: {
     fontSize: "11px",
+    lineHeight: "14px",
     color: "var(--oc-text-faint)",
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -131,7 +132,7 @@ const useStyles = makeStyles({
     gap: "6px",
     color: "var(--oc-text-muted)",
     fontSize: "11px",
-    lineHeight: 1,
+    lineHeight: "14px",
     whiteSpace: "nowrap",
     flexShrink: 0,
   },
@@ -195,6 +196,7 @@ const useStyles = makeStyles({
   },
   contextChip: {
     fontSize: "11px",
+    lineHeight: "14px",
     color: "var(--oc-text-muted)",
     whiteSpace: "nowrap",
     overflow: "hidden",
