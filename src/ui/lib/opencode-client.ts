@@ -29,6 +29,10 @@ const promptInputSchema = z.object({
 
 type PromptInput = z.infer<typeof promptInputSchema>;
 
+type SessionEventHandlers = {
+  onEvent: (event: UiEvent) => void;
+};
+
 const statusSchema = z.object({
   mode: z.string(),
   baseUrl: z.string(),
@@ -103,58 +107,133 @@ export class OpencodeClient {
     });
   }
 
-  async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal } = {}): AsyncGenerator<UiEvent, void, undefined> {
+  async sendMessage(sessionId: string, input: PromptInput) {
     const payload = promptInputSchema.parse(input);
-    const partTypes = new Map<string, string>();
-    const queue: UiEvent[] = [];
-    let done = false;
-    let wake: (() => void) | null = null;
-    let lastAssistantId = "";
+    trafficStats.bytesOut += JSON.stringify(payload).length;
 
+    const response = await fetch(`/api/opencode/session/${sessionId}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error((await response.text()) || "Failed to send prompt");
+    }
+  }
+
+  subscribe(sessionId: string, handlers: SessionEventHandlers, opts: { signal?: AbortSignal } = {}) {
+    const partTypes = new Map<string, string>();
     const eventSource = new EventSource(`/api/opencode/events?sessionId=${encodeURIComponent(sessionId)}`);
-    const push = (event: UiEvent) => {
-      queue.push(event);
-      wake?.();
+    let lastAssistantId = "";
+    let closed = false;
+    let failed = false;
+    let readyTimer = 0;
+    let resolveReady: (() => void) | null = null;
+    let rejectReady: ((reason?: unknown) => void) | null = null;
+
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+      readyTimer = window.setTimeout(() => {
+        resolveReady?.();
+        resolveReady = null;
+        rejectReady = null;
+      }, 2000);
+    });
+
+    const settleReady = (error?: Error) => {
+      if (readyTimer) {
+        window.clearTimeout(readyTimer);
+        readyTimer = 0;
+      }
+
+      if (error) {
+        rejectReady?.(error);
+        resolveReady = null;
+        rejectReady = null;
+        return;
+      }
+
+      resolveReady?.();
+      resolveReady = null;
+      rejectReady = null;
     };
-    const stop = () => {
-      done = true;
+
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      settleReady();
       eventSource.close();
-      wake?.();
+      opts.signal?.removeEventListener("abort", close);
+    };
+
+    eventSource.onopen = () => {
+      settleReady();
     };
 
     eventSource.onmessage = (message) => {
       trafficStats.bytesIn += message.data.length;
-      try {
-        const event = JSON.parse(message.data);
-        for (const normalized of normalizeOpencodeEvent(event, partTypes)) {
-          push(normalized);
+      settleReady();
+
+      void (async () => {
+        try {
+          const event = JSON.parse(message.data);
+          for (const normalized of normalizeOpencodeEvent(event, partTypes)) {
+            if (normalized.type !== "assistant.message") {
+              handlers.onEvent(normalized);
+              continue;
+            }
+
+            const messages = await this.getMessages(sessionId);
+            const latest = getLatestAssistantMessage(messages);
+            if (!latest || latest.id === lastAssistantId) continue;
+            lastAssistantId = String(latest.id || "");
+            handlers.onEvent(latest);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Received malformed event data from OpenCode";
+          handlers.onEvent({ type: "session.error", data: { message } });
         }
-      } catch {
-        push({ type: "session.error", data: { message: "Received malformed event data from OpenCode" } });
-        done = true;
-      }
+      })();
     };
 
     eventSource.onerror = () => {
-      if (opts.signal?.aborted || done) return;
-      if (!done) {
-        push({ type: "session.error", data: { message: "OpenCode event stream disconnected" } });
-        done = true;
-      }
+      if (opts.signal?.aborted || closed || failed) return;
+      failed = true;
+      const error = new Error("OpenCode event stream disconnected");
+      settleReady(error);
+      handlers.onEvent({ type: "session.error", data: { message: error.message } });
+    };
+
+    opts.signal?.addEventListener("abort", close, { once: true });
+
+    return {
+      ready,
+      close,
+    };
+  }
+
+  async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal } = {}): AsyncGenerator<UiEvent, void, undefined> {
+    const queue: UiEvent[] = [];
+    let done = false;
+    let wake: (() => void) | null = null;
+    const push = (event: UiEvent) => {
+      queue.push(event);
+      wake?.();
+    };
+
+    const ctl = new AbortController();
+    const stop = () => {
+      done = true;
+      ctl.abort();
+      wake?.();
     };
 
     opts.signal?.addEventListener("abort", stop, { once: true });
 
-    trafficStats.bytesOut += JSON.stringify(payload).length;
-    const send = fetch(`/api/opencode/session/${sessionId}/message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(async (response) => {
-      if (!response.ok) {
-        throw new Error((await response.text()) || "Failed to send prompt");
-      }
-    });
+    const subscription = this.subscribe(sessionId, { onEvent: push }, { signal: ctl.signal });
+    const send = subscription.ready.then(() => this.sendMessage(sessionId, input));
 
     send.catch((error: Error) => {
       push({ type: "session.error", data: { message: error.message } });
@@ -173,16 +252,6 @@ export class OpencodeClient {
         while (queue.length > 0) {
           const event = queue.shift()!;
 
-          if (event.type === "assistant.message") {
-            const messages = await this.getMessages(sessionId);
-            const latest = getLatestAssistantMessage(messages);
-            if (latest && latest.id !== lastAssistantId) {
-              lastAssistantId = String(latest.id || "");
-              yield latest;
-            }
-            continue;
-          }
-
           if (event.type === "assistant.turn_end" || event.type === "session.error") {
             done = true;
           }
@@ -192,7 +261,7 @@ export class OpencodeClient {
       }
     } finally {
       opts.signal?.removeEventListener("abort", stop);
-      eventSource.close();
+      subscription.close();
     }
   }
 }

@@ -15,7 +15,7 @@ import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
-import { trafficStats } from "./lib/opencode-events";
+import { trafficStats, type UiEvent } from "./lib/opencode-events";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
 import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
 import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions } from "./lib/ui-theme";
@@ -197,6 +197,14 @@ function mergeLiveMessages(
   return previous.map((item, current) => current === index ? { ...item, ...next } : item);
 }
 
+function mergeMessages(previous: Message[], next: Message[]) {
+  return next.reduce((result, item) => {
+    const index = result.findIndex((entry) => entry.id === item.id);
+    if (index === -1) return [...result, item];
+    return result.map((entry, current) => current === index ? { ...entry, ...item } : entry);
+  }, previous);
+}
+
 function qaModel(config: OpencodeConfig) {
   const value = config.agent?.["visual-qa"]?.model;
   return typeof value === "string" ? value : "";
@@ -293,6 +301,12 @@ function toPromptParts(text: string, images: Array<{ path: string; name: string;
   ];
 }
 
+type SessionStream = {
+  sessionId: string;
+  ready: Promise<void>;
+  close: () => void;
+};
+
 export const App: React.FC = () => {
   const styles = useStyles();
   const client = useMemo(() => createOpencodeClient(), []);
@@ -343,8 +357,10 @@ export const App: React.FC = () => {
   );
   const connectionStatus = useMemo(() => deriveConnectionIndicator(connectionState), [connectionState]);
   const sessionCreatedAt = useRef<string>("");
-  const run = useRef<AbortController | null>(null);
+  const messagesRef = useRef<Message[]>([]);
   const liveRef = useRef<Message[]>([]);
+  const streamRef = useRef<SessionStream | null>(null);
+  const eventHandlerRef = useRef<(event: UiEvent) => void>(() => undefined);
 
   useEffect(() => {
     if (safeSelectedThemeId !== selectedThemeId) {
@@ -353,8 +369,194 @@ export const App: React.FC = () => {
   }, [safeSelectedThemeId, selectedThemeId, setSelectedThemeId]);
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     liveRef.current = liveMessages;
   }, [liveMessages]);
+
+  const upsertStreamMessage = (next: Message) => {
+    if (messagesRef.current.some((item) => item.id === next.id)) {
+      setMessages((prev) => mergeMessages(prev, [next]));
+      return;
+    }
+
+    setLiveMessages((prev) => mergeLiveMessages(prev, next));
+  };
+
+  eventHandlerRef.current = (event: UiEvent) => {
+    const data = event.data || {};
+    const preview = previewEvent(event.type, data);
+
+    setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
+    setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
+
+    if (event.type === "assistant.message_delta") {
+      setIsTyping(true);
+      upsertStreamMessage({
+        id: String(event.id || `assistant-${Date.now()}`),
+        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("");
+      return;
+    }
+
+    if (event.type === "assistant.message") {
+      const nextUsage = sessionUsageSchema.nullish().catch(null).parse(data.usage);
+      if (nextUsage) setUsage(nextUsage);
+      const parts = Array.isArray(data.parts) ? data.parts : [];
+      const mapped = mapAssistantParts(parts, Date.now());
+      const kept = carry(liveRef.current, mapped);
+      setLiveMessages([]);
+      setCurrentActivity("");
+      if (mapped.length > 0) {
+        setMessages((prev) => mergeMessages(prev, [...kept, ...mapped]));
+        return;
+      }
+      const text = String(data.content || "");
+      if (text || kept.length > 0) {
+        setMessages((prev) => mergeMessages(prev, [...kept, ...(!text ? [] : [{
+          id: String(event.id || crypto.randomUUID()),
+          text,
+          sender: "assistant" as const,
+          timestamp: new Date(event.timestamp || Date.now()),
+        }])]));
+      }
+      return;
+    }
+
+    if (event.type === "tool.execution_start") {
+      setIsTyping(true);
+      const toolName = String(data.toolName || "tool");
+      const toolArgs = (data.arguments || {}) as Record<string, unknown>;
+      const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
+      const toolMeta = redactSensitiveFields((data.metadata || {}) as Record<string, unknown>) as Record<string, unknown>;
+      setCurrentActivity(describeToolActivity(toolName, toolArgs));
+      upsertStreamMessage({
+        id: String(event.id || crypto.randomUUID()),
+        text: JSON.stringify(safeToolArgs, null, 2),
+        sender: "tool",
+        startedAt: new Date(),
+        toolName,
+        toolArgs: safeToolArgs,
+        toolMeta,
+        toolStatus: "running",
+        timestamp: new Date(),
+      });
+      return;
+    }
+
+    if (event.type === "tool.execution_complete") {
+      setIsTyping(true);
+      const toolId = String(event.id || crypto.randomUUID());
+
+      if (data.error) {
+        const text = String(data.error);
+        setCurrentActivity("");
+        const tool = [...messagesRef.current, ...liveRef.current].find((item) => item.id === toolId);
+        upsertStreamMessage({
+          id: toolId,
+          text: tool?.text || "{}",
+          sender: "tool",
+          startedAt: tool?.startedAt,
+          finishedAt: new Date(),
+          toolName: String(data.toolName || tool?.toolName || "tool"),
+          toolArgs: tool?.toolArgs || {},
+          toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
+          toolResult: undefined,
+          toolError: text,
+          toolStatus: "error",
+          timestamp: new Date(),
+        });
+        return;
+      }
+
+      const tool = [...messagesRef.current, ...liveRef.current].find((item) => item.id === toolId);
+      upsertStreamMessage({
+        id: toolId,
+        text: tool?.text || "{}",
+        sender: "tool",
+        startedAt: tool?.startedAt,
+        finishedAt: new Date(),
+        toolName: String(data.toolName || tool?.toolName || "tool"),
+        toolArgs: tool?.toolArgs || {},
+        toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
+        toolResult: data.result,
+        toolError: undefined,
+        toolStatus: "completed",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("Processing result...");
+      return;
+    }
+
+    if (event.type === "assistant.reasoning_delta") {
+      setIsTyping(true);
+      upsertStreamMessage({
+        id: String(event.id || `thinking-${Date.now()}`),
+        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
+        sender: "thinking",
+        timestamp: new Date(),
+      });
+      setCurrentActivity("Thinking...");
+      return;
+    }
+
+    if (event.type === "assistant.turn_start") {
+      setIsTyping(true);
+      setCurrentActivity((current) => current || "Starting response...");
+      return;
+    }
+
+    if (event.type === "assistant.turn_end") {
+      setIsTyping(false);
+      setCurrentActivity("");
+      return;
+    }
+
+    if (event.type === "session.error") {
+      const text = String(data.message || "Unknown session error");
+      setIsTyping(false);
+      setCurrentActivity("");
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        text: `⚠️ Session error: ${text}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const ensureSessionStream = async (sessionId: string) => {
+    if (streamRef.current?.sessionId === sessionId) {
+      await streamRef.current.ready;
+      return;
+    }
+
+    streamRef.current?.close();
+
+    const controller = new AbortController();
+    const subscription = client.subscribe(sessionId, {
+      onEvent: (event) => {
+        eventHandlerRef.current(event);
+      },
+    }, { signal: controller.signal });
+    const next = {
+      sessionId,
+      ready: subscription.ready,
+      close: () => {
+        controller.abort();
+        subscription.close();
+      },
+    } satisfies SessionStream;
+
+    streamRef.current = next;
+    await next.ready;
+  };
 
   const fetchModels = async () => {
     setConnectionState((current) => ({ ...current, isLoading: true, hasFailed: false }));
@@ -474,6 +676,31 @@ export const App: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [client, currentSessionId]);
 
+  useEffect(() => {
+    if (!currentSessionId) {
+      streamRef.current?.close();
+      streamRef.current = null;
+      return;
+    }
+
+    void ensureSessionStream(currentSessionId).catch((err) => {
+      const text = err instanceof Error ? err.message : String(err);
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        text: `❌ Error: ${text}`,
+        sender: "assistant",
+        timestamp: new Date(),
+      }]);
+    });
+
+    return () => {
+      if (streamRef.current?.sessionId !== currentSessionId) return;
+      streamRef.current.close();
+      streamRef.current = null;
+    };
+  }, [currentSessionId]);
+
   const handlePermissionDecision = async (decision: PermissionDecision) => {
     if (!permission) return;
     const reply = decision === "deny" ? "reject" : decision === "always" ? "always" : "once";
@@ -549,11 +776,13 @@ export const App: React.FC = () => {
   };
 
   const handleSend = async () => {
-    if (isTyping || (!inputValue.trim() && images.length === 0)) return;
+    if (!inputValue.trim() && images.length === 0) return;
 
     const userInput = inputValue;
     const userImages = [...images];
     const isFirstUserTurn = !messages.some((message) => message.sender === "user");
+    const wasTyping = isTyping;
+    const carried = wasTyping ? liveRef.current : [];
 
     let sessionId = currentSessionId;
 
@@ -564,29 +793,36 @@ export const App: React.FC = () => {
       return;
     }
 
-    setMessages((prev) => [
-      ...prev,
-      {
+    setMessages((prev) => {
+      const next = mergeMessages(prev, carried);
+      return [...next, {
         id: crypto.randomUUID(),
         text: userInput || `Sent ${userImages.length} image${userImages.length === 1 ? "" : "s"}`,
         sender: "user",
         timestamp: new Date(),
         images: userImages.length > 0 ? userImages.map((image) => ({ dataUrl: image.dataUrl, name: image.name })) : undefined,
-      },
-    ]);
+      }];
+    });
 
     setInputValue("");
     setImages([]);
     setIsTyping(true);
     setCurrentActivity("Processing...");
-    setLiveMessages([]);
-    setDebugEvents([]);
     setError("");
-    trafficStats.reset();
+
+    if (carried.length > 0) {
+      setLiveMessages([]);
+    }
+
+    if (!wasTyping) {
+      setLiveMessages([]);
+      setDebugEvents([]);
+      trafficStats.reset();
+    }
 
     try {
-      const ctl = new AbortController();
-      run.current = ctl;
+      await ensureSessionStream(sessionId);
+
       const uploads: Array<{ path: string; name: string; mime: string }> = [];
 
       for (const image of userImages) {
@@ -613,165 +849,13 @@ export const App: React.FC = () => {
         updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
       }
 
-      let count = 0;
-
-      for await (const event of client.query(sessionId, {
+      await client.sendMessage(sessionId, {
         model: { providerID: model.providerID, modelID: model.modelID },
         agent: officeHost,
         system: getSystemMessage(Office.context.host),
         parts,
         tools,
-      }, { signal: ctl.signal })) {
-        count += 1;
-        setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
-        const data = event.data || {};
-        const preview = previewEvent(event.type, data);
-
-        setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
-
-        if (event.type === "assistant.message_delta") {
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || `assistant-${Date.now()}`),
-            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-            sender: "assistant",
-            timestamp: new Date(),
-          }));
-          setCurrentActivity("");
-          continue;
-        }
-
-        if (event.type === "assistant.message") {
-          const nextUsage = sessionUsageSchema.nullish().catch(null).parse(data.usage);
-          if (nextUsage) setUsage(nextUsage);
-          const parts = Array.isArray(data.parts) ? data.parts : [];
-          const mapped = mapAssistantParts(parts, Date.now());
-          const kept = carry(liveRef.current, mapped);
-          setLiveMessages([]);
-          setCurrentActivity("");
-          if (mapped.length > 0) {
-            setMessages((prev) => [...prev, ...kept, ...mapped]);
-            continue;
-          }
-          const text = String(data.content || "");
-          if (text || kept.length > 0) {
-            setMessages((prev) => [...prev, ...kept, ...(!text ? [] : [{
-              id: String(event.id || crypto.randomUUID()),
-              text,
-              sender: "assistant" as const,
-              timestamp: new Date(event.timestamp || Date.now()),
-            }])]);
-          }
-          continue;
-        }
-
-        if (event.type === "tool.execution_start") {
-          const toolName = String(data.toolName || "tool");
-          const toolArgs = (data.arguments || {}) as Record<string, unknown>;
-          const safeToolArgs = redactSensitiveFields(toolArgs) as Record<string, unknown>;
-          const toolMeta = redactSensitiveFields((data.metadata || {}) as Record<string, unknown>) as Record<string, unknown>;
-          setCurrentActivity(describeToolActivity(toolName, toolArgs));
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || crypto.randomUUID()),
-            text: JSON.stringify(safeToolArgs, null, 2),
-            sender: "tool",
-            startedAt: new Date(),
-            toolName,
-            toolArgs: safeToolArgs,
-            toolMeta,
-            toolStatus: "running",
-            timestamp: new Date(),
-          }));
-          continue;
-        }
-
-        if (event.type === "tool.execution_complete") {
-          const toolId = String(event.id || crypto.randomUUID());
-
-          if (data.error) {
-            const text = String(data.error);
-            setCurrentActivity("");
-            setLiveMessages((prev) => {
-              const tool = prev.find((item) => item.id === toolId);
-              return mergeLiveMessages(prev, {
-                id: toolId,
-                text: tool?.text || "{}",
-                sender: "tool",
-                startedAt: tool?.startedAt,
-                finishedAt: new Date(),
-                toolName: String(data.toolName || tool?.toolName || "tool"),
-                toolArgs: tool?.toolArgs || {},
-                toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
-                toolResult: undefined,
-                toolError: text,
-                toolStatus: "error",
-                timestamp: new Date(),
-              });
-            });
-            continue;
-          }
-          setLiveMessages((prev) => {
-            const tool = prev.find((item) => item.id === toolId);
-            return mergeLiveMessages(prev, {
-              id: toolId,
-              text: tool?.text || "{}",
-              sender: "tool",
-              startedAt: tool?.startedAt,
-              finishedAt: new Date(),
-              toolName: String(data.toolName || tool?.toolName || "tool"),
-              toolArgs: tool?.toolArgs || {},
-              toolMeta: redactSensitiveFields((data.metadata || tool?.toolMeta || {}) as Record<string, unknown>) as Record<string, unknown>,
-              toolResult: data.result,
-              toolError: undefined,
-              toolStatus: "completed",
-              timestamp: new Date(),
-            });
-          });
-          setCurrentActivity("Processing result...");
-          continue;
-        }
-
-        if (event.type === "assistant.reasoning_delta") {
-          setLiveMessages((prev) => mergeLiveMessages(prev, {
-            id: String(event.id || `thinking-${Date.now()}`),
-            text: `${prev.find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-            sender: "thinking",
-            timestamp: new Date(),
-          }));
-          setCurrentActivity("Thinking...");
-          continue;
-        }
-
-        if (event.type === "assistant.turn_start") {
-          setCurrentActivity((current) => current || "Starting response...");
-          continue;
-        }
-
-        if (event.type === "assistant.turn_end") {
-          setCurrentActivity("");
-          continue;
-        }
-
-        if (event.type === "session.error") {
-          const text = String(data.message || "Unknown session error");
-          setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
-          setMessages((prev) => [...prev, {
-            id: `error-${Date.now()}`,
-            text: `⚠️ Session error: ${text}`,
-            sender: "assistant",
-            timestamp: new Date(),
-          }]);
-        }
-      }
-
-      if (count === 0 && !ctl.signal.aborted) {
-        setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
-        setMessages((prev) => [...prev, {
-          id: `debug-${Date.now()}`,
-          text: "⚠️ No events received from the OpenCode runtime.",
-          sender: "assistant",
-          timestamp: new Date(),
-        }]);
-      }
+      });
     } catch (err) {
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       const text = err instanceof Error ? err.message : String(err);
@@ -781,11 +865,10 @@ export const App: React.FC = () => {
         sender: "assistant",
         timestamp: new Date(),
       }]);
-    } finally {
-      run.current = null;
-      setIsTyping(false);
-      setCurrentActivity("");
-      setLiveMessages([]);
+      if (!wasTyping) {
+        setIsTyping(false);
+        setCurrentActivity("");
+      }
     }
   };
 
@@ -795,12 +878,10 @@ export const App: React.FC = () => {
 
     try {
       await client.abortSession(currentSessionId);
-      run.current?.abort();
-      setMessages((prev) => {
-        const seen = new Set(prev.map((message) => message.id));
-        return [...prev, ...liveRef.current.filter((message) => !seen.has(message.id))];
-      });
+      setMessages((prev) => mergeMessages(prev, liveRef.current));
       setLiveMessages([]);
+      setIsTyping(false);
+      setCurrentActivity("");
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, {

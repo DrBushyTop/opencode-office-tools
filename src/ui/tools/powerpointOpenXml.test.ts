@@ -380,14 +380,43 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     }, 0);
 
     const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
-    // The delay should be on the per-shape animation cTn's stCondLst, which has nodeType="afterEffect"
+    // The delay should be on the containing timing-group cTn so multiple shapes can share one sequence step.
     const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
     const afterEffectCTn = Array.from(cTns).find((n) => n.getAttribute("nodeType") === "afterEffect");
     expect(afterEffectCTn).toBeDefined();
-    const stCondLst = afterEffectCTn?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "stCondLst")[0];
-    const cond = stCondLst?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
-    expect(cond?.getAttribute("delay")).toBe("250");
-    expect(cond?.hasAttribute("evt")).toBe(false);
+    const shapeCond = afterEffectCTn?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
+    expect(shapeCond?.getAttribute("delay")).toBe("0");
+    const timingGroupCtn = afterEffectCTn?.parentNode?.parentNode?.parentNode as Element | undefined;
+    const timingCond = timingGroupCtn?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "stCondLst")[0]
+      ?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
+    expect(timingCond?.getAttribute("delay")).toBe("250");
+    expect(timingCond?.hasAttribute("evt")).toBe(false);
+  });
+
+  it("keeps an afterPrevious batch in one timing group", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+
+    const mutated = addSlideAnimationBatchInBase64Presentation(base64, {
+      shapeId: "shape-0",
+      type: "fade",
+      start: "afterPrevious",
+      durationMs: 350,
+      delayMs: 150,
+    }, [0, 1]);
+
+    const slideDoc = parseXml(new OpenXmlPackage(mutated).readText("ppt/slides/slide1.xml"));
+    const cTns = slideDoc.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cTn");
+    const shapeCTns = Array.from(cTns).filter((n) => ["afterEffect", "withEffect"].includes(n.getAttribute("nodeType") || ""));
+    expect(shapeCTns.map((node) => node.getAttribute("nodeType"))).toEqual(["afterEffect", "withEffect"]);
+    const firstTimingGroup = shapeCTns[0]?.parentNode?.parentNode?.parentNode as Element | undefined;
+    const secondTimingGroup = shapeCTns[1]?.parentNode?.parentNode?.parentNode as Element | undefined;
+    expect(firstTimingGroup === secondTimingGroup).toBe(true);
+    const timingCond = firstTimingGroup?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "stCondLst")[0]
+      ?.getElementsByTagNameNS("http://schemas.openxmlformats.org/presentationml/2006/main", "cond")[0];
+    expect(timingCond?.getAttribute("delay")).toBe("150");
   });
 
   it("creates an appear entrance animation with visibility set", () => {

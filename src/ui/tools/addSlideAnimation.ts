@@ -1,9 +1,11 @@
 import type { Tool } from "./types";
 import {
-  addSlideAnimationBatchInBase64Presentation,
+  addSlideAnimationBatchToXmlShapeIdsInBase64Presentation,
   addSlideAnimationInBase64Presentation,
+  addSlideAnimationToXmlShapeIdInBase64Presentation,
   findSlideShapeIndexByXmlShapeIdInBase64Presentation,
   replaceSlideWithMutatedOpenXml,
+  resolveXmlShapeIdByMetadataInBase64Presentation,
   type SlideAnimationDefinition,
 } from "./powerpointOpenXml";
 import { resolvePowerPointTargetingArgs } from "./powerpointContext";
@@ -62,6 +64,32 @@ function resolveShapeSync(
   }
 
   throw new Error(`Shape ${id} was not found on slide ${slideIndex + 1}. ${formatAvailableShapeTargets(slideIndex, shapes)}`);
+}
+
+function resolveShapeTargetSync(
+  shapes: PowerPoint.Shape[],
+  slideIndex: number,
+  base64: string,
+  requestedId: string | number,
+): { shapeId: string; shapeIndex: number; targetXmlShapeId: string } {
+  const resolved = resolveShapeSync(shapes, slideIndex, base64, requestedId);
+  const targetShape = shapes[resolved.shapeIndex];
+  const targetXmlShapeId = resolveXmlShapeIdByMetadataInBase64Presentation(
+    base64,
+    {
+      name: targetShape.name,
+      left: targetShape.left,
+      top: targetShape.top,
+      width: targetShape.width,
+      height: targetShape.height,
+    },
+    resolved.shapeIndex,
+  ) || String(requestedId);
+
+  return {
+    ...resolved,
+    targetXmlShapeId,
+  };
 }
 
 export const addSlideAnimation: Tool = {
@@ -153,15 +181,15 @@ export const addSlideAnimation: Tool = {
             slideIndex,
             (base64, sourceSlide) => {
               const shapes = sourceSlide.shapes.items;
-              const resolved = shapeIds.map((id) => resolveShapeSync(shapes, slideIndex, base64, id));
+              const resolved = shapeIds.map((id) => resolveShapeTargetSync(shapes, slideIndex, base64, id));
               resolvedShapeIds = resolved.map((r) => r.shapeId);
-              return addSlideAnimationBatchInBase64Presentation(
+              return addSlideAnimationBatchToXmlShapeIdsInBase64Presentation(
                 base64,
                 { ...animation, shapeId: resolved[0].shapeId },
-                resolved.map((r) => r.shapeIndex),
+                resolved.map((r) => r.targetXmlShapeId),
               );
             },
-            { preload: (slide) => slide.shapes.load("items/id,name") },
+            { preload: (slide) => slide.shapes.load("items/id,name,left,top,width,height") },
           );
           return {
             resultType: "success",
@@ -187,9 +215,13 @@ export const addSlideAnimation: Tool = {
             let targetShapeIndex: number;
 
             if (singleId !== undefined) {
-              const resolved = resolveShapeSync(shapes, slideIndex, base64, singleId);
+              const resolved = resolveShapeTargetSync(shapes, slideIndex, base64, singleId);
               resolvedShapeId = resolved.shapeId;
               targetShapeIndex = resolved.shapeIndex;
+              return addSlideAnimationToXmlShapeIdInBase64Presentation(base64, {
+                ...animation,
+                shapeId: resolvedShapeId,
+              }, resolved.targetXmlShapeId);
             } else {
               // shapeIndex-only mode
               if (animation.shapeIndex === undefined || !Number.isInteger(animation.shapeIndex) || animation.shapeIndex < 0 || animation.shapeIndex >= shapes.length) {
@@ -204,7 +236,7 @@ export const addSlideAnimation: Tool = {
               shapeId: resolvedShapeId,
             }, targetShapeIndex);
           },
-          { preload: (slide) => slide.shapes.load("items/id,name") },
+          { preload: (slide) => slide.shapes.load("items/id,name,left,top,width,height") },
         );
         return {
           resultType: "success",

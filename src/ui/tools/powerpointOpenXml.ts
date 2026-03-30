@@ -20,6 +20,7 @@ const RELATIONSHIP_TYPE_NOTES_MASTER = "http://schemas.openxmlformats.org/office
 const CONTENT_TYPE_NOTES_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
 const ANIMATABLE_SHAPE_LOCAL_NAMES = new Set(["sp", "cxnSp", "pic", "graphicFrame", "grpSp", "contentPart"]);
 const ELEMENT_NODE = 1;
+const EMUS_PER_POINT = 12700;
 
 const EXCLUDED_NOTE_PLACEHOLDER_TYPES = new Set(["sldImg", "hdr", "dt", "ftr", "sldNum"]);
 
@@ -208,6 +209,34 @@ function getXmlShapeId(shape: Element, shapeIndex: number) {
   return xmlShapeId;
 }
 
+function getXmlShapeName(shape: Element) {
+  return shape.getElementsByTagNameNS(NS_P, "cNvPr")[0]?.getAttribute("name") || "";
+}
+
+function getXmlShapeBoxInPoints(shape: Element) {
+  const xfrm = shape.getElementsByTagNameNS(NS_A, "xfrm")[0];
+  const off = xfrm?.getElementsByTagNameNS(NS_A, "off")[0];
+  const ext = xfrm?.getElementsByTagNameNS(NS_A, "ext")[0];
+  const left = Number(off?.getAttribute("x"));
+  const top = Number(off?.getAttribute("y"));
+  const width = Number(ext?.getAttribute("cx"));
+  const height = Number(ext?.getAttribute("cy"));
+  if (![left, top, width, height].every(Number.isFinite)) {
+    return null;
+  }
+
+  return {
+    left: left / EMUS_PER_POINT,
+    top: top / EMUS_PER_POINT,
+    width: width / EMUS_PER_POINT,
+    height: height / EMUS_PER_POINT,
+  };
+}
+
+function isNearlyEqual(left: number, right: number, tolerance = 0.5) {
+  return Math.abs(left - right) <= tolerance;
+}
+
 function resolveAnimationTargetXmlShapeId(slideDoc: XMLDocument, shapeIndex: number) {
   const shapes = getSlideShapeElementsInOrder(slideDoc);
   const shape = shapes[shapeIndex];
@@ -228,6 +257,60 @@ export function listXmlShapeIdsInBase64Presentation(base64: string) {
   const pkg = new OpenXmlPackage(base64);
   const { slideDoc } = getFirstSlideDocument(pkg);
   return getSlideShapeElementsInOrder(slideDoc).map((shape, shapeIndex) => getXmlShapeId(shape, shapeIndex));
+}
+
+export interface SlideShapeLookupTarget {
+  name?: string | null;
+  left?: number | null;
+  top?: number | null;
+  width?: number | null;
+  height?: number | null;
+}
+
+export function resolveXmlShapeIdByMetadataInBase64Presentation(
+  base64: string,
+  target: SlideShapeLookupTarget,
+  fallbackShapeIndex?: number,
+) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slideDoc } = getFirstSlideDocument(pkg);
+  const shapes = getSlideShapeElementsInOrder(slideDoc);
+  const candidates = shapes
+    .map((shape, shapeIndex) => {
+      const box = getXmlShapeBoxInPoints(shape);
+      const matchesName = !!target.name && getXmlShapeName(shape) === target.name;
+      const hasTargetBox = [target.left, target.top, target.width, target.height].every((value) => Number.isFinite(value));
+      const matchesBox = !!box
+        && hasTargetBox
+        && isNearlyEqual(box.left, target.left as number)
+        && isNearlyEqual(box.top, target.top as number)
+        && isNearlyEqual(box.width, target.width as number)
+        && isNearlyEqual(box.height, target.height as number);
+      if (!matchesName && !matchesBox) {
+        return null;
+      }
+
+      return {
+        score: (matchesBox ? 10 : 0) + (matchesName ? 4 : 0),
+        xmlShapeId: getXmlShapeId(shape, shapeIndex),
+      };
+    })
+    .filter((candidate): candidate is { score: number; xmlShapeId: string } => candidate !== null)
+    .sort((left, right) => right.score - left.score);
+
+  if (candidates.length > 0) {
+    const best = candidates[0];
+    const isUniqueBest = candidates.length === 1 || candidates[1].score < best.score;
+    if (isUniqueBest) {
+      return best.xmlShapeId;
+    }
+  }
+
+  if (fallbackShapeIndex !== undefined) {
+    return resolveAnimationTargetXmlShapeId(slideDoc, fallbackShapeIndex);
+  }
+
+  return null;
 }
 
 export const openXmlRoundTripResultSchema = z.object({
@@ -1074,10 +1157,11 @@ function buildShapeAnimationPar(
 
   cTn.setAttribute("nodeType", nodeType);
 
-  // Always add stCondLst with delay="0" (or the animation's delay for afterPrevious)
+  // Shape-level timing stays at zero. Group-level sequencing/delay is handled by
+  // the containing timing-group p:par so batched shapes can share one sequence slot.
   const stCondLst = doc.createElementNS(NS_P, "p:stCondLst");
   const cond = doc.createElementNS(NS_P, "p:cond");
-  cond.setAttribute("delay", nodeType === "afterEffect" && animation.delayMs ? String(animation.delayMs) : "0");
+  cond.setAttribute("delay", "0");
   stCondLst.appendChild(cond);
   cTn.appendChild(stCondLst);
 
@@ -1233,7 +1317,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
     if (lastClickGroup) {
       const clickGroupCtn = lastClickGroup.getElementsByTagNameNS(NS_P, "cTn")[0];
       const clickGroupChildren = getOrCreateChild(clickGroupCtn, NS_P, "p:childTnLst");
-      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, "0");
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, animation.delayMs ? String(animation.delayMs) : "0");
       const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
       const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
       timingGroupChildren.appendChild(shapePar);
@@ -1242,7 +1326,7 @@ function addSlideAnimationInDocument(slideDoc: XMLDocument, animation: SlideAnim
       // No click group — create one
       const clickGroup = buildClickGroupPar(slideDoc, allocTimeNodeId);
       const clickGroupChildren = clickGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
-      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId);
+      const timingGroup = buildTimingGroupPar(slideDoc, allocTimeNodeId, animation.delayMs ? String(animation.delayMs) : "0");
       const timingGroupChildren = timingGroup.getElementsByTagNameNS(NS_P, "childTnLst")[0];
       const shapePar = buildShapeAnimationPar(slideDoc, animation, allocTimeNodeId, "afterEffect");
       timingGroupChildren.appendChild(shapePar);
@@ -1424,6 +1508,17 @@ export function addSlideAnimationInBase64Presentation(base64: string, animation:
   return pkg.toBase64();
 }
 
+export function addSlideAnimationToXmlShapeIdInBase64Presentation(base64: string, animation: SlideAnimationDefinition, targetXmlShapeId: string) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
+  addSlideAnimationInDocument(slideDoc, {
+    ...animation,
+    targetXmlShapeId,
+  });
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+  return pkg.toBase64();
+}
+
 /**
  * Batch-add the same animation to multiple shapes in a single Open XML round-trip.
  * The first shape uses the specified `start` trigger; all subsequent shapes use `withPrevious`.
@@ -1438,10 +1533,30 @@ export function addSlideAnimationBatchInBase64Presentation(
   for (let i = 0; i < shapeIndexes.length; i++) {
     const anim: SlideAnimationDefinition = i === 0
       ? animation
-      : { ...animation, start: "withPrevious" };
+      : { ...animation, start: "withPrevious", delayMs: undefined };
     addSlideAnimationInDocument(slideDoc, {
       ...anim,
       targetXmlShapeId: resolveAnimationTargetXmlShapeId(slideDoc, shapeIndexes[i]),
+    });
+  }
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+  return pkg.toBase64();
+}
+
+export function addSlideAnimationBatchToXmlShapeIdsInBase64Presentation(
+  base64: string,
+  animation: SlideAnimationDefinition,
+  targetXmlShapeIds: string[],
+) {
+  const pkg = new OpenXmlPackage(base64);
+  const { slidePath, slideDoc } = getFirstSlideDocument(pkg);
+  for (let i = 0; i < targetXmlShapeIds.length; i++) {
+    const anim: SlideAnimationDefinition = i === 0
+      ? animation
+      : { ...animation, start: "withPrevious", delayMs: undefined };
+    addSlideAnimationInDocument(slideDoc, {
+      ...anim,
+      targetXmlShapeId: targetXmlShapeIds[i],
     });
   }
   pkg.writeText(slidePath, serializeXml(slideDoc));
@@ -1830,6 +1945,27 @@ const NODE_TYPE_TO_START: Record<string, string> = {
   afterEffect: "afterPrevious",
 };
 
+function readTimingDelayFromConditionList(conditionList: Element | undefined) {
+  if (!conditionList) return null;
+  const conds = conditionList.getElementsByTagNameNS(NS_P, "cond");
+  for (let j = 0; j < conds.length; j++) {
+    const delay = conds[j].getAttribute("delay");
+    if (delay && delay !== "0" && delay !== "indefinite" && !conds[j].hasAttribute("evt")) {
+      return Number.parseInt(delay, 10);
+    }
+  }
+  return null;
+}
+
+function getContainingTimingGroupCtn(shapeCtn: Element) {
+  const shapePar = shapeCtn.parentNode;
+  const timingGroupChildList = shapePar?.parentNode;
+  const timingGroupCtn = timingGroupChildList?.parentNode;
+  return timingGroupCtn?.nodeType === ELEMENT_NODE && (timingGroupCtn as Element).namespaceURI === NS_P && (timingGroupCtn as Element).localName === "cTn"
+    ? timingGroupCtn as Element
+    : null;
+}
+
 export function extractSlideAnimationSummaryFromBase64Presentation(base64: string): AnimationSummary {
   const pkg = new OpenXmlPackage(base64);
   const slidePath = getFirstSlidePath(pkg);
@@ -1891,17 +2027,14 @@ export function extractSlideAnimationSummaryFromBase64Presentation(base64: strin
       }
     }
 
-    // Get delay from stCondLst
-    let delayMs: number | null = null;
-    const stCondLst = getDirectChildByTagName(cTn, NS_P, "stCondLst");
-    if (stCondLst) {
-      const conds = stCondLst.getElementsByTagNameNS(NS_P, "cond");
-      for (let j = 0; j < conds.length; j++) {
-        const delay = conds[j].getAttribute("delay");
-        if (delay && delay !== "0" && delay !== "indefinite" && !conds[j].hasAttribute("evt")) {
-          delayMs = Number.parseInt(delay, 10);
-        }
-      }
+    // Delay can be expressed either on the shape effect cTn or on the containing
+    // timing group. The latter keeps batched shapes in one sequence step.
+    let delayMs = readTimingDelayFromConditionList(getDirectChildByTagName(cTn, NS_P, "stCondLst"));
+    if (delayMs === null) {
+      const timingGroupCtn = getContainingTimingGroupCtn(cTn);
+      delayMs = readTimingDelayFromConditionList(
+        timingGroupCtn ? getDirectChildByTagName(timingGroupCtn, NS_P, "stCondLst") : undefined,
+      );
     }
 
     animations.push({
