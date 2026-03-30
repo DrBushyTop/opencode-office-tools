@@ -56,38 +56,42 @@ interface HeaderBarProps {
   onThemeChange: (themeId: string) => void;
   connectionStatus?: HeaderConnectionStatus;
   subtitle?: string;
+  contextLabel?: string;
   usageSummary?: string;
 }
 
 const useStyles = makeStyles({
   header: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 16px",
-    gap: "16px",
-    minHeight: "68px",
+    flexDirection: "column",
+    padding: "12px 16px 8px",
+    gap: "6px",
+    minHeight: "64px",
     borderBottom: "1px solid var(--oc-border)",
     background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-elevated, var(--oc-bg)) 92%, transparent), var(--oc-bg))",
+  },
+  topRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    width: "100%",
+    minWidth: 0,
+    flexWrap: "nowrap",
+  },
+  bottomRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    minWidth: 0,
   },
   left: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
     minWidth: 0,
     flex: 1,
-  },
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    minWidth: 0,
-  },
-  title: {
-    fontSize: "13px",
-    fontWeight: "700",
-    letterSpacing: "0.01em",
-    color: "var(--oc-text)",
   },
   subtitle: {
     fontSize: "11px",
@@ -95,14 +99,19 @@ const useStyles = makeStyles({
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    flex: "1 1 auto",
+    minWidth: 0,
   },
   dropdown: {
-    minWidth: "220px",
+    minWidth: 0,
+    width: "100%",
+    height: "34px",
     fontSize: "12px",
     borderRadius: "10px",
     background: "var(--oc-bg-soft)",
     border: "1px solid var(--oc-border) !important",
     padding: "0 10px",
+    boxSizing: "border-box",
     ":hover": {
       background: "var(--oc-bg-soft-hover)",
     },
@@ -110,28 +119,30 @@ const useStyles = makeStyles({
   group: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: "8px",
     flexShrink: 0,
+    minWidth: 0,
   },
   statusPill: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "8px",
-    padding: "6px 10px",
-    borderRadius: "999px",
-    border: "1px solid var(--oc-border)",
-    background: "var(--oc-bg-soft)",
+    gap: "6px",
     color: "var(--oc-text-muted)",
     fontSize: "11px",
+    lineHeight: 1,
     whiteSpace: "nowrap",
+    flexShrink: 0,
   },
   statusDot: {
-    width: "8px",
-    height: "8px",
+    width: "7px",
+    height: "7px",
     borderRadius: "999px",
-    background: "var(--oc-text-faint)",
-    boxShadow: "0 0 0 3px color-mix(in srgb, currentColor 18%, transparent)",
+    background: "currentColor",
+    boxShadow: "0 0 0 2px color-mix(in srgb, currentColor 18%, transparent)",
     color: "inherit",
+    transform: "translateY(-0.5px)",
   },
   statusConnecting: {
     color: "var(--oc-warning, #d4a72c)",
@@ -182,6 +193,17 @@ const useStyles = makeStyles({
       backgroundColor: "var(--oc-accent-strong)",
     },
   },
+  contextChip: {
+    fontSize: "11px",
+    color: "var(--oc-text-muted)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    marginLeft: "auto",
+    minWidth: 0,
+    textAlign: "right",
+    flexShrink: 1,
+  },
   menu: {
     width: "320px",
     display: "flex",
@@ -189,7 +211,6 @@ const useStyles = makeStyles({
     gap: "14px",
     padding: "14px",
     background: "var(--oc-bg-elevated, var(--oc-bg, #1b1818))",
-    backgroundColor: "var(--oc-bg-elevated, var(--oc-bg, #1b1818))",
     color: "var(--oc-text, #f1ecec)",
     border: "1px solid var(--oc-border, rgba(255,255,255,0.10))",
     borderRadius: "16px",
@@ -280,6 +301,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onThemeChange,
   connectionStatus,
   subtitle,
+  contextLabel,
   usageSummary,
 }) => {
   const styles = useStyles();
@@ -319,50 +341,42 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
   return (
     <div className={styles.header}>
-      <div className={styles.left}>
-        <div className={styles.titleRow}>
-          <div className={styles.title}>OpenCode</div>
-          {connectionStatus && (
-            <div className={`${styles.statusPill} ${statusClassName ?? ""}`.trim()}>
-              <span className={styles.statusDot} />
-              <span>{connectionStatus.label}</span>
-            </div>
-          )}
-        </div>
-        <Combobox
-          className={styles.dropdown}
-          appearance="filled-darker"
+      <div className={styles.topRow}>
+        <div className={styles.left}>
+          <Combobox
+            className={styles.dropdown}
+            appearance="filled-darker"
           freeform
           placeholder="Search models"
+          aria-label="Model"
           value={value}
-          onChange={(event) => setValue((event.target as HTMLInputElement).value)}
-          onOpenChange={(_, data) => {
-            setOpen(data.open);
-            setValue(data.open ? "" : selectedLabel);
-          }}
-          onOptionSelect={(_, data) => {
-            const nextModel = ModelTypeSchema.safeParse(data.optionValue);
-            if (nextModel.success && nextModel.data !== selectedModel) onModelChange(nextModel.data);
-            setOpen(false);
-            setValue(data.optionText || selectedLabel);
-          }}
-        >
-          {items.map((model) => (
-            <Option key={model.key} value={model.key} text={model.label}>
-              {model.label}
-            </Option>
-          ))}
-        </Combobox>
-        {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
-      </div>
+            onChange={(event) => setValue((event.target as HTMLInputElement).value)}
+            onOpenChange={(_, data) => {
+              setOpen(data.open);
+              setValue(data.open ? "" : selectedLabel);
+            }}
+            onOptionSelect={(_, data) => {
+              const nextModel = ModelTypeSchema.safeParse(data.optionValue);
+              if (nextModel.success && nextModel.data !== selectedModel) onModelChange(nextModel.data);
+              setOpen(false);
+              setValue(data.optionText || selectedLabel);
+            }}
+          >
+            {items.map((model) => (
+              <Option key={model.key} value={model.key} text={model.label}>
+                {model.label}
+              </Option>
+            ))}
+          </Combobox>
+        </div>
 
-      <div className={styles.group}>
-        {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
-        <Popover positioning="below-end" inline>
-          <PopoverTrigger disableButtonEnhancement>
-            <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
-          </PopoverTrigger>
-          <PopoverSurface className={styles.menu}>
+        <div className={styles.group}>
+          {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
+          <Popover positioning="below-end" inline>
+            <PopoverTrigger disableButtonEnhancement>
+              <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
+            </PopoverTrigger>
+            <PopoverSurface className={styles.menu}>
             <div className={styles.menuHeader}>
               <div className={styles.menuTitle}>Chat settings</div>
               <div className={styles.menuHint}>Tune local UI behavior, choose a theme, and set the QA subagent model.</div>
@@ -377,6 +391,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 className={styles.dropdown}
                 appearance="filled-darker"
                 placeholder="Select theme"
+                aria-label="Theme"
                 value={selectedTheme?.label ?? ""}
                 onOptionSelect={(_, data) => {
                   const nextThemeId = data.optionValue;
@@ -395,19 +410,19 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <div className={styles.item}>
               <div className={styles.row}>
                 <div className={styles.label}>Show Thinking</div>
-                <Switch checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
+                <Switch aria-label="Show Thinking" checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
               </div>
             </div>
             <div className={styles.item}>
               <div className={styles.row}>
                 <div className={styles.label}>Show Raw Tool Responses in Expand</div>
-                <Switch checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
+                <Switch aria-label="Show Raw Tool Responses in Expand" checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
               </div>
             </div>
             <div className={styles.item}>
               <div className={styles.row}>
                 <div className={styles.label}>Show Debug Events</div>
-                <Switch checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
+                <Switch aria-label="Show Debug Events" checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
               </div>
             </div>
             <div className={styles.sectionLabel}>Models</div>
@@ -418,6 +433,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 appearance="filled-darker"
                 freeform
                 placeholder="Same as primary model"
+                aria-label="QA Subagent Model"
                 value={qaValue}
                 onChange={(event) => setQaValue((event.target as HTMLInputElement).value)}
                 onOpenChange={(_, data) => {
@@ -443,26 +459,40 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               <div className={styles.help}>Uses the selected model list from OpenCode. Leaving this on the default follows the active chat model.</div>
             </div>
             <div className={styles.menuHint}>UI options are kept locally in the add-in. The QA subagent model is stored in OpenCode config so it persists across sessions.</div>
-          </PopoverSurface>
-        </Popover>
-        <Tooltip content="History" relationship="label">
-          <Button
-            icon={<History24Regular />}
-            appearance="subtle"
-            onClick={onShowHistory}
-            aria-label="History"
-            className={styles.icon}
-          />
-        </Tooltip>
-        <Tooltip content="New chat" relationship="label">
-          <Button
-            icon={<Compose24Regular />}
-            onClick={onNewChat}
-            aria-label="New chat"
-            className={styles.primary}
-          />
-        </Tooltip>
+            </PopoverSurface>
+          </Popover>
+          <Tooltip content="History" relationship="label">
+            <Button
+              icon={<History24Regular />}
+              appearance="subtle"
+              onClick={onShowHistory}
+              aria-label="History"
+              className={styles.icon}
+            />
+          </Tooltip>
+          <Tooltip content="New chat" relationship="label">
+            <Button
+              icon={<Compose24Regular />}
+              onClick={onNewChat}
+              aria-label="New chat"
+              className={styles.primary}
+            />
+          </Tooltip>
+        </div>
       </div>
+
+      {(connectionStatus || subtitle || contextLabel) && (
+        <div className={styles.bottomRow}>
+          {connectionStatus && (
+            <div className={`${styles.statusPill} ${statusClassName ?? ""}`.trim()}>
+              <span className={styles.statusDot} />
+              <span>{connectionStatus.label}</span>
+            </div>
+          )}
+          {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
+          {contextLabel && <div className={styles.contextChip}>{contextLabel}</div>}
+        </div>
+      )}
     </div>
   );
 };

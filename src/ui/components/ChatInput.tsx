@@ -17,7 +17,6 @@ interface ChatInputProps {
   onChange: (value: string) => void;
   onSend: () => void;
   onStop?: () => void;
-  onSent?: () => void;
   disabled?: boolean;
   isRunning?: boolean;
   images?: ImageAttachment[];
@@ -26,7 +25,7 @@ interface ChatInputProps {
 
 const useStyles = makeStyles({
   inputContainer: {
-    width: "min(100%, 760px)",
+    width: "min(calc(100% - 28px), 760px)",
     margin: "0 auto 12px",
     padding: "0",
     display: "flex",
@@ -43,7 +42,7 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "stretch",
     gap: "12px",
-    padding: "12px",
+    padding: "12px 16px",
   },
   input: {
     flex: 1,
@@ -68,7 +67,7 @@ const useStyles = makeStyles({
     flex: 1,
     width: "100%",
     minWidth: 0,
-    padding: "2px 0",
+    padding: "2px 4px",
   },
   sendButton: {
     width: "42px",
@@ -82,6 +81,14 @@ const useStyles = makeStyles({
     color: "var(--text-on-interactive-base, white)",
     ":hover": {
       backgroundColor: "var(--oc-accent-strong)",
+    },
+  },
+  stopButton: {
+    backgroundColor: "var(--oc-bg-soft)",
+    color: "var(--text-strong)",
+    border: "1px solid var(--oc-border)",
+    ":hover": {
+      backgroundColor: "var(--oc-bg-soft-hover)",
     },
   },
   imagePreviewContainer: {
@@ -127,6 +134,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onChange,
   onSend,
   onStop,
+  disabled = false,
   isRunning = false,
   images = [],
   onImagesChange,
@@ -196,9 +204,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <div key={image.id} className={styles.imagePreview}>
               <img src={image.dataUrl} alt="Preview" className={styles.imagePreviewImg} />
               <button
+                type="button"
                 className={styles.imageRemoveButton}
                 onClick={() => handleRemoveImage(image.id)}
                 title="Remove image"
+                aria-label={`Remove image ${image.name}`}
               >
                 <Dismiss24Regular style={{ fontSize: '12px' }} />
               </button>
@@ -217,6 +227,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             onPaste={handlePaste}
             placeholder="Ask OpenCode to work on the current document..."
             rows={3}
+            disabled={disabled || isRunning}
           />
         </div>
         <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
@@ -224,9 +235,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             appearance={isRunning ? "secondary" : "primary"}
             icon={isRunning ? <Stop24Regular /> : <Send24Regular />}
             onClick={isRunning ? onStop : onSend}
-            disabled={isRunning ? !onStop : (!value.trim() && safeImages.length === 0)}
+            disabled={disabled || (isRunning ? !onStop : (!value.trim() && safeImages.length === 0))}
             aria-label={isRunning ? "Stop response" : "Send message"}
-            className={styles.sendButton}
+            className={`${styles.sendButton} ${isRunning ? styles.stopButton : ""}`.trim()}
           />
         </Tooltip>
       </div>

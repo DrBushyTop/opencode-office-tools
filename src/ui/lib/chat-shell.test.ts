@@ -1,25 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { OfficeHost } from "../sessionStorage";
 import type { PowerPointContextSnapshot } from "../tools/powerpointContext";
-import { buildHeaderSubtitle, deriveConnectionIndicator } from "./chat-shell";
+import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./chat-shell";
 
 describe("chat shell helpers", () => {
   describe("buildHeaderSubtitle", () => {
-    it("builds the base host/runtime/tool-count subtitle for non-PowerPoint hosts", () => {
+    it("builds the base host/tool-count subtitle for non-PowerPoint hosts", () => {
       expect(buildHeaderSubtitle({
         host: "word" satisfies OfficeHost,
-        runtimeMode: "local",
         enabledToolCount: 14,
-      })).toBe("Word • local • 14 tools");
+      })).toBe("Word • 14 tools");
 
       expect(buildHeaderSubtitle({
         host: "excel" satisfies OfficeHost,
-        runtimeMode: "",
         enabledToolCount: 9,
       })).toBe("Excel • 9 tools");
     });
 
-    it("preserves PowerPoint context composition after the base subtitle", () => {
+    it("keeps the PowerPoint subtitle focused on host and tool count", () => {
       const powerpointContext: PowerPointContextSnapshot = {
         selectedSlideIds: ["slide-4"],
         selectedShapeIds: ["shape-1", "shape-2"],
@@ -29,19 +27,14 @@ describe("chat shell helpers", () => {
 
       expect(buildHeaderSubtitle({
         host: "powerpoint",
-        runtimeMode: "remote",
         enabledToolCount: 18,
-        powerpointContext,
-      })).toBe("PowerPoint • remote • 18 tools • Slide 4 • 2 shapes selected");
+      })).toBe("PowerPoint • 18 tools");
+
+      expect(buildPowerPointContextLabel(powerpointContext)).toBe("Slide 4 • 2 shapes selected");
     });
 
     it("keeps empty PowerPoint fallback context when no slide or shapes are active", () => {
-      expect(buildHeaderSubtitle({
-        host: "powerpoint",
-        runtimeMode: "",
-        enabledToolCount: 18,
-        powerpointContext: null,
-      })).toBe("PowerPoint • 18 tools • No active slide • No shapes selected");
+      expect(buildPowerPointContextLabel(null)).toBe("No active slide • No shapes selected");
     });
   });
 
