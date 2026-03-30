@@ -17,6 +17,8 @@ import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/off
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats } from "./lib/opencode-events";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
+import { buildHeaderSubtitle, deriveConnectionIndicator } from "./lib/chat-shell";
+import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions } from "./lib/ui-theme";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
@@ -63,10 +65,9 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    padding: "10px",
     boxSizing: "border-box",
-    background: "var(--oc-page)",
-    color: "var(--oc-text)",
+    background: "var(--background-base)",
+    color: "var(--text-strong)",
     fontFamily: '"Inter", "Segoe UI", sans-serif',
   },
   shell: {
@@ -74,16 +75,14 @@ const useStyles = makeStyles({
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
-    borderRadius: "14px",
-    background: "var(--oc-bg)",
-    border: "1px solid var(--oc-border)",
-    boxShadow: "var(--oc-shadow)",
+    background: "var(--background-stronger)",
     overflow: "hidden",
   },
   error: {
-    margin: "0 12px 8px",
-    padding: "10px 12px",
-    borderRadius: "10px",
+    margin: "0 auto 12px",
+    width: "min(100%, 760px)",
+    padding: "12px 14px",
+    borderRadius: "12px",
     background: "var(--oc-danger-bg)",
     border: "1px solid var(--oc-danger-border)",
     color: "var(--oc-danger-text)",
@@ -94,28 +93,19 @@ function getHostLabel(host: OfficeHost) {
   return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : host === "onenote" ? "OneNote" : "Word";
 }
 
-function getSurfaceVars(isDarkMode: boolean): React.CSSProperties {
-  return {
-    "--oc-page": isDarkMode ? "#131010" : "#f3f3f3",
-    "--oc-bg": isDarkMode ? "#1b1818" : "#fcfcfc",
-    "--oc-bg-strong": isDarkMode ? "#252121" : "#f8f8f8",
-    "--oc-bg-soft": isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-    "--oc-bg-soft-hover": isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
-    "--oc-border": isDarkMode ? "rgba(255,255,255,0.10)" : "#e5e5e5",
-    "--oc-border-strong": isDarkMode ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.14)",
-    "--oc-text": isDarkMode ? "#f1ecec" : "#171717",
-    "--oc-text-muted": isDarkMode ? "#b7b1b1" : "#6f6f6f",
-    "--oc-text-faint": isDarkMode ? "#7f7979" : "#8f8f8f",
-    "--oc-accent": isDarkMode ? "#89b5ff" : "#034cff",
-    "--oc-accent-strong": isDarkMode ? "#2558d0" : "#0443de",
-    "--oc-accent-bg": isDarkMode ? "rgba(137,181,255,0.16)" : "#ecf3ff",
-    "--oc-shadow": isDarkMode
-      ? "0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.24)"
-      : "0 0 0 1px rgba(0,0,0,0.05), 0 16px 48px rgba(0,0,0,0.06)",
-    "--oc-danger-bg": isDarkMode ? "rgba(252, 83, 58, 0.14)" : "#fff2f0",
-    "--oc-danger-border": isDarkMode ? "rgba(252, 83, 58, 0.28)" : "rgba(252, 83, 58, 0.24)",
-    "--oc-danger-text": isDarkMode ? "#fe806a" : "#ed4831",
-  } as React.CSSProperties;
+function isDarkHex(value: string) {
+  const normalized = value.replace("#", "");
+  const expanded = normalized.length === 3
+    ? normalized.split("").map((char) => `${char}${char}`).join("")
+    : normalized;
+
+  if (expanded.length !== 6) return false;
+
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance < 140;
 }
 
 const FALLBACK_MODELS: ModelInfo[] = [
@@ -322,6 +312,7 @@ export const App: React.FC = () => {
   const [showThinking, setShowThinking] = useLocalStorage<boolean>("opencode-show-thinking", true);
   const [showToolResponses, setShowToolResponses] = useLocalStorage<boolean>("opencode-show-tool-responses", false);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
+  const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
   const [runtimeMode, setRuntimeMode] = useState<string>("");
   const [usage, setUsage] = useState<SessionUsage | null>(null);
@@ -329,33 +320,57 @@ export const App: React.FC = () => {
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
+  const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
   const isDarkMode = useIsDarkMode();
   const safeSelectedModel = PersistedModelSchema.catch("").parse(selectedModel);
   const safeDebugEnabled = PersistedBooleanSchema.catch(false).parse(debugEnabled);
   const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
   const safeShowToolResponses = PersistedBooleanSchema.catch(false).parse(showToolResponses);
   const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
+  const safeSelectedThemeId = themeOptions.some((theme) => theme.id === selectedThemeId) ? selectedThemeId : defaultThemeId;
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
   const usageSummary = useMemo(() => formatTokenUsage(usage, availableModels), [availableModels, usage]);
+  const enabledToolCount = useMemo(
+    () => Object.values(getEnabledTools(officeHost)).filter(Boolean).length,
+    [officeHost],
+  );
+  const themeMode = isDarkMode ? "dark" : "light";
+  const resolvedTheme = useMemo(() => resolveThemeTokens(safeSelectedThemeId), [safeSelectedThemeId]);
+  const fluentTheme = isDarkHex(resolvedTheme[themeMode].background) ? webDarkTheme : webLightTheme;
+  const surfaceVars = useMemo(
+    () => getThemeCssVars(safeSelectedThemeId, themeMode) as React.CSSProperties,
+    [safeSelectedThemeId, themeMode],
+  );
+  const connectionStatus = useMemo(() => deriveConnectionIndicator(connectionState), [connectionState]);
   const sessionCreatedAt = useRef<string>("");
   const run = useRef<AbortController | null>(null);
   const liveRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    if (safeSelectedThemeId !== selectedThemeId) {
+      setSelectedThemeId(safeSelectedThemeId);
+    }
+  }, [safeSelectedThemeId, selectedThemeId, setSelectedThemeId]);
 
   useEffect(() => {
     liveRef.current = liveMessages;
   }, [liveMessages]);
 
   const fetchModels = async () => {
+    setConnectionState((current) => ({ ...current, isLoading: true, hasFailed: false }));
+
     try {
       const status = await client.getStatus();
       setRuntimeMode(status.mode);
+      setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
       if (!safeSelectedModel || !models.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(models));
       }
     } catch {
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       setAvailableModels(FALLBACK_MODELS);
       if (!safeSelectedModel || !FALLBACK_MODELS.some((model) => model.key === safeSelectedModel)) {
         setSelectedModel(pickDefaultModel(FALLBACK_MODELS));
@@ -613,6 +628,7 @@ export const App: React.FC = () => {
         tools,
       }, { signal: ctl.signal })) {
         count += 1;
+        setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
         const data = event.data || {};
         const preview = previewEvent(event.type, data);
 
@@ -742,6 +758,7 @@ export const App: React.FC = () => {
 
         if (event.type === "session.error") {
           const text = String(data.message || "Unknown session error");
+          setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
           setMessages((prev) => [...prev, {
             id: `error-${Date.now()}`,
             text: `⚠️ Session error: ${text}`,
@@ -752,6 +769,7 @@ export const App: React.FC = () => {
       }
 
       if (count === 0 && !ctl.signal.aborted) {
+        setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
         setMessages((prev) => [...prev, {
           id: `debug-${Date.now()}`,
           text: "⚠️ No events received from the OpenCode runtime.",
@@ -760,6 +778,7 @@ export const App: React.FC = () => {
         }]);
       }
     } catch (err) {
+      setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       const text = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [...prev, {
         id: `error-${Date.now()}`,
@@ -797,8 +816,8 @@ export const App: React.FC = () => {
 
   if (showHistory) {
     return (
-      <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-        <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
+      <FluentProvider theme={fluentTheme}>
+        <div className={styles.container} style={surfaceVars}>
           <div className={styles.shell}>
             <SessionHistory
               host={officeHost}
@@ -813,21 +832,16 @@ export const App: React.FC = () => {
     );
   }
 
-  const powerpointContextLabel = officeHost === "powerpoint"
-    ? [
-        pptContext?.activeSlideIndex !== undefined ? `Slide ${pptContext.activeSlideIndex + 1}` : "No active slide",
-        pptContext?.selectedShapeIds.length ? `${pptContext.selectedShapeIds.length} shape${pptContext.selectedShapeIds.length === 1 ? "" : "s"} selected` : "No shapes selected",
-      ].join(" • ")
-    : undefined;
-
-  const headerSubtitle = [
-    runtimeMode ? `${hostLabel} • ${runtimeMode} • ${getToolNamesForHost(officeHost).length} tools` : `${hostLabel} • ${getToolNamesForHost(officeHost).length} tools`,
-    powerpointContextLabel,
-  ].filter(Boolean).join(" • ");
+  const headerSubtitle = buildHeaderSubtitle({
+    host: officeHost,
+    runtimeMode,
+    enabledToolCount,
+    powerpointContext: officeHost === "powerpoint" ? pptContext : null,
+  });
 
   return (
-    <FluentProvider theme={isDarkMode ? webDarkTheme : webLightTheme}>
-      <div className={styles.container} style={getSurfaceVars(isDarkMode)}>
+    <FluentProvider theme={fluentTheme}>
+      <div className={styles.container} style={surfaceVars}>
         <div className={styles.shell}>
           <HeaderBar
             onNewChat={() => {
@@ -846,6 +860,10 @@ export const App: React.FC = () => {
             onShowToolResponsesChange={setShowToolResponses}
             qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
+            themes={themeOptions}
+            selectedThemeId={safeSelectedThemeId}
+            onThemeChange={setSelectedThemeId}
+            connectionStatus={connectionStatus}
             subtitle={headerSubtitle}
             usageSummary={usageSummary || undefined}
           />
@@ -854,7 +872,7 @@ export const App: React.FC = () => {
             messages={messages}
             liveMessages={liveMessages}
             isTyping={isTyping}
-            isConnecting={false}
+            isConnecting={connectionStatus.state === "connecting"}
             currentActivity={currentActivity}
             debugEvents={safeDebugEnabled ? debugEvents : undefined}
             hostLabel={hostLabel}

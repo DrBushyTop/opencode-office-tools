@@ -26,35 +26,38 @@ interface ChatInputProps {
 
 const useStyles = makeStyles({
   inputContainer: {
-    margin: "0 12px 12px",
+    width: "min(100%, 760px)",
+    margin: "0 auto 12px",
     padding: "0",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    borderRadius: "12px",
-    backgroundColor: "var(--oc-bg-strong)",
+    gap: "10px",
+    borderRadius: "16px",
+    backgroundColor: "var(--oc-bg)",
     border: "1px solid var(--oc-border)",
     boxShadow: "var(--oc-shadow)",
     overflow: "hidden",
+    boxSizing: "border-box",
   },
   body: {
     display: "flex",
-    alignItems: "flex-end",
-    gap: "8px",
-    padding: "8px",
+    alignItems: "stretch",
+    gap: "12px",
+    padding: "12px",
   },
   input: {
     flex: 1,
     width: "100%",
     maxWidth: "100%",
     boxSizing: "border-box",
-    padding: "8px 10px",
+    minHeight: "72px",
+    padding: "0",
     borderRadius: "0",
     border: "none !important",
     backgroundColor: "transparent !important",
     outline: "none !important",
     boxShadow: "none !important",
-    color: "var(--oc-text)",
+    color: "var(--text-strong)",
     fontSize: "14px",
     lineHeight: "1.5",
     "::after": {
@@ -65,20 +68,18 @@ const useStyles = makeStyles({
     flex: 1,
     width: "100%",
     minWidth: 0,
-    borderRadius: "10px",
-    background: "var(--oc-bg)",
-    border: "1px solid var(--oc-border)",
+    padding: "2px 0",
   },
   sendButton: {
-    width: "36px",
-    height: "36px",
-    minWidth: "36px",
+    width: "42px",
+    height: "42px",
+    minWidth: "42px",
     padding: "0",
     alignSelf: "flex-end",
     backgroundColor: "var(--oc-accent)",
     border: "none",
-    borderRadius: "9px",
-    color: "white",
+    borderRadius: "12px",
+    color: "var(--text-on-interactive-base, white)",
     ":hover": {
       backgroundColor: "var(--oc-accent-strong)",
     },
@@ -87,15 +88,16 @@ const useStyles = makeStyles({
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
-    padding: "8px 8px 0",
+    padding: "12px 12px 0",
   },
   imagePreview: {
     position: "relative",
-    width: "80px",
-    height: "80px",
-    borderRadius: "8px",
+    width: "64px",
+    height: "64px",
+    borderRadius: "10px",
     overflow: "hidden",
     border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg-soft)",
   },
   imagePreviewImg: {
     width: "100%",
@@ -151,26 +153,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const items = e.clipboardData?.items;
     if (!items || !onImagesChange) return;
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.indexOf('image') !== -1) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const dataUrl = typeof event.target?.result === "string" ? event.target.result : "";
-            const parsed = ImageAttachmentSchema.safeParse({
-              id: crypto.randomUUID(),
-              dataUrl,
-              name: `pasted-image-${Date.now()}.png`,
-            });
-            if (!parsed.success) return;
-            onImagesChange([...safeImages, parsed.data]);
-          };
-          reader.readAsDataURL(file);
-        }
-      }
+    const imageItems = Array.from(items).filter((item) => item.type.includes("image"));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+
+    const nextImages = (await Promise.all(imageItems.map((item, index) => {
+      const file = item.getAsFile();
+      if (!file) return Promise.resolve(null);
+
+      return new Promise<ImageAttachment | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const dataUrl = typeof event.target?.result === "string" ? event.target.result : "";
+          const parsed = ImageAttachmentSchema.safeParse({
+            id: crypto.randomUUID(),
+            dataUrl,
+            name: `pasted-image-${Date.now()}-${index}.png`,
+          });
+          resolve(parsed.success ? parsed.data : null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    }))).filter((image): image is ImageAttachment => image !== null);
+
+    if (nextImages.length > 0) {
+      onImagesChange([...safeImages, ...nextImages]);
     }
   };
 
@@ -207,8 +215,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             onChange={(e, data) => onChange(data.value)}
             onKeyDown={handleKeyPress}
             onPaste={handlePaste}
-            placeholder="Type a message... (paste images with Ctrl+V)"
-            rows={2}
+            placeholder="Ask OpenCode to work on the current document..."
+            rows={3}
           />
         </div>
         <Tooltip content={isRunning ? "Stop response" : "Send message"} relationship="label">
