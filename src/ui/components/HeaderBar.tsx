@@ -21,7 +21,7 @@ const ModelInfoSchema = z.object({
   label: z.string().min(1),
   providerID: z.string().min(1),
   modelID: z.string().min(1),
-  limitContext: z.number().positive().optional(),
+  limitContext: z.number().nonnegative().optional(),
 }) satisfies z.ZodType<ModelInfo>;
 
 export type ModelType = z.infer<typeof ModelTypeSchema>;
