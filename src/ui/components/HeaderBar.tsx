@@ -26,6 +26,17 @@ const ModelInfoSchema = z.object({
 
 export type ModelType = z.infer<typeof ModelTypeSchema>;
 
+export interface HeaderThemeOption {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+}
+
+export interface HeaderConnectionStatus {
+  state: "connecting" | "connected" | "disconnected";
+  label: string;
+}
+
 interface HeaderBarProps {
   onNewChat: () => void;
   onShowHistory: () => void;
@@ -40,6 +51,10 @@ interface HeaderBarProps {
   onShowToolResponsesChange: (value: boolean) => void;
   qaSubagentModel: ModelType;
   onQaSubagentModelChange: (model: ModelType) => void;
+  themes: HeaderThemeOption[];
+  selectedThemeId: string;
+  onThemeChange: (themeId: string) => void;
+  connectionStatus?: HeaderConnectionStatus;
   subtitle?: string;
   usageSummary?: string;
 }
@@ -49,22 +64,29 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "10px 12px",
-    gap: "10px",
-    minHeight: "52px",
+    padding: "12px 16px",
+    gap: "16px",
+    minHeight: "68px",
     borderBottom: "1px solid var(--oc-border)",
-    background: "var(--oc-bg)",
+    background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-elevated, var(--oc-bg)) 92%, transparent), var(--oc-bg))",
   },
   left: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
     minWidth: 0,
     flex: 1,
   },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+  },
   title: {
-    fontSize: "12px",
-    fontWeight: "600",
+    fontSize: "13px",
+    fontWeight: "700",
+    letterSpacing: "0.01em",
     color: "var(--oc-text)",
   },
   subtitle: {
@@ -75,12 +97,12 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
   },
   dropdown: {
-    minWidth: "160px",
+    minWidth: "220px",
     fontSize: "12px",
-    borderRadius: "8px",
+    borderRadius: "10px",
     background: "var(--oc-bg-soft)",
     border: "1px solid var(--oc-border) !important",
-    padding: "0 8px",
+    padding: "0 10px",
     ":hover": {
       background: "var(--oc-bg-soft-hover)",
     },
@@ -88,29 +110,58 @@ const useStyles = makeStyles({
   group: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "8px",
     flexShrink: 0,
+  },
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg-soft)",
+    color: "var(--oc-text-muted)",
+    fontSize: "11px",
+    whiteSpace: "nowrap",
+  },
+  statusDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "999px",
+    background: "var(--oc-text-faint)",
+    boxShadow: "0 0 0 3px color-mix(in srgb, currentColor 18%, transparent)",
+    color: "inherit",
+  },
+  statusConnecting: {
+    color: "var(--oc-warning, #d4a72c)",
+  },
+  statusConnected: {
+    color: "var(--oc-success, #4db56a)",
+  },
+  statusDisconnected: {
+    color: "var(--oc-danger, #d95c5c)",
   },
   usage: {
     fontSize: "11px",
     color: "var(--oc-text-muted)",
-    padding: "6px 8px",
+    padding: "6px 10px",
     borderRadius: "999px",
     border: "1px solid var(--oc-border)",
     background: "var(--oc-bg-soft)",
     whiteSpace: "nowrap",
   },
   icon: {
-    minWidth: "30px",
-    width: "30px",
-    height: "30px",
+    minWidth: "34px",
+    width: "34px",
+    height: "34px",
     padding: "0",
-    borderRadius: "8px",
+    borderRadius: "10px",
     color: "var(--oc-text-muted)",
-    background: "transparent",
-    border: "1px solid transparent",
+    background: "var(--oc-bg-soft)",
+    border: "1px solid var(--oc-border)",
     ":hover": {
-      background: "var(--oc-bg-soft)",
+      background: "var(--oc-bg-soft-hover)",
       color: "var(--oc-text)",
       border: "1px solid var(--oc-border)",
     },
@@ -118,11 +169,11 @@ const useStyles = makeStyles({
   primary: {
     backgroundColor: "var(--oc-accent)",
     color: "white",
-    borderRadius: "8px",
+    borderRadius: "10px",
     padding: "4px",
-    width: "30px",
-    height: "30px",
-    minWidth: "30px",
+    width: "34px",
+    height: "34px",
+    minWidth: "34px",
     border: "none",
     display: "flex",
     alignItems: "center",
@@ -132,22 +183,28 @@ const useStyles = makeStyles({
     },
   },
   menu: {
-    width: "280px",
+    width: "320px",
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    padding: "12px",
-    background: "var(--oc-bg, #1b1818)",
-    backgroundColor: "var(--oc-bg, #1b1818)",
+    gap: "14px",
+    padding: "14px",
+    background: "var(--oc-bg-elevated, var(--oc-bg, #1b1818))",
+    backgroundColor: "var(--oc-bg-elevated, var(--oc-bg, #1b1818))",
     color: "var(--oc-text, #f1ecec)",
     border: "1px solid var(--oc-border, rgba(255,255,255,0.10))",
-    borderRadius: "12px",
-    boxShadow: "var(--oc-shadow, 0 0 0 1px rgba(255,255,255,0.06), 0 16px 48px rgba(0,0,0,0.24))",
+    borderRadius: "16px",
+    boxShadow: "var(--oc-shadow, 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.32))",
     position: "relative",
     zIndex: 20,
   },
+  menuHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    paddingBottom: "2px",
+  },
   menuTitle: {
-    fontSize: "12px",
+    fontSize: "13px",
     fontWeight: "700",
     color: "var(--oc-text)",
   },
@@ -159,7 +216,11 @@ const useStyles = makeStyles({
   item: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
+    padding: "12px",
+    borderRadius: "14px",
+    border: "1px solid var(--oc-border)",
+    background: "color-mix(in srgb, var(--oc-bg-soft) 88%, transparent)",
   },
   row: {
     display: "flex",
@@ -172,10 +233,26 @@ const useStyles = makeStyles({
     fontWeight: "600",
     color: "var(--oc-text)",
   },
+  valueText: {
+    fontSize: "11px",
+    color: "var(--oc-text-faint)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "120px",
+    textAlign: "right",
+  },
   help: {
     fontSize: "11px",
     color: "var(--oc-text-faint)",
     lineHeight: "1.5",
+  },
+  sectionLabel: {
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
   },
 });
 
@@ -198,6 +275,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onShowToolResponsesChange,
   qaSubagentModel,
   onQaSubagentModelChange,
+  themes,
+  selectedThemeId,
+  onThemeChange,
+  connectionStatus,
   subtitle,
   usageSummary,
 }) => {
@@ -208,9 +289,25 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const [qaOpen, setQaOpen] = React.useState(false);
   const selectedLabel = label(models, selectedModel);
   const qaLabel = label(models, qaSubagentModel);
+  const selectedTheme = React.useMemo(
+    () => themes.find((theme) => theme.id === selectedThemeId) ?? themes.find((theme) => theme.isDefault) ?? themes[0],
+    [selectedThemeId, themes],
+  );
   const safeModels = React.useMemo(() => z.array(ModelInfoSchema).catch([]).parse(models), [models]);
   const items = React.useMemo(() => filterModels(safeModels, open ? value : ""), [safeModels, open, value]);
   const qaItems = React.useMemo(() => filterModels(safeModels, qaOpen ? qaValue : ""), [safeModels, qaOpen, qaValue]);
+  const statusClassName = React.useMemo(() => {
+    switch (connectionStatus?.state) {
+      case "connecting":
+        return styles.statusConnecting;
+      case "connected":
+        return styles.statusConnected;
+      case "disconnected":
+        return styles.statusDisconnected;
+      default:
+        return undefined;
+    }
+  }, [connectionStatus?.state, styles.statusConnected, styles.statusConnecting, styles.statusDisconnected]);
 
   React.useEffect(() => {
     if (!open) setValue(selectedLabel);
@@ -223,7 +320,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   return (
     <div className={styles.header}>
       <div className={styles.left}>
-        <div className={styles.title}>OpenCode</div>
+        <div className={styles.titleRow}>
+          <div className={styles.title}>OpenCode</div>
+          {connectionStatus && (
+            <div className={`${styles.statusPill} ${statusClassName ?? ""}`.trim()}>
+              <span className={styles.statusDot} />
+              <span>{connectionStatus.label}</span>
+            </div>
+          )}
+        </div>
         <Combobox
           className={styles.dropdown}
           appearance="filled-darker"
@@ -258,7 +363,35 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <Button icon={<Settings24Regular />} appearance="subtle" aria-label="Options" className={styles.icon} />
           </PopoverTrigger>
           <PopoverSurface className={styles.menu}>
-            <div className={styles.menuTitle}>Options</div>
+            <div className={styles.menuHeader}>
+              <div className={styles.menuTitle}>Chat settings</div>
+              <div className={styles.menuHint}>Tune local UI behavior, choose a theme, and set the QA subagent model.</div>
+            </div>
+            <div className={styles.sectionLabel}>Appearance</div>
+            <div className={styles.item}>
+              <div className={styles.row}>
+                <div className={styles.label}>Theme</div>
+                {selectedTheme && <div className={styles.valueText}>{selectedTheme.label}</div>}
+              </div>
+              <Combobox
+                className={styles.dropdown}
+                appearance="filled-darker"
+                placeholder="Select theme"
+                value={selectedTheme?.label ?? ""}
+                onOptionSelect={(_, data) => {
+                  const nextThemeId = data.optionValue;
+                  if (nextThemeId && nextThemeId !== selectedThemeId) onThemeChange(nextThemeId);
+                }}
+              >
+                {themes.map((theme) => (
+                  <Option key={theme.id} value={theme.id} text={theme.label}>
+                    {theme.label}
+                    {theme.isDefault ? " (Default)" : ""}
+                  </Option>
+                ))}
+              </Combobox>
+            </div>
+            <div className={styles.sectionLabel}>Display</div>
             <div className={styles.item}>
               <div className={styles.row}>
                 <div className={styles.label}>Show Thinking</div>
@@ -277,6 +410,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 <Switch checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
               </div>
             </div>
+            <div className={styles.sectionLabel}>Models</div>
             <div className={styles.item}>
               <div className={styles.label}>QA Subagent Model</div>
               <Combobox
