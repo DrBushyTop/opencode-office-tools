@@ -1,5 +1,7 @@
 const path = require('path');
 const net = require('net');
+const os = require('os');
+const fs = require('fs');
 const { z } = require('zod');
 
 const DEFAULT_HOST = '127.0.0.1';
@@ -47,6 +49,38 @@ function officeDirectory() {
 function configuredBaseUrl() {
   const value = process.env.OPENCODE_OFFICE_RUNTIME_URL || process.env.OPENCODE_RUNTIME_URL;
   return value ? trimSlash(value) : '';
+}
+
+function defaultOpencodeSearchPaths() {
+  const home = os.homedir();
+  const candidates = process.platform === 'win32'
+    ? [
+      path.join(home, '.opencode', 'bin'),
+      path.join(home, '.local', 'bin'),
+      path.join(home, 'AppData', 'Local', 'Programs', 'opencode', 'bin'),
+    ]
+    : [
+      path.join(home, '.opencode', 'bin'),
+      path.join(home, '.local', 'bin'),
+      path.join(home, '.bun', 'bin'),
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+    ];
+
+  return candidates.filter((candidate, index, all) => all.indexOf(candidate) === index);
+}
+
+function binaryPathExists(directory) {
+  const binaryName = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+  return fs.existsSync(path.join(directory, binaryName));
+}
+
+function runtimePathEnv(currentPath = process.env.PATH || '') {
+  const existing = String(currentPath || '').split(path.delimiter).filter(Boolean);
+  const additions = defaultOpencodeSearchPaths().filter((directory) => binaryPathExists(directory) && !existing.includes(directory));
+  return [...additions, ...existing].join(path.delimiter);
 }
 
 function toModelInfo(provider, model) {
@@ -184,7 +218,9 @@ class OpencodeRuntime {
       : await getFreePort(DEFAULT_PORT);
     const dir = officeConfigDirectory();
     const env = process.env.OPENCODE_CONFIG_DIR;
+    const previousPath = process.env.PATH;
     process.env.OPENCODE_CONFIG_DIR = dir;
+    process.env.PATH = runtimePathEnv(previousPath);
 
     try {
       const mod = await sdk();
@@ -197,6 +233,8 @@ class OpencodeRuntime {
       this.cleanup = () => server.close();
       return { mode: 'spawned', baseUrl, server };
     } finally {
+      if (typeof previousPath === 'string') process.env.PATH = previousPath;
+      else delete process.env.PATH;
       if (env) process.env.OPENCODE_CONFIG_DIR = env;
       else delete process.env.OPENCODE_CONFIG_DIR;
     }
@@ -276,4 +314,5 @@ module.exports = {
   officeDirectory,
   officeConfigDirectory,
   readResponseBody,
+  runtimePathEnv,
 };

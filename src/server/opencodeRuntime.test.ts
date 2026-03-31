@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { configuredModels, readResponseBody } = require("./opencodeRuntime.js");
+const os = require("os");
+const fs = require("fs");
+
+const { configuredModels, runtimePathEnv, readResponseBody } = require("./opencodeRuntime.js");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("opencode runtime helpers", () => {
   it("returns all models from configured providers only", () => {
@@ -67,5 +74,16 @@ describe("opencode runtime helpers", () => {
     });
 
     expect(value).toEqual({ ok: true });
+  });
+
+  it("prepends the user opencode bin when it is outside Finder PATH", () => {
+    const home = "/Users/tester";
+    vi.spyOn(os, "homedir").mockReturnValue(home);
+    vi.spyOn(fs, "existsSync").mockImplementation((value) => String(value) === `${home}/.opencode/bin/opencode`);
+
+    const nextPath = runtimePathEnv("/usr/bin:/bin");
+
+    expect(nextPath.split(":")[0]).toBe(`${home}/.opencode/bin`);
+    expect(nextPath).toContain("/usr/bin:/bin");
   });
 });

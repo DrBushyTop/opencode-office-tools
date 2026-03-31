@@ -32,9 +32,12 @@
     "asarUnpack": [],
     "files": [
       ".opencode/**/*",
+      "src/shared/**/*",
       "src/tray/**/*",
+      "src/server/**/*",
       "src/server-prod.js",
       "node_modules/**/*",
+      "!src/**/*.test.*",
       "!node_modules/office-addin-*/**",
       "!node_modules/npm-*/**",
       "!node_modules/read-package-json-fast/**"
