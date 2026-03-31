@@ -3,6 +3,49 @@
 # Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 APP_PATH="$SCRIPT_DIR/OpenCode Office Add-in.app"
+MANIFEST_FILENAME="manifest.xml"
+
+manifest_id() {
+    local manifest_path="$1"
+
+    if [ ! -f "$manifest_path" ]; then
+        return 1
+    fi
+
+    if command -v xmllint >/dev/null 2>&1; then
+        xmllint --xpath 'string(/*[local-name()="OfficeApp"]/*[local-name()="Id"][1])' "$manifest_path" 2>/dev/null
+        return 0
+    fi
+
+    grep -o '<Id>[^<]*</Id>' "$manifest_path" | sed -E 's#</?Id>##g' | head -n 1
+}
+
+is_opencode_manifest_name() {
+    local filename="$1"
+    [ "$filename" = "manifest.xml" ] || [ "$filename" = "opencode-office-addin.xml" ]
+}
+
+remove_matching_manifests() {
+    local wef_dir="$1"
+    local target_manifest_id="$2"
+
+    [ -d "$wef_dir" ] || return 0
+
+    for existing_manifest in "$wef_dir"/*.xml; do
+        [ -e "$existing_manifest" ] || continue
+
+        local existing_id
+        existing_id="$(manifest_id "$existing_manifest")"
+        if [ -n "$target_manifest_id" ] && [ "$existing_id" = "$target_manifest_id" ]; then
+            rm -f "$existing_manifest"
+            continue
+        fi
+
+        if [ -z "$target_manifest_id" ] && is_opencode_manifest_name "$(basename "$existing_manifest")"; then
+            rm -f "$existing_manifest"
+        fi
+    done
+}
 
 # Check if running from release (app bundle exists) or dev (manifest in root)
 if [ -d "$APP_PATH" ]; then
@@ -14,6 +57,8 @@ else
     MANIFEST_PATH="$SCRIPT_DIR/manifest.xml"
     CERT_PATH="$SCRIPT_DIR/certs/localhost.pem"
 fi
+
+TARGET_MANIFEST_ID="$(manifest_id "$MANIFEST_PATH")"
 
 echo -e "\033[36mSetting up Office Add-in for macOS...\033[0m"
 echo ""
@@ -40,8 +85,13 @@ if security find-certificate -c "localhost" -a -Z | grep -q "$(openssl x509 -in 
     echo -e "  \033[32m✓ Certificate already trusted\033[0m"
 else
     # Add certificate to keychain (requires user password)
-    sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH"
-    echo -e "  \033[32m✓ Certificate trusted\033[0m"
+    if sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH"; then
+        echo -e "  \033[32m✓ Certificate trusted\033[0m"
+    else
+        echo -e "  \033[31mError: Could not trust certificate automatically.\033[0m"
+        echo -e "  \033[31mRe-run the script in an interactive terminal and approve the sudo prompt.\033[0m"
+        exit 1
+    fi
 fi
 
 echo ""
@@ -62,10 +112,10 @@ mkdir -p "$EXCEL_WEF_DIR"
 mkdir -p "$ONENOTE_WEF_DIR"
 
 # Copy manifest to all directories
-cp "$MANIFEST_PATH" "$WORD_WEF_DIR/"
-cp "$MANIFEST_PATH" "$POWERPOINT_WEF_DIR/"
-cp "$MANIFEST_PATH" "$EXCEL_WEF_DIR/"
-cp "$MANIFEST_PATH" "$ONENOTE_WEF_DIR/"
+for WEF_DIR in "$WORD_WEF_DIR" "$POWERPOINT_WEF_DIR" "$EXCEL_WEF_DIR" "$ONENOTE_WEF_DIR"; do
+    remove_matching_manifests "$WEF_DIR" "$TARGET_MANIFEST_ID"
+    cp "$MANIFEST_PATH" "$WEF_DIR/$MANIFEST_FILENAME"
+done
 
 echo -e "  \033[32m✓ Add-in registered for Word\033[0m"
 echo -e "  \033[32m✓ Add-in registered for PowerPoint\033[0m"

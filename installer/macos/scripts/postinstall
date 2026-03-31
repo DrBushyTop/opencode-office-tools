@@ -7,6 +7,49 @@ RESOURCES_DIR="$APP_DIR/Contents/Resources"
 LAUNCHAGENT_SRC="$RESOURCES_DIR/com.opencode.office-addin.plist"
 CERT_PATH="$RESOURCES_DIR/certs/localhost.pem"
 MANIFEST_PATH="$RESOURCES_DIR/manifest.xml"
+MANIFEST_FILENAME="manifest.xml"
+
+manifest_id() {
+    local manifest_path="$1"
+
+    if [ ! -f "$manifest_path" ]; then
+        return 1
+    fi
+
+    if command -v xmllint >/dev/null 2>&1; then
+        xmllint --xpath 'string(/*[local-name()="OfficeApp"]/*[local-name()="Id"][1])' "$manifest_path" 2>/dev/null
+        return 0
+    fi
+
+    grep -o '<Id>[^<]*</Id>' "$manifest_path" | sed -E 's#</?Id>##g' | head -n 1
+}
+
+is_opencode_manifest_name() {
+    local filename="$1"
+    [ "$filename" = "manifest.xml" ] || [ "$filename" = "opencode-office-addin.xml" ]
+}
+
+remove_matching_manifests() {
+    local wef_dir="$1"
+    local target_manifest_id="$2"
+
+    [ -d "$wef_dir" ] || return 0
+
+    for existing_manifest in "$wef_dir"/*.xml; do
+        [ -e "$existing_manifest" ] || continue
+
+        local existing_id
+        existing_id="$(manifest_id "$existing_manifest")"
+        if [ -n "$target_manifest_id" ] && [ "$existing_id" = "$target_manifest_id" ]; then
+            rm -f "$existing_manifest"
+            continue
+        fi
+
+        if [ -z "$target_manifest_id" ] && is_opencode_manifest_name "$(basename "$existing_manifest")"; then
+            rm -f "$existing_manifest"
+        fi
+    done
+}
 
 # Get the installing user (not root)
 if [ -n "$USER" ] && [ "$USER" != "root" ]; then
@@ -86,6 +129,7 @@ echo "LaunchAgent installed"
 
 # Register add-in with Office apps (if manifest exists)
 if [ -f "$MANIFEST_PATH" ]; then
+    TARGET_MANIFEST_ID="$(manifest_id "$MANIFEST_PATH")"
     WORD_WEF="$USER_HOME/Library/Containers/com.microsoft.Word/Data/Documents/wef"
     PPT_WEF="$USER_HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
     EXCEL_WEF="$USER_HOME/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
@@ -93,7 +137,8 @@ if [ -f "$MANIFEST_PATH" ]; then
 
     for WEF_DIR in "$WORD_WEF" "$PPT_WEF" "$EXCEL_WEF" "$ONENOTE_WEF"; do
         mkdir -p "$WEF_DIR"
-        cp "$MANIFEST_PATH" "$WEF_DIR/"
+        remove_matching_manifests "$WEF_DIR" "$TARGET_MANIFEST_ID"
+        cp "$MANIFEST_PATH" "$WEF_DIR/$MANIFEST_FILENAME"
         chown -R $INSTALL_USER:staff "$WEF_DIR"
     done
 

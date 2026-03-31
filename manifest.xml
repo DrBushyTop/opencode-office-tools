@@ -9,8 +9,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OpenCode"/>
   <Description DefaultValue="OpenCode for Word, Excel, PowerPoint, and OneNote."/>
-  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260325b"/>
-  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260325b"/>
+  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260331a"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260331a"/>
   <SupportUrl DefaultValue="https://www.contoso.com/help"/>
   <AppDomains>
     <AppDomain>https://localhost:52390</AppDomain>
@@ -131,51 +131,6 @@
                     <SourceLocation resid="Taskpane.Url"/>
                   </Action>
                 </Control>
-                <Control xsi:type="Button" id="EditSelectionButtonPpt">
-                  <Label resid="EditSelectionButton.Label"/>
-                  <Supertip>
-                    <Title resid="EditSelectionButton.Label"/>
-                    <Description resid="EditSelectionButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>editSelection</FunctionName>
-                  </Action>
-                </Control>
-                <Control xsi:type="Button" id="InsertTimelineButtonPpt">
-                  <Label resid="InsertTimelineButton.Label"/>
-                  <Supertip>
-                    <Title resid="InsertTimelineButton.Label"/>
-                    <Description resid="InsertTimelineButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>insertTimeline</FunctionName>
-                  </Action>
-                </Control>
-                <Control xsi:type="Button" id="InsertEstimateTableButtonPpt">
-                  <Label resid="InsertEstimateTableButton.Label"/>
-                  <Supertip>
-                    <Title resid="InsertEstimateTableButton.Label"/>
-                    <Description resid="InsertEstimateTableButton.Tooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16x16"/>
-                    <bt:Image size="32" resid="Icon.32x32"/>
-                    <bt:Image size="80" resid="Icon.80x80"/>
-                  </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>insertEstimateTable</FunctionName>
-                  </Action>
-                </Control>
               </Group>
             </OfficeTab>
           </ExtensionPoint>
@@ -222,9 +177,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:52390/icon-16.png?v=20260325b"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:52390/icon-32.png?v=20260325b"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:52390/icon-80.png?v=20260325b"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:52390/icon-16.png?v=20260331a"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:52390/icon-32.png?v=20260331a"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:52390/icon-80.png?v=20260331a"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>
@@ -235,16 +190,10 @@
         <bt:String id="GetStarted.Title" DefaultValue="Get started with OpenCode!"/>
         <bt:String id="CommandsGroup.Label" DefaultValue="OpenCode"/>
         <bt:String id="TaskpaneButton.Label" DefaultValue="OpenCode"/>
-        <bt:String id="EditSelectionButton.Label" DefaultValue="Edit Selection"/>
-        <bt:String id="InsertTimelineButton.Label" DefaultValue="Insert Timeline"/>
-        <bt:String id="InsertEstimateTableButton.Label" DefaultValue="Estimate Table"/>
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="OpenCode loaded successfully. Go to the HOME tab and click the OpenCode button to get started."/>
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open the OpenCode task pane"/>
-        <bt:String id="EditSelectionButton.Tooltip" DefaultValue="Open the task pane ready to edit the current PowerPoint selection"/>
-        <bt:String id="InsertTimelineButton.Tooltip" DefaultValue="Open the task pane ready to insert a timeline into PowerPoint"/>
-        <bt:String id="InsertEstimateTableButton.Tooltip" DefaultValue="Open the task pane ready to insert an estimate table into PowerPoint"/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>
