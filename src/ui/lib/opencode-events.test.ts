@@ -142,4 +142,40 @@ describe("opencode events", () => {
       },
     }, parts, roles)).toEqual([]);
   });
+
+  it("emits assistant usage before the turn completes", () => {
+    const parts = new Map<string, { type: string; text: string; pending: string }>();
+    const roles = new Map<string, string>();
+
+    expect(normalizeOpencodeEvent({
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "a1",
+          role: "assistant",
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-5",
+          time: { created: 1 },
+          tokens: {
+            input: 1200,
+            output: 34,
+            reasoning: 56,
+            cache: { read: 78, write: 9 },
+          },
+        },
+      },
+    }, parts, roles)).toEqual([
+      {
+        type: "assistant.usage",
+        id: "a1",
+        data: {
+          usage: {
+            total: 1377,
+            providerID: "anthropic",
+            modelID: "claude-sonnet-4-5",
+          },
+        },
+      },
+    ]);
+  });
 });

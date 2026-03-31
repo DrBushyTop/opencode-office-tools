@@ -14,6 +14,7 @@ const runtimeModelSchema = z.object({
   limit: z.object({
     context: z.number().optional(),
   }).passthrough().optional(),
+  variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),
 }).passthrough();
 
 const runtimeProviderSchema = z.object({
@@ -85,12 +86,16 @@ function runtimePathEnv(currentPath = process.env.PATH || '') {
 
 function toModelInfo(provider, model) {
   const value = `${provider.id}/${model.id}`;
+  const variants = model.variants && typeof model.variants === 'object'
+    ? Object.keys(model.variants).filter((key) => !model.variants[key]?.disabled)
+    : undefined;
   return {
     key: value,
     label: `${provider.name || provider.id} / ${model.name || model.id}`,
     providerID: provider.id,
     modelID: model.id,
     limitContext: model.limit?.context,
+    variants: variants && variants.length > 0 ? variants : undefined,
   };
 }
 

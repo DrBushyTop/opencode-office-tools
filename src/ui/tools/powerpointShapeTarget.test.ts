@@ -137,7 +137,7 @@ describe("shape text auto-size helpers", () => {
     expect(frame.load).toHaveBeenCalledWith(["isNullObject", "autoSizeSetting"]);
   });
 
-  it("reapplies AutoSizeShapeToFitText after a round-trip when the replacement shape is still text-capable", async () => {
+  it("reapplies the requested text auto-size setting after a round-trip when the replacement shape is still text-capable", async () => {
     const base64 = createPresentationBase64({
       "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
       "ppt/slides/slide1.xml": baseSlideXml(),
@@ -160,7 +160,7 @@ describe("shape text auto-size helpers", () => {
 
     vi.stubGlobal("Office", { context: { requirements: { isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8") } } });
 
-    await expect(reapplyShapeTextAutoSizeSetting(context, slide, 0, "11", "AutoSizeShapeToFitText")).resolves.toBe(true);
-    expect(frame.autoSizeSetting).toBe("AutoSizeShapeToFitText");
+    await expect(reapplyShapeTextAutoSizeSetting(context, slide, 0, "11", "AutoSizeTextToFitShape")).resolves.toBe(true);
+    expect(frame.autoSizeSetting).toBe("AutoSizeTextToFitShape");
   });
 });

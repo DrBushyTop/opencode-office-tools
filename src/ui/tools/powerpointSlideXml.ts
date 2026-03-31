@@ -598,6 +598,7 @@ export async function executeSlideXmlCodeInBase64Presentation(
   const pkg = new OpenXmlPackage(base64);
   const slidePath = getOnlySlidePath(pkg);
   let slideDoc = parseXml(pkg.readText(slidePath));
+  const initialSlideXml = serializeXml(slideDoc);
   const zip = createSlideZipAdapter(pkg, {
     slidePath,
     getSlideDoc: () => slideDoc,
@@ -617,10 +618,10 @@ export async function executeSlideXmlCodeInBase64Presentation(
     "setResult",
     "parseXml",
     "serializeXml",
-    `const doc = slideXml; return await (async () => {\n${code}\n})();`,
+    `let xml = serializeXml(slideXml); const doc = slideXml; const __opencodeExecutionResult = await (async () => {\n${code}\n})(); return { __opencodeExecutionResult, __opencodeXml: xml };`,
   );
 
-  const returned = await runner(
+  const executionState = await runner(
     zip,
     slideDoc,
     slidePath,
@@ -635,7 +636,12 @@ export async function executeSlideXmlCodeInBase64Presentation(
     },
     parseXml,
     serializeXml,
-  );
+  ) as Record<string, unknown> | null | undefined;
+
+  const returned = executionState?.__opencodeExecutionResult;
+  const returnedXml = typeof executionState?.__opencodeXml === "string"
+    ? executionState.__opencodeXml
+    : null;
 
   const rawResult = explicitResult === NO_RESULT ? returned : explicitResult;
   let surfacedResult: unknown = rawResult;
@@ -650,6 +656,8 @@ export async function executeSlideXmlCodeInBase64Presentation(
       replaceXmlDocumentContents(slideDoc, returned as XMLDocument);
       surfacedResult = null;
       hasResult = false;
+    } else if (returnedXml && returnedXml !== initialSlideXml && returnedXml.trim().startsWith("<")) {
+      replaceXmlDocumentContents(slideDoc, parseXml(returnedXml));
     }
   }
 

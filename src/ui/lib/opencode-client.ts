@@ -25,6 +25,7 @@ const promptInputSchema = z.object({
   system: z.string(),
   parts: z.array(promptPartSchema),
   tools: z.record(z.string(), z.boolean()).optional(),
+  variant: z.string().optional(),
 });
 
 type PromptInput = z.infer<typeof promptInputSchema>;

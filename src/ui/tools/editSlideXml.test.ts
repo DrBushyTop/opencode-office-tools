@@ -159,6 +159,10 @@ describe("editSlideXml", () => {
     const sourceBase64 = createSlideBase64("Before title", "Before body");
     const replacementBase64Holder = { value: sourceBase64 };
 
+    const sourceTitleFrame = { isNullObject: false, autoSizeSetting: "AutoSizeTextToFitShape", load: vi.fn() };
+    const sourceBodyFrame = { isNullObject: false, autoSizeSetting: "AutoSizeNone", load: vi.fn() };
+    const sourceTitleShape = { id: "office-title", name: "Title", getTextFrameOrNullObject: vi.fn(() => sourceTitleFrame) };
+    const sourceBodyShape = { id: "office-body", name: "Body", getTextFrameOrNullObject: vi.fn(() => sourceBodyFrame) };
     const replacementTitleFrame = { isNullObject: false, autoSizeSetting: "AutoSizeNone", load: vi.fn() };
     const replacementBodyFrame = { isNullObject: false, autoSizeSetting: "AutoSizeNone", load: vi.fn() };
     const replacementTitleShape = { id: "10", name: "Title", getTextFrameOrNullObject: vi.fn(() => replacementTitleFrame) };
@@ -168,7 +172,7 @@ describe("editSlideXml", () => {
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
       delete: vi.fn(),
-      shapes: { items: [], load: vi.fn() },
+      shapes: { items: [sourceTitleShape, sourceBodyShape], load: vi.fn() },
     };
     const replacementSlide = {
       id: "slide-new",
@@ -247,12 +251,23 @@ setResult({ slidePath, textCount: textNodes.length });
         values: ["ppt/slides/slide1.xml", 2],
       },
     ]);
-    expect(replacementTitleFrame.autoSizeSetting).toBe("AutoSizeShapeToFitText");
+    expect(replacementTitleFrame.autoSizeSetting).toBe("AutoSizeTextToFitShape");
 
     const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
     expect(inspection.slidePath).toBe("ppt/slides/slide1.xml");
     expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("After title");
     expect(inspection.shapes[1]?.textBody?.textContent || "").toContain("After body & more");
+  });
+
+  it("rejects invalid autosize_shape_ids before starting the round-trip", async () => {
+    await expect(editSlideXml.handler({
+      slideIndex: 0,
+      autosize_shape_ids: ["body"],
+      code: `setResult({ ok: true });`,
+    })).resolves.toMatchObject({
+      resultType: "failure",
+      error: 'Invalid autosize_shape_ids entry "body". Expected a numeric XML cNvPr id.',
+    });
   });
 
   it("supports doc as an alias for the slide XML document", async () => {
@@ -406,6 +421,81 @@ return new XMLSerializer().serializeToString(doc);
 
     const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
     expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("Returned XML title");
+  });
+
+  it("supports xml as a mutable raw slide XML alias", async () => {
+    const sourceBase64 = createSlideBase64("Before title", "Before body");
+    const replacementBase64Holder = { value: sourceBase64 };
+
+    const replacementSlide = {
+      id: "slide-new",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: replacementBase64Holder.value })),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const sourceSlide = {
+      id: "slide-old",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
+      delete: vi.fn(),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn(() => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [replacementSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn((mutated: string) => {
+        replacementBase64Holder.value = mutated;
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const contextStub = {
+      presentation,
+      sync: vi.fn(async () => undefined),
+    } as any;
+
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub)),
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+
+    const result = await editSlideXml.handler({
+      slideIndex: 0,
+      code: `
+const parsed = new DOMParser().parseFromString(xml, "application/xml");
+const textNodes = parsed.getElementsByTagNameNS(namespaces.a, "t");
+textNodes[0].textContent = "Updated through xml";
+xml = new XMLSerializer().serializeToString(parsed);
+`,
+    });
+
+    if ((result as any).resultType === "failure") {
+      throw new Error((result as any).error);
+    }
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      result: null,
+      hasResult: false,
+      usedExplicitResult: false,
+    });
+
+    const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
+    expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("Updated through xml");
   });
 
   it("surfaces returned strings when slide XML was already written through zip.file", async () => {

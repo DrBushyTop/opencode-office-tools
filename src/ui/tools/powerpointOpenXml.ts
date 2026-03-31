@@ -1767,37 +1767,69 @@ async function replaceSlideWithMutatedOpenXmlPhase2(
   // ── Phase 2: Mutate the exported (or cached) package ──────────────────
   const mutated = await mutate(sourceBase64, sourceSlide);
 
-  // ── Phase 3: Insert mutated slide, delete original, load final state ──
-  // Batch all three operations into a single sync to minimize IPC round-trips.
-  // Office.js executes queued operations sequentially within a sync, so the
-  // load will reflect the state after both insert and delete.
+  // ── Phase 3: Insert mutated slide, reload slide identities, then delete the original ──
+  // Some hosts appear to invalidate the pre-insert slide proxy during the
+  // insert, so delete the original only after reloading the live slide list.
   context.presentation.insertSlidesFromBase64(mutated, {
     formatting: PowerPoint.InsertSlideFormatting.keepSourceFormatting,
     ...(targetSlideId ? { targetSlideId } : {}),
   });
-  sourceSlide.delete();
-  const finalSlides = context.presentation.slides;
-  finalSlides.load("items/id");
   try {
     await context.sync();
   } catch (e) {
     // Invalidate cache on any error during insertion.
     slideExportCache = null;
-    throw wrapRoundTripError(e, "inserting mutated and deleting original", slideIndex);
+    throw wrapRoundTripError(e, "inserting mutated", slideIndex);
+  }
+
+  const slidesAfterInsert = context.presentation.slides;
+  slidesAfterInsert.load("items/id");
+  try {
+    await context.sync();
+  } catch (e) {
+    slideExportCache = null;
+    throw wrapRoundTripError(e, "loading inserted slide state", slideIndex);
   }
 
   // The replacement slide is the one whose ID wasn't in the original slide collection.
-  const replacementSlide = finalSlides.items.find((slide) => !previousSlideIds.includes(slide.id));
+  const replacementSlide = slidesAfterInsert.items.find((slide) => !previousSlideIds.includes(slide.id));
   if (!replacementSlide) {
     slideExportCache = null;
     throw new Error("Failed to locate the replacement slide after Open XML round-trip insertion.");
   }
-  const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === replacementSlide.id);
+
+  const reloadedSourceSlide = slidesAfterInsert.items.find((slide) => slide.id === sourceSlideId);
+  if (reloadedSourceSlide) {
+    reloadedSourceSlide.delete();
+    slidesAfterInsert.load("items/id");
+    try {
+      await context.sync();
+    } catch (e) {
+      slideExportCache = null;
+      throw wrapRoundTripError(e, "deleting original", slideIndex);
+    }
+  }
+
+  const finalSlides = context.presentation.slides;
+  finalSlides.load("items/id");
+  try {
+    await context.sync();
+  } catch (e) {
+    slideExportCache = null;
+    throw wrapRoundTripError(e, "loading final slide state", slideIndex);
+  }
+
+  const finalReplacementSlide = finalSlides.items.find((slide) => slide.id === replacementSlide.id);
+  if (!finalReplacementSlide) {
+    slideExportCache = null;
+    throw new Error("Failed to locate the replacement slide after deleting the original slide.");
+  }
+  const finalSlideIndex = finalSlides.items.findIndex((slide) => slide.id === finalReplacementSlide.id);
 
   // ── Update cache with the mutated base64 for the next round-trip ──────
   slideExportCache = {
     base64: mutated,
-    slideId: replacementSlide.id,
+    slideId: finalReplacementSlide.id,
     slideIndex: finalSlideIndex,
     allSlideIds: finalSlides.items.map((slide) => slide.id).filter(Boolean),
     timestamp: Date.now(),
@@ -1805,7 +1837,7 @@ async function replaceSlideWithMutatedOpenXmlPhase2(
 
   return openXmlRoundTripResultSchema.parse({
     originalSlideId: sourceSlideId,
-    replacementSlideId: replacementSlide.id,
+    replacementSlideId: finalReplacementSlide.id,
     finalSlideIndex,
   });
 }

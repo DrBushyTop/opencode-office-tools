@@ -86,7 +86,7 @@ function baseSlideXml() {
 }
 
 describe("replaceSlideWithMutatedOpenXml", () => {
-  it("inserts before the source slide position and deletes the original by id", async () => {
+  it("inserts before the source slide position and deletes the reloaded original by id", async () => {
     const sourceSlide = {
       id: "slide-2",
       load: vi.fn(),
@@ -95,10 +95,16 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     };
     const slideA = { id: "slide-1", load: vi.fn() };
     const insertedSlide = { id: "slide-new" };
+    const reloadedSourceSlide = { id: "slide-2", delete: vi.fn() };
     const slides = {
       items: [slideA, sourceSlide],
       load: vi.fn(),
       getItemAt: vi.fn((index: number) => [slideA, sourceSlide][index]),
+    } as any;
+
+    const slidesAfterInsert = {
+      items: [slideA, insertedSlide, reloadedSourceSlide],
+      load: vi.fn(),
     } as any;
 
     // After insert + delete, the final slides show the replacement in place of the original.
@@ -110,10 +116,12 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        // After insert+delete batch, the slides collection reflects the final state.
-        presentation.slides = finalSlides;
+        presentation.slides = slidesAfterInsert;
       }),
     } as any;
+    reloadedSourceSlide.delete = vi.fn(() => {
+      presentation.slides = finalSlides;
+    });
 
     const context = {
       presentation,
@@ -139,7 +147,8 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       formatting: "KeepSourceFormatting",
       targetSlideId: "slide-1",
     });
-    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).not.toHaveBeenCalled();
+    expect(reloadedSourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-2",
       replacementSlideId: "slide-new",
@@ -147,7 +156,7 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     });
   });
 
-  it("omits targetSlideId for first-slide replacement and deletes the original by id", async () => {
+  it("omits targetSlideId for first-slide replacement and deletes the reloaded original by id", async () => {
     const sourceSlide = {
       id: "slide-1",
       load: vi.fn(),
@@ -155,10 +164,16 @@ describe("replaceSlideWithMutatedOpenXml", () => {
       delete: vi.fn(),
     };
     const insertedSlide = { id: "slide-new" };
+    const reloadedSourceSlide = { id: "slide-1", delete: vi.fn() };
     const slides = {
       items: [sourceSlide],
       load: vi.fn(),
       getItemAt: vi.fn((index: number) => [sourceSlide][index]),
+    } as any;
+
+    const slidesAfterInsert = {
+      items: [insertedSlide, reloadedSourceSlide],
+      load: vi.fn(),
     } as any;
 
     // After insert + delete, only the replacement slide remains.
@@ -170,9 +185,12 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = finalSlides;
+        presentation.slides = slidesAfterInsert;
       }),
     } as any;
+    reloadedSourceSlide.delete = vi.fn(() => {
+      presentation.slides = finalSlides;
+    });
 
     const context = {
       presentation,
@@ -197,7 +215,8 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     expect(presentation.insertSlidesFromBase64).toHaveBeenCalledWith("BASE64-mutated", {
       formatting: "KeepSourceFormatting",
     });
-    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).not.toHaveBeenCalled();
+    expect(reloadedSourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-1",
       replacementSlideId: "slide-new",
@@ -205,19 +224,26 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     });
   });
 
-  it("deletes the original slide by id even if the inserted slide is not adjacent", async () => {
+  it("reloads the original slide before deleting it after insertion", async () => {
     const sourceSlide = {
       id: "slide-2",
       load: vi.fn(),
       exportAsBase64: vi.fn(() => ({ value: "BASE64" })),
-      delete: vi.fn(),
+      delete: vi.fn(() => {
+        throw new Error("stale proxy should not be deleted");
+      }),
     };
     const slideA = { id: "slide-1", load: vi.fn() };
     const insertedSlide = { id: "slide-new" };
+    const reloadedSourceSlide = { id: "slide-2", delete: vi.fn() };
     const slides = {
       items: [slideA, sourceSlide],
       load: vi.fn(),
       getItemAt: vi.fn((index: number) => [slideA, sourceSlide][index]),
+    } as any;
+    const slidesAfterInsert = {
+      items: [slideA, insertedSlide, reloadedSourceSlide],
+      load: vi.fn(),
     } as any;
     const finalSlides = {
       items: [slideA, insertedSlide],
@@ -227,9 +253,12 @@ describe("replaceSlideWithMutatedOpenXml", () => {
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = finalSlides;
+        presentation.slides = slidesAfterInsert;
       }),
     } as any;
+    reloadedSourceSlide.delete = vi.fn(() => {
+      presentation.slides = finalSlides;
+    });
 
     const context = {
       presentation,
@@ -251,7 +280,8 @@ describe("replaceSlideWithMutatedOpenXml", () => {
 
     const result = await replaceSlideWithMutatedOpenXml(context, 1, (value) => `${value}-mutated`);
 
-    expect(sourceSlide.delete).toHaveBeenCalledTimes(1);
+    expect(sourceSlide.delete).not.toHaveBeenCalled();
+    expect(reloadedSourceSlide.delete).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       originalSlideId: "slide-2",
       replacementSlideId: "slide-new",
@@ -922,10 +952,15 @@ describe("slide export cache", () => {
       delete: vi.fn(),
     };
     const insertedSlide = { id: opts.replacementId };
+    const reloadedSourceSlide = { id: opts.sourceId, delete: vi.fn() };
     const slides = {
       items: [sourceSlide],
       load: vi.fn(),
       getItemAt: vi.fn((_index: number) => sourceSlide),
+    } as any;
+    const slidesAfterInsert = {
+      items: [insertedSlide, reloadedSourceSlide],
+      load: vi.fn(),
     } as any;
     const finalSlides = {
       items: [insertedSlide],
@@ -934,9 +969,12 @@ describe("slide export cache", () => {
     const presentation = {
       slides,
       insertSlidesFromBase64: vi.fn(() => {
-        presentation.slides = finalSlides;
+        presentation.slides = slidesAfterInsert;
       }),
     } as any;
+    reloadedSourceSlide.delete = vi.fn(() => {
+      presentation.slides = finalSlides;
+    });
     const context = {
       presentation,
       sync: vi.fn().mockResolvedValue(undefined),

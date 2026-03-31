@@ -97,7 +97,7 @@ export async function reapplyShapeTextAutoSizeSetting(
   shapeId: PowerPointShapeIdentifier,
   autoSizeSetting: PowerPointTextAutoSizeSetting | null | undefined,
 ): Promise<boolean> {
-  if (autoSizeSetting !== "AutoSizeShapeToFitText") {
+  if (!autoSizeSetting) {
     return false;
   }
 

@@ -210,6 +210,13 @@ function qaModel(config: OpencodeConfig) {
   return typeof value === "string" ? value : "";
 }
 
+function qaVariant(config: OpencodeConfig) {
+  const agent = config.agent?.["visual-qa"];
+  if (!agent || typeof agent !== "object") return undefined;
+  const value = (agent as Record<string, unknown>).variant;
+  return typeof value === "string" ? value : undefined;
+}
+
 function mergeQaModel(config: OpencodeConfig, model: ModelType) {
   const next = {
     ...config,
@@ -233,6 +240,31 @@ function mergeQaModel(config: OpencodeConfig, model: ModelType) {
     const visual = { ...next.agent["visual-qa"] };
     delete visual.model;
     next.agent["visual-qa"] = visual;
+  }
+
+  return next;
+}
+
+function mergeQaVariant(config: OpencodeConfig, variant: string | undefined) {
+  const next = {
+    ...config,
+    agent: {
+      ...(config.agent || {}),
+      "visual-qa": {
+        ...(config.agent?.["visual-qa"] || {}),
+      },
+    },
+  } satisfies OpencodeConfig;
+
+  if (variant) {
+    (next.agent!["visual-qa"] as Record<string, unknown>).variant = variant;
+    return next;
+  }
+
+  if (next.agent?.["visual-qa"]) {
+    const visual = { ...next.agent["visual-qa"] } as Record<string, unknown>;
+    delete visual.variant;
+    next.agent!["visual-qa"] = visual as typeof next.agent["visual-qa"];
   }
 
   return next;
@@ -331,6 +363,8 @@ export const App: React.FC = () => {
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
+  const [qaSubagentVariant, setQaSubagentVariant] = useState<string | undefined>(undefined);
+  const [selectedVariant, setSelectedVariant] = useLocalStorage<string>("opencode-selected-variant", "");
   const [usage, setUsage] = useState<SessionUsage | null>(null);
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
@@ -346,6 +380,13 @@ export const App: React.FC = () => {
   const safeSelectedThemeId = themeOptions.some((theme) => theme.id === selectedThemeId) ? selectedThemeId : defaultThemeId;
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getHostLabel(officeHost);
+  const safeSelectedVariant = useMemo(() => {
+    const raw = PersistedModelSchema.catch("").parse(selectedVariant) || undefined;
+    if (!raw) return undefined;
+    const model = availableModels.find((item) => item.key === safeSelectedModel);
+    if (!model?.variants?.includes(raw)) return undefined;
+    return raw;
+  }, [selectedVariant, safeSelectedModel, availableModels]);
   const usageSummary = useMemo(() => formatTokenUsage(usage, availableModels), [availableModels, usage]);
   const enabledToolCount = useMemo(
     () => Object.values(getEnabledTools(officeHost)).filter(Boolean).length,
@@ -409,6 +450,12 @@ export const App: React.FC = () => {
 
     setDebugEvents((prev) => [...prev, { type: event.type, preview, timestamp: Date.now() }]);
     setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
+
+    if (event.type === "assistant.usage") {
+      const nextUsage = sessionUsageSchema.nullish().catch(null).parse(data.usage);
+      if (nextUsage) setUsage(nextUsage);
+      return;
+    }
 
     if (event.type === "assistant.message_delta") {
       setIsTyping(true);
@@ -605,8 +652,10 @@ export const App: React.FC = () => {
     try {
       const config = await client.getConfig();
       setQaSubagentModel(qaModel(config));
+      setQaSubagentVariant(qaVariant(config));
     } catch {
       setQaSubagentModel("");
+      setQaSubagentVariant(undefined);
     }
   };
 
@@ -778,6 +827,10 @@ export const App: React.FC = () => {
     setSelectedModel(model);
   };
 
+  const handleVariantChange = (variant: string | undefined) => {
+    setSelectedVariant(variant ?? "");
+  };
+
   const ensureSession = async () => {
     if (currentSessionId) return currentSessionId;
 
@@ -798,6 +851,18 @@ export const App: React.FC = () => {
       await client.updateConfig(mergeQaModel(config, model));
     } catch {
       setQaSubagentModel(previous);
+    }
+  };
+
+  const handleQaSubagentVariantChange = async (variant: string | undefined) => {
+    const previous = qaSubagentVariant;
+    setQaSubagentVariant(variant);
+
+    try {
+      const config = await client.getConfig();
+      await client.updateConfig(mergeQaVariant(config, variant));
+    } catch {
+      setQaSubagentVariant(previous);
     }
   };
 
@@ -887,6 +952,7 @@ export const App: React.FC = () => {
         system: getSystemMessage(Office.context.host),
         parts,
         tools,
+        variant: safeSelectedVariant,
       });
     } catch (err) {
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
@@ -972,6 +1038,10 @@ export const App: React.FC = () => {
             onShowToolResponsesChange={setShowToolResponses}
             qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
+            selectedVariant={safeSelectedVariant}
+            onVariantChange={handleVariantChange}
+            qaSubagentVariant={qaSubagentVariant}
+            onQaSubagentVariantChange={handleQaSubagentVariantChange}
             themes={themeOptions}
             selectedThemeId={safeSelectedThemeId}
             onThemeChange={setSelectedThemeId}

@@ -8,7 +8,11 @@ import {
   replaceShapeParagraphXmlInBase64Presentation,
   type SlideXmlCodeExecutionResult,
 } from "./powerpointSlideXml";
-import { getShapeTextAutoSizeSetting, reapplyShapeTextAutoSizeSetting } from "./powerpointShapeTarget";
+import {
+  getShapeTextAutoSizeSetting,
+  reapplyShapeTextAutoSizeSetting,
+  type PowerPointTextAutoSizeSetting,
+} from "./powerpointShapeTarget";
 import { roundTripRefreshHint, shouldAddRoundTripShapeTargetRefreshHint, toolFailure } from "./powerpointShared";
 import { z } from "zod";
 
@@ -59,7 +63,15 @@ async function resolveSlideIndex(
 }
 
 function normalizeAutosizeShapeIds(args: z.infer<typeof editSlideXmlArgsSchema>) {
-  return (args.autosize_shape_ids || []).map((value) => String(value));
+  return (args.autosize_shape_ids || []).map((value) => String(value).trim());
+}
+
+function validateAutosizeShapeIds(autosizeShapeIds: string[]) {
+  for (const xmlShapeId of autosizeShapeIds) {
+    if (!/^\d+$/.test(xmlShapeId)) {
+      throw new Error(`Invalid autosize_shape_ids entry ${JSON.stringify(xmlShapeId)}. Expected a numeric XML cNvPr id.`);
+    }
+  }
 }
 
 export const editSlideXml: Tool = {
@@ -74,12 +86,12 @@ export const editSlideXml: Tool = {
       },
       code: {
         type: "string",
-        description: "Async JavaScript function body that receives a JSZip-style single-slide package in `zip` (supporting both `zip.file(path)` and `zip.files[path]` reads), the parsed slide XML DOM in both `doc` and `slideXml` for ppt/slides/slide1.xml, `slidePath`, `DOMParser`, `XMLSerializer`, `escapeXml`, `namespaces`, `console`, `parseXml`, `serializeXml`, and `setResult(value)`. Returning an XML string replaces ppt/slides/slide1.xml directly.",
+        description: "Async JavaScript function body that receives a JSZip-style single-slide package in `zip` (supporting both `zip.file(path)` and `zip.files[path]` reads), the raw slide XML string in `xml`, the parsed slide XML DOM in both `doc` and `slideXml` for ppt/slides/slide1.xml, `slidePath`, `DOMParser`, `XMLSerializer`, `escapeXml`, `namespaces`, `console`, `parseXml`, `serializeXml`, and `setResult(value)`. Returning an XML string replaces ppt/slides/slide1.xml directly.",
       },
       autosize_shape_ids: {
         type: "array",
         items: { "anyOf": [{ "type": "string" }, { "type": "number" }] },
-        description: "Optional XML cNvPr shape ids that should be reset to AutoSizeShapeToFitText after the edited slide is reimported.",
+        description: "Optional XML cNvPr shape ids whose current text auto-size settings should be preserved after the edited slide is reimported.",
       },
       replacements: {
         type: "array",
@@ -102,6 +114,11 @@ export const editSlideXml: Tool = {
     }
 
     const autosizeShapeIds = normalizeAutosizeShapeIds(parsedArgs.data);
+    try {
+      validateAutosizeShapeIds(autosizeShapeIds);
+    } catch (error) {
+      return toolFailure(error);
+    }
 
     if (parsedArgs.data.code) {
       if (parsedArgs.data.slideIndex !== undefined && (!Number.isInteger(parsedArgs.data.slideIndex) || parsedArgs.data.slideIndex < 0)) {
@@ -111,7 +128,14 @@ export const editSlideXml: Tool = {
       try {
         return await PowerPoint.run(async (context) => {
           const resolvedSlideIndex = await resolveSlideIndex(context, parsedArgs.data.slideIndex);
-          await getSlideByIndex(context, resolvedSlideIndex);
+          const sourceSlide = await getSlideByIndex(context, resolvedSlideIndex);
+          const rememberedAutoSizeEntries: Array<{ xmlShapeId: string; autoSizeSetting: PowerPointTextAutoSizeSetting | null }> = [];
+          for (const xmlShapeId of autosizeShapeIds) {
+            rememberedAutoSizeEntries.push({
+              xmlShapeId,
+              autoSizeSetting: await getShapeTextAutoSizeSetting(context, sourceSlide, resolvedSlideIndex, xmlShapeId),
+            });
+          }
           const executionHolder: { current: SlideXmlCodeExecutionResult | null } = { current: null };
 
           const roundTrip = await replaceSlideWithMutatedOpenXml(
@@ -130,16 +154,16 @@ export const editSlideXml: Tool = {
             ref: buildPowerPointShapeRef(roundTrip.replacementSlideId, xmlShapeId),
           }));
 
-          if (autosizeShapeIds.length > 0) {
+          if (rememberedAutoSizeEntries.length > 0) {
             try {
               const { slide: replacementSlide } = await getSlideById(context, roundTrip.replacementSlideId);
-              for (const xmlShapeId of autosizeShapeIds) {
+              for (const entry of rememberedAutoSizeEntries) {
                 await reapplyShapeTextAutoSizeSetting(
                   context,
                   replacementSlide,
                   roundTrip.finalSlideIndex,
-                  xmlShapeId,
-                  "AutoSizeShapeToFitText",
+                  entry.xmlShapeId,
+                  entry.autoSizeSetting,
                 );
               }
             } catch {

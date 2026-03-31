@@ -1,8 +1,6 @@
 ---
 name: deck-check
 description: Review a PowerPoint deck for layout, readability, structure, and workflow risks using the repo's inspection and QA tools.
-references:
-  - review-checklist
 ---
 
 # Deck Check

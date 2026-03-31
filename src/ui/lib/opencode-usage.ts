@@ -22,17 +22,23 @@ function total(message: OpencodeMessage) {
   return value;
 }
 
+export function getSessionUsage(info: OpencodeMessage["info"]) {
+  const value = total({ info });
+  if (value <= 0 || !info) return null;
+  return sessionUsageSchema.parse({
+    total: value,
+    providerID: info.providerID,
+    modelID: info.modelID,
+  });
+}
+
 export function getLatestSessionUsage(messages: OpencodeMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.info?.role !== "assistant") continue;
-    const value = total(message);
-    if (value <= 0) continue;
-    return sessionUsageSchema.parse({
-      total: value,
-      providerID: message.info.providerID,
-      modelID: message.info.modelID,
-    });
+    const usage = getSessionUsage(message.info);
+    if (!usage) continue;
+    return usage;
   }
   return null;
 }

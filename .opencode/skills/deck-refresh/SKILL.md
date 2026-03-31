@@ -1,8 +1,6 @@
 ---
 name: deck-refresh
 description: Refresh an existing PowerPoint deck in place while preserving template fit, using inspect-first routing, slide-scoped edits, and visual QA.
-references:
-  - edit-routing
 ---
 
 # Deck Refresh

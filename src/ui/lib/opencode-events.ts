@@ -1,12 +1,13 @@
 import { z } from "zod";
-import { getLatestSessionUsage } from "./opencode-usage";
-import { jsonObjectSchema, opencodeMessagePartSchema, type OpencodeMessage, opencodeMessageSchema } from "./opencode-schemas";
+import { getLatestSessionUsage, getSessionUsage } from "./opencode-usage";
+import { jsonObjectSchema, opencodeMessageInfoSchema, opencodeMessagePartSchema, type OpencodeMessage, opencodeMessageSchema } from "./opencode-schemas";
 
 export const uiEventSchema = z.object({
   type: z.enum([
     "assistant.message_delta",
     "assistant.message_update",
     "assistant.message",
+    "assistant.usage",
     "assistant.reasoning_delta",
     "assistant.reasoning_update",
     "tool.execution_start",
@@ -61,14 +62,7 @@ const messagePartUpdatedEventSchema = z.object({
 const messageUpdatedEventSchema = z.object({
   type: z.literal("message.updated"),
   properties: z.object({
-    info: z.object({
-      id: z.string(),
-      role: z.string().optional(),
-      time: z.object({
-        created: z.union([z.string(), z.number(), z.date()]).optional(),
-        completed: z.union([z.string(), z.number(), z.date()]).optional(),
-      }).passthrough().optional(),
-    }).passthrough().optional(),
+    info: opencodeMessageInfoSchema.optional(),
   }).passthrough(),
 }).passthrough();
 
@@ -210,19 +204,28 @@ export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartSt
   if (messageUpdatedEvent.success) {
     const info = messageUpdatedEvent.data.properties.info;
     if (roles && info?.id && info.role) roles.set(info.id, info.role);
-    if (info?.role === "assistant" && info?.time?.completed) {
-      return [
-        {
-          type: "assistant.message",
-          id: info.id,
-          timestamp: new Date(info.time.completed).toISOString(),
-          data: {
-            content: "",
-          },
-        },
-      ];
+    if (info?.role !== "assistant") return [];
+
+    const events = [] as UiEvent[];
+    const usage = getSessionUsage(info);
+    if (usage) {
+      events.push({
+        type: "assistant.usage",
+        id: info.id,
+        data: { usage },
+      });
     }
-    return [];
+    if (!info.time?.completed) return events;
+
+    events.push({
+      type: "assistant.message",
+      id: info.id,
+      timestamp: new Date(info.time.completed).toISOString(),
+      data: {
+        content: "",
+      },
+    });
+    return events;
   }
 
   return [];

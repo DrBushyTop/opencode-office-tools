@@ -22,6 +22,7 @@ const ModelInfoSchema = z.object({
   providerID: z.string().min(1),
   modelID: z.string().min(1),
   limitContext: z.number().nonnegative().optional(),
+  variants: z.array(z.string()).optional(),
 }) satisfies z.ZodType<ModelInfo>;
 
 export type ModelType = z.infer<typeof ModelTypeSchema>;
@@ -51,6 +52,10 @@ interface HeaderBarProps {
   onShowToolResponsesChange: (value: boolean) => void;
   qaSubagentModel: ModelType;
   onQaSubagentModelChange: (model: ModelType) => void;
+  selectedVariant: string | undefined;
+  onVariantChange: (variant: string | undefined) => void;
+  qaSubagentVariant: string | undefined;
+  onQaSubagentVariantChange: (variant: string | undefined) => void;
   themes: HeaderThemeOption[];
   selectedThemeId: string;
   onThemeChange: (themeId: string) => void;
@@ -277,6 +282,50 @@ const useStyles = makeStyles({
     textTransform: "uppercase",
     color: "var(--oc-text-faint)",
   },
+  variantBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    flexWrap: "nowrap",
+    overflow: "hidden",
+  },
+  variantLabel: {
+    fontSize: "10px",
+    fontWeight: "600",
+    letterSpacing: "0.02em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+    marginRight: "2px",
+  },
+  variantChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "2px 8px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: "500",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    lineHeight: "18px",
+    border: "1px solid var(--oc-border)",
+    background: "transparent",
+    color: "var(--oc-text-muted)",
+    transition: "all 0.12s ease",
+    textTransform: "capitalize",
+    ":hover": {
+      background: "var(--oc-bg-soft-hover)",
+      color: "var(--oc-text)",
+    },
+  },
+  variantChipActive: {
+    background: "color-mix(in srgb, var(--oc-accent) 15%, transparent)",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 40%, transparent)",
+    color: "var(--oc-accent)",
+    fontWeight: "600",
+  },
 });
 
 function label(models: ModelInfo[], model: ModelType) {
@@ -298,6 +347,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onShowToolResponsesChange,
   qaSubagentModel,
   onQaSubagentModelChange,
+  selectedVariant,
+  onVariantChange,
+  qaSubagentVariant,
+  onQaSubagentVariantChange,
   themes,
   selectedThemeId,
   onThemeChange,
@@ -320,6 +373,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const safeModels = React.useMemo(() => z.array(ModelInfoSchema).catch([]).parse(models), [models]);
   const items = React.useMemo(() => filterModels(safeModels, open ? value : ""), [safeModels, open, value]);
   const qaItems = React.useMemo(() => filterModels(safeModels, qaOpen ? qaValue : ""), [safeModels, qaOpen, qaValue]);
+  const modelVariants = React.useMemo(() => {
+    const current = safeModels.find((model) => model.key === selectedModel);
+    return current?.variants ?? [];
+  }, [safeModels, selectedModel]);
+  const qaModelVariants = React.useMemo(() => {
+    const key = qaSubagentModel || selectedModel;
+    const current = safeModels.find((model) => model.key === key);
+    return current?.variants ?? [];
+  }, [safeModels, qaSubagentModel, selectedModel]);
   const statusClassName = React.useMemo(() => {
     switch (connectionStatus?.state) {
       case "connecting":
@@ -370,6 +432,28 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </Option>
             ))}
           </Combobox>
+          {modelVariants.length > 0 && (
+            <div className={styles.variantBar}>
+              <span className={styles.variantLabel}>Effort</span>
+              <button
+                type="button"
+                className={`${styles.variantChip} ${selectedVariant === undefined ? styles.variantChipActive : ""}`.trim()}
+                onClick={() => onVariantChange(undefined)}
+              >
+                default
+              </button>
+              {modelVariants.map((variant) => (
+                <button
+                  type="button"
+                  key={variant}
+                  className={`${styles.variantChip} ${selectedVariant === variant ? styles.variantChipActive : ""}`.trim()}
+                  onClick={() => onVariantChange(variant)}
+                >
+                  {variant}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className={styles.group}>
@@ -460,6 +544,31 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </Combobox>
               <div className={styles.help}>Uses the selected model list from OpenCode. Leaving this on the default follows the active chat model.</div>
             </div>
+            {qaModelVariants.length > 0 && (
+            <div className={styles.item}>
+              <div className={styles.label}>QA Subagent Thinking Effort</div>
+              <div className={styles.variantBar}>
+                <button
+                  type="button"
+                  className={`${styles.variantChip} ${qaSubagentVariant === undefined ? styles.variantChipActive : ""}`.trim()}
+                  onClick={() => onQaSubagentVariantChange(undefined)}
+                >
+                  default
+                </button>
+                {qaModelVariants.map((variant) => (
+                  <button
+                    type="button"
+                    key={variant}
+                    className={`${styles.variantChip} ${qaSubagentVariant === variant ? styles.variantChipActive : ""}`.trim()}
+                    onClick={() => onQaSubagentVariantChange(variant)}
+                  >
+                    {variant}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.help}>Controls the reasoning effort level for the QA subagent.</div>
+            </div>
+            )}
             <div className={styles.menuHint}>UI options are kept locally in the add-in. The QA subagent model is stored in OpenCode config so it persists across sessions.</div>
             </PopoverSurface>
           </Popover>

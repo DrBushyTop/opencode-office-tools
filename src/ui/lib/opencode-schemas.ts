@@ -70,6 +70,7 @@ export const modelInfoSchema = z.object({
   providerID: z.string(),
   modelID: z.string(),
   limitContext: z.number().nonnegative().optional(),
+  variants: z.array(z.string()).optional(),
 });
 
 export const sessionInfoSchema = z.object({
