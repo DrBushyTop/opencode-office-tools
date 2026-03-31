@@ -34,7 +34,6 @@ import { clearSlideAnimations } from "./clearSlideAnimations";
 import { getSlideAnimations } from "./getSlideAnimations";
 import { getSlideNotes } from "./getSlideNotes";
 import { getSlideTransition } from "./getSlideTransition";
-import { editSlideWithCode } from "./editSlideWithCode";
 import { setSlideNotes } from "./setSlideNotes";
 import { setSlideTransition } from "./setSlideTransition";
 import { getPresentationStructure } from "./getPresentationStructure";
@@ -120,7 +119,6 @@ const officeToolHandlers = {
   [getSlideAnimations.name]: getSlideAnimations,
   [getSlideNotes.name]: getSlideNotes,
   [getSlideTransition.name]: getSlideTransition,
-  [editSlideWithCode.name]: editSlideWithCode,
   [manageSlide.name]: manageSlide,
   [manageSlideShapes.name]: manageSlideShapes,
   [manageSlideMedia.name]: manageSlideMedia,
@@ -166,7 +164,6 @@ export const powerpointTools = [
   getSlideAnimations,
   getSlideNotes,
   getSlideTransition,
-  editSlideWithCode,
   manageSlide,
   manageSlideShapes,
   manageSlideMedia,

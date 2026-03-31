@@ -689,22 +689,6 @@
     },
     "ui": { "icon": "➕", "activity": { "type": "static", "text": "Creating new slide" } }
   },
-  "edit_slide_with_code": {
-    "hosts": ["powerpoint"],
-    "description": "Edit an existing PowerPoint slide in place with live Office.js code.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "Optional 0-based slide index. If omitted, the active slide is used when available." },
-        "shapeId": { "type": "string", "description": "Optional existing shape id to target for pinpoint edits." },
-        "shapeIndex": { "type": "number", "description": "Optional 0-based shape index on the targeted slide." },
-        "code": { "type": "string", "description": "JavaScript function body that runs against the live slide and may reference context, slide, shapes, targetShape, targetShapeId, targetShapeIndex, slideIndex, and PowerPoint." }
-      },
-      "required": ["code"]
-    },
-    "ui": { "icon": "✏️", "activity": { "type": "static", "text": "Editing slide" } }
-  },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
     "description": "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",

@@ -42,7 +42,7 @@ Your code can be either:
 
 The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
 The slide canvas is automatically sized to match the active deck's dimensions. Use get_presentation_structure to learn the actual slide width and height before designing layouts.
-This path does not build directly against the live deck's layout placeholders. Prefer create_slide_from_template or edit_slide_with_code for template-aware work on the open deck.
+This path does not build directly against the live deck's layout placeholders. Prefer create_slide_from_template and native slide editing tools for template-aware work on the open deck.
 
 Available in scope:
   - slide
@@ -140,10 +140,7 @@ PptxGenJS API Examples:
     }
 
     try {
-      // Read the actual deck's slide dimensions so PptxGenJS generates
-      // a matching canvas. Without this, backgrounds and full-bleed shapes
-      // may overshoot or undershoot the visible slide area.
-      let slideWidthInches = 13.333; // PptxGenJS LAYOUT_WIDE default
+      let slideWidthInches = 13.333;
       let slideHeightInches = 7.5;
 
       if (isPowerPointRequirementSetSupported("1.10")) {
@@ -160,25 +157,22 @@ PptxGenJS API Examples:
         }
       }
 
-      // Create presentation and slide with matching dimensions
       const pptx = new pptxgen();
       pptx.defineLayout({ name: "DECK_MATCH", width: slideWidthInches, height: slideHeightInches });
       pptx.layout = "DECK_MATCH";
       const slide = pptx.addSlide();
 
-        // Execute the provided code with slide/pptx in scope
-        try {
-          buildGeneratedSlide(code, slide, pptx);
-        } catch (codeError: any) {
-          return {
-            textResultForLlm: `Code execution error: ${codeError.message}\n\nStack: ${codeError.stack}`,
+      try {
+        buildGeneratedSlide(code, slide, pptx);
+      } catch (codeError: any) {
+        return {
+          textResultForLlm: `Code execution error: ${codeError.message}\n\nStack: ${codeError.stack}`,
           resultType: "failure",
           error: codeError.message,
           toolTelemetry: {},
         };
       }
 
-      // Generate base64
       let base64: string;
       try {
         base64 = await pptx.write({ outputType: "base64" }) as string;
@@ -191,7 +185,6 @@ PptxGenJS API Examples:
         };
       }
 
-      // Insert into PowerPoint (replace existing or append)
       try {
         await PowerPoint.run(async (context) => {
           const slides = context.presentation.slides;
@@ -200,7 +193,6 @@ PptxGenJS API Examples:
 
           const slideCount = slides.items.length;
 
-          // Validate replaceSlideIndex if provided
           if (replaceSlideIndex !== undefined) {
             if (replaceSlideIndex < 0 || replaceSlideIndex >= slideCount) {
               throw new Error(`Invalid replaceSlideIndex ${replaceSlideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`);
@@ -212,30 +204,25 @@ PptxGenJS API Examples:
           };
 
           if (replaceSlideIndex !== undefined) {
-            // Insert before the slide we're replacing, then delete the old one
             if (replaceSlideIndex > 0) {
               const prevSlide = slides.items[replaceSlideIndex - 1];
               prevSlide.load("id");
               await context.sync();
               insertOptions.targetSlideId = prevSlide.id;
             }
-            // If replaceSlideIndex is 0, don't set targetSlideId (insert at beginning)
 
             context.presentation.insertSlidesFromBase64(base64, insertOptions);
             await context.sync();
 
-            // Reload slides to get the updated list
             slides.load("items");
             await context.sync();
 
-            // Delete the old slide (now at replaceSlideIndex + 1 since we inserted before it)
             const oldSlideIndex = replaceSlideIndex + 1;
             if (oldSlideIndex < slides.items.length) {
               slides.items[oldSlideIndex].delete();
               await context.sync();
             }
           } else {
-            // Append at the end (original behavior)
             if (slides.items.length > 0) {
               const lastSlide = slides.items[slides.items.length - 1];
               lastSlide.load("id");
@@ -256,7 +243,7 @@ PptxGenJS API Examples:
         };
       }
 
-      return replaceSlideIndex !== undefined 
+      return replaceSlideIndex !== undefined
         ? `Successfully replaced slide ${replaceSlideIndex + 1} in the presentation.`
         : "Successfully added new slide to the presentation.";
     } catch (e: any) {

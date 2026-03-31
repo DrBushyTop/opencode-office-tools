@@ -28,7 +28,6 @@ describe("office tool registry", () => {
     const manageSlideWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide.ts"), "utf8");
     const manageSlideShapesWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide_shapes.ts"), "utf8");
     const createSlideFromTemplateWrapper = fs.readFileSync(path.join(toolsDir, "create_slide_from_template.ts"), "utf8");
-    const editSlideWithCodeWrapper = fs.readFileSync(path.join(toolsDir, "edit_slide_with_code.ts"), "utf8");
     const manageSlideChartWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide_chart.ts"), "utf8");
     const getNotebookOverviewWrapper = fs.readFileSync(path.join(toolsDir, "get_notebook_overview.ts"), "utf8");
 
@@ -43,7 +42,6 @@ describe("office tool registry", () => {
     expect(manageRangeWrapper).toContain('tool.schema.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"])');
     expect(manageSlideWrapper).toContain('export default powerpoint("manage_slide"');
     expect(manageSlideWrapper).toContain('tool.schema.enum(["create", "duplicate", "delete", "move", "clear"])');
-    expect(editSlideWithCodeWrapper).toContain('export default powerpoint("edit_slide_with_code"');
     expect(manageSlideShapesWrapper).toContain('export default powerpoint("manage_slide_shapes"');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["create", "update", "delete", "group", "ungroup"])');
     expect(manageSlideShapesWrapper).toContain('tool.schema.enum(["textBox", "geometricShape", "line"])');
@@ -55,7 +53,6 @@ describe("office tool registry", () => {
     expect(getOfficeToolNames("word")).toContain("get_document_part");
     expect(getOfficeToolNames("word")).toContain("get_document_range");
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide");
-    expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_with_code");
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide_shapes");
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide_media");
     expect(getOfficeToolNames("powerpoint")).toContain("create_slide_from_template");

@@ -157,7 +157,7 @@ function validateOfficeToolCall(host, toolName, args) {
     throw new Error('Invalid args.content: cannot be empty')
   }
 
-  if ((toolName === 'edit_slide_with_code' || toolName === 'add_slide_from_code') && isBlankString(normalizedArgs.code)) {
+  if (toolName === 'add_slide_from_code' && isBlankString(normalizedArgs.code)) {
     throw new Error('Invalid args.code: cannot be empty')
   }
 

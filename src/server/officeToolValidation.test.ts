@@ -17,7 +17,6 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "fade" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_notes", { notes: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "clear_slide_animations", {})).not.toThrow();
-    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_with_code", { slideIndex: 0, shapeId: "shape-1", code: "targetShape.left = 24;" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "update", slideIndex: 0, shapeId: "shape-1", text: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "update", text: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "create", slideIndex: 0, shapeType: "line", width: -20, height: 10 })).not.toThrow();
@@ -41,7 +40,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("onenote", "set_note_selection", { content: "   " })).toThrow(/cannot be empty/);
     expect(() => validateOfficeToolCall("onenote", "set_page_title", { title: "   " })).toThrow(/cannot be empty/);
     expect(() => validateOfficeToolCall("onenote", "append_page_content", { html: "   " })).toThrow(/cannot be empty/);
-    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_with_code", { code: "   " })).toThrow(/cannot be empty/);
+    expect(() => validateOfficeToolCall("powerpoint", "add_slide_from_code", { code: "   " })).toThrow(/cannot be empty/);
     expect(() => validateOfficeToolCall("onenote", "navigate_to_page", {})).toThrow(/exactly one/);
     expect(() => validateOfficeToolCall("onenote", "navigate_to_page", { pageId: "page-1", clientUrl: "https://example.invalid" })).toThrow(/exactly one/);
     expect(() => validateOfficeToolCall("word", "get_document_part", { address: "x", extra: true })).toThrow(/Unexpected args.extra/);

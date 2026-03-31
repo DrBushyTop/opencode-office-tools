@@ -48,7 +48,6 @@ The `add_slide_from_code` tool automatically sizes its canvas to match the deck,
 - Use `manage_slide_media`, `manage_slide_table`, and `manage_slide_chart` for first-class native image, table, and chart-like business content
 - Use `insert_business_layout` for timelines, process flows, comparison grids, phase plans, and estimate summaries
 - Use `create_slide_from_template` when a suitable deck layout already exists and placeholder binding will produce a more template-compliant result
-- Use `edit_slide_with_code` for pinpoint live edits on an existing slide or shape when the generic tools cannot express the change cleanly but you still need to work against the real open deck
 - Prefer shape ids over shape indices when a later edit needs to target an existing object reliably
 - Treat `add_slide_from_code` as an advanced fallback for generating a new or replacement slide when the native/template-aware PowerPoint tools cannot express the result cleanly; do not use it for pinpoint edits on an existing slide
 - For `manage_slide_shapes` with `action: "update"`, treat the call as a sparse patch: pass one targeting field (`shapeId`, `shapeIndex`, or `placeholderType`) plus only the properties that should change
