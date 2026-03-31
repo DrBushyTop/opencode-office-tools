@@ -18,6 +18,24 @@
   
   ; Register the add-in manifest with Office
   DetailPrint "Registering Office Add-in..."
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\
+    $$regPath = \"HKCU:\Software\Microsoft\Office\16.0\WEF\Developer\"; \
+    $$manifestPath = \"$INSTDIR\resources\manifest.xml\"; \
+    function Get-ManifestId([string]$$path) { \
+      if (-not (Test-Path $$path)) { return $$null; } \
+      try { [xml]$$xml = Get-Content -LiteralPath $$path -Raw; return [string]$$xml.OfficeApp.Id; } catch { return $$null; } \
+    }; \
+    if (-not (Test-Path $$regPath)) { New-Item -Path $$regPath -Force | Out-Null; } \
+    $$manifestId = Get-ManifestId $$manifestPath; \
+    foreach ($$name in (Get-Item -Path $$regPath).Property | Where-Object { $$_ -notlike \"PS*\" }) { \
+      $$value = (Get-ItemProperty -Path $$regPath -Name $$name -ErrorAction SilentlyContinue).$$name; \
+      $$shouldRemove = $$name -eq \"OpenCodeOfficeAddin\" -or $$value -eq $$manifestPath; \
+      if (-not $$shouldRemove -and $$manifestId -and $$value -and (Test-Path $$value)) { \
+        $$existingManifestId = Get-ManifestId $$value; \
+        if ($$existingManifestId -and $$existingManifestId -eq $$manifestId) { $$shouldRemove = $$true; } \
+      } \
+      if ($$shouldRemove) { Remove-ItemProperty -Path $$regPath -Name $$name -ErrorAction SilentlyContinue; } \
+    }"'
   WriteRegStr HKCU "Software\Microsoft\Office\16.0\WEF\Developer" "OpenCodeOfficeAddin" "$INSTDIR\resources\manifest.xml"
   
   ; Create startup registry entry to run on login
@@ -45,7 +63,27 @@
     $$store.Close();"'
   
   ; Remove Office add-in registration
-  DeleteRegValue HKCU "Software\Microsoft\Office\16.0\WEF\Developer" "OpenCodeOfficeAddin"
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\
+    $$regPath = \"HKCU:\Software\Microsoft\Office\16.0\WEF\Developer\"; \
+    $$manifestPath = \"$INSTDIR\resources\manifest.xml\"; \
+    function Get-ManifestId([string]$$path) { \
+      if (-not (Test-Path $$path)) { return $$null; } \
+      try { [xml]$$xml = Get-Content -LiteralPath $$path -Raw; return [string]$$xml.OfficeApp.Id; } catch { return $$null; } \
+    }; \
+    if (Test-Path $$regPath) { \
+      $$manifestId = Get-ManifestId $$manifestPath; \
+      foreach ($$name in (Get-Item -Path $$regPath).Property | Where-Object { $$_ -notlike \"PS*\" }) { \
+        $$value = (Get-ItemProperty -Path $$regPath -Name $$name -ErrorAction SilentlyContinue).$$name; \
+        $$shouldRemove = $$name -eq \"OpenCodeOfficeAddin\" -or $$value -eq $$manifestPath; \
+        if (-not $$shouldRemove -and $$manifestId -and $$value -and (Test-Path $$value)) { \
+          $$existingManifestId = Get-ManifestId $$value; \
+          if ($$existingManifestId -and $$existingManifestId -eq $$manifestId) { $$shouldRemove = $$true; } \
+        } \
+        if ($$shouldRemove) { Remove-ItemProperty -Path $$regPath -Name $$name -ErrorAction SilentlyContinue; } \
+      } \
+      $$remaining = (Get-Item -Path $$regPath -ErrorAction SilentlyContinue).Property | Where-Object { $$_ -notlike \"PS*\" }; \
+      if (-not $$remaining) { Remove-Item $$regPath -Force -ErrorAction SilentlyContinue; } \
+    }"'
   
   ; Remove startup entry
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "OpenCodeOfficeAddin"

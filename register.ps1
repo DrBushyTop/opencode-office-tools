@@ -1,4 +1,66 @@
 $appPath = "$PSScriptRoot\OpenCode Office Add-in.exe"
+$registrationName = "OpenCodeOfficeAddin"
+$regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"
+
+function Get-OfficeManifestId {
+    param(
+        [string]$Path
+    )
+
+    if (!(Test-Path $Path)) {
+        return $null
+    }
+
+    try {
+        [xml]$manifest = Get-Content -LiteralPath $Path -Raw
+        return [string]$manifest.OfficeApp.Id
+    } catch {
+        return $null
+    }
+}
+
+function Get-DeveloperRegistrationNames {
+    if (!(Test-Path $regPath)) {
+        return @()
+    }
+
+    return (Get-Item -Path $regPath).Property | Where-Object { $_ -notlike "PS*" }
+}
+
+function Remove-OpenCodeRegistrations {
+    param(
+        [string]$ManifestPath,
+        [string]$ManifestId
+    )
+
+    if (!(Test-Path $regPath)) {
+        return 0
+    }
+
+    $removed = 0
+    foreach ($name in Get-DeveloperRegistrationNames) {
+        $value = (Get-ItemProperty -Path $regPath -Name $name -ErrorAction SilentlyContinue).$name
+        $shouldRemove = $name -eq $registrationName
+
+        if (!$shouldRemove -and $ManifestPath -and $value -eq $ManifestPath) {
+            $shouldRemove = $true
+        }
+
+        if (!$shouldRemove -and $ManifestId -and $value -and (Test-Path $value)) {
+            $existingManifestId = Get-OfficeManifestId -Path $value
+            if ($existingManifestId -and $existingManifestId -eq $ManifestId) {
+                $shouldRemove = $true
+            }
+        }
+
+        if ($shouldRemove) {
+            Remove-ItemProperty -Path $regPath -Name $name -ErrorAction SilentlyContinue
+            $removed++
+        }
+    }
+
+    return $removed
+}
 
 # Check if running from release (exe exists) or dev (manifest in root)
 if (Test-Path $appPath) {
@@ -12,6 +74,7 @@ if (Test-Path $appPath) {
 }
 
 $manifestFullPath = (Resolve-Path $manifestPath).Path
+$manifestId = Get-OfficeManifestId -Path $manifestFullPath
 
 Write-Host "Setting up Office Add-in for Windows..." -ForegroundColor Cyan
 Write-Host ""
@@ -46,19 +109,17 @@ Write-Host ""
 Write-Host "Step 2: Registering add-in manifest..." -ForegroundColor Yellow
 Write-Host "  Manifest: $manifestFullPath"
 
-$regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"
-
 if (!(Test-Path $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
 }
 
-$existingManifests = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
-$nextIndex = 0
-while ($existingManifests.PSObject.Properties.Name -contains $nextIndex.ToString()) {
-    $nextIndex++
-}
+$removedCount = Remove-OpenCodeRegistrations -ManifestPath $manifestFullPath -ManifestId $manifestId
 
-New-ItemProperty -Path $regPath -Name $nextIndex.ToString() -Value $manifestFullPath -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $regPath -Name $registrationName -Value $manifestFullPath -PropertyType String -Force | Out-Null
+
+if ($removedCount -gt 0) {
+    Write-Host "  ✓ Removed $removedCount previous OpenCode registration(s)" -ForegroundColor Green
+}
 
 Write-Host "  ✓ Add-in registered" -ForegroundColor Green
 Write-Host ""
