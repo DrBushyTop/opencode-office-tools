@@ -58,8 +58,6 @@ Route work through the narrowest tool that matches the task:
     - Use `manage_slide`.
 11. **Need native images or tables?**
     - Use `manage_slide_media` or `manage_slide_table`.
-12. **Only if the native slide tools still cannot express the result cleanly:**
-    - Use `add_slide_from_code` as a last-resort fallback.
 
 ## Slide Dimensions
 
@@ -67,8 +65,6 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 - **Standard (4:3)**: 10" × 7.5"
 - **Widescreen (16:9)**: 13.33" × 7.5"
 - **Custom**: any other dimensions
-
-The `add_slide_from_code` tool automatically sizes its canvas to match the deck, but you must still design your layout coordinates to fit the actual dimensions. Do not hardcode coordinates assuming a 10" or 13.33" wide canvas — always adapt to the reported size.
 
 ## Editing Slides
 
@@ -82,7 +78,6 @@ The `add_slide_from_code` tool automatically sizes its canvas to match the deck,
 - Use `manage_slide_shapes` for geometry, fill, line, grouping, naming, z-order-adjacent cleanup, and other shape-structure edits that do not require OOXML text fidelity.
 - Use `manage_slide_media` and `manage_slide_table` for first-class native image and table content.
 - Prefer stable shape refs from `list_slide_shapes` or ids returned by the latest mutation over shape indices when a later edit needs to target an existing object reliably.
-- Treat `add_slide_from_code` as an advanced fallback for generating a new or replacement slide when the native PowerPoint tools cannot express the result cleanly; do not use it for pinpoint edits on an existing slide.
 - For `manage_slide_shapes` with `action: "update"`, treat the call as a sparse patch: pass one targeting field (`shapeId`, `shapeIndex`, or `placeholderType`) plus only the properties that should change
 - Do not send create-only fields, empty strings, placeholder text like `"Click to edit text"`, or filler zero values in an update call unless you explicitly want to set them
 

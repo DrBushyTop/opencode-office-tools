@@ -54,6 +54,7 @@ describe("office tool registry", () => {
     expect(wrapperFiles).toContain("list_slide_layouts.ts");
     expect(wrapperFiles).toContain("duplicate_slide.ts");
     expect(wrapperFiles).toContain("create_slide_from_layout.ts");
+    expect(wrapperFiles).not.toContain("add_slide_from_code.ts");
     expect(listSlideShapesWrapper).toContain('export default powerpoint("list_slide_shapes"');
     expect(editSlideChartWrapper).toContain('export default powerpoint("edit_slide_chart"');
     expect(editSlideChartWrapper).toContain('tool.schema.enum(["create", "update", "delete"])');
@@ -89,6 +90,7 @@ describe("office tool registry", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("manage_slide_table");
     expect(getOfficeToolNames("powerpoint")).toContain("set_slide_notes");
     expect(getOfficeToolNames("powerpoint")).toContain("set_slide_transition");
+    expect(getOfficeToolNames("powerpoint")).not.toContain("add_slide_from_code");
     expect(getOfficeToolNames("powerpoint")).not.toContain("get_slide_shapes");
     expect(getOfficeToolNames("powerpoint")).not.toContain("manage_slide_chart");
     expect(getOfficeToolNames("powerpoint")).not.toContain("insert_business_layout");
@@ -97,7 +99,7 @@ describe("office tool registry", () => {
   });
 
   it("keeps active prompt assets free of removed PowerPoint tool names", () => {
-    const removedToolNamePattern = /get_slide_shapes|manage_slide_chart|insert_business_layout|create_slide_from_template/;
+    const removedToolNamePattern = /get_slide_shapes|manage_slide_chart|insert_business_layout|create_slide_from_template|add_slide_from_code/;
     const activePromptAssets = [
       path.resolve(__dirname, "../../.opencode/agents/powerpoint.md"),
       path.resolve(__dirname, "../../.opencode/agents/visual-qa.md"),

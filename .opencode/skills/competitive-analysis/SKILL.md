@@ -34,7 +34,6 @@ Turn observations into an execution plan that fits this repo's PowerPoint tool m
    - Layout-based new slide → `list_slide_layouts` + `create_slide_from_layout`
    - Prototype variation → `duplicate_slide` + targeted edits
    - Geometry/fill/grouping cleanup → `manage_slide_shapes`
-   - Use `add_slide_from_code` only if the native tool path is still insufficient.
 5. **Call out reference freshness risks**
    - If the plan involves round-trip edits or duplication, note that slide ids and shape refs must be refreshed before later targeted edits.
 

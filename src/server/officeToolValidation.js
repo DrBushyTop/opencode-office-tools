@@ -336,10 +336,6 @@ function validateOfficeToolCall(host, toolName, args) {
     }
   }
 
-  if (toolName === 'add_slide_from_code' && isBlankString(normalizedArgs.code)) {
-    throw new Error('Invalid args.code: cannot be empty')
-  }
-
   if (toolName === 'set_page_title' && isBlankString(normalizedArgs.title)) {
     throw new Error('Invalid args.title: cannot be empty')
   }

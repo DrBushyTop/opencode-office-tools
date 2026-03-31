@@ -933,20 +933,6 @@
     },
     "ui": { "icon": "🗂️", "activity": { "type": "field_or_default", "field": "action", "prefix": "Slide action: ", "default": "manage slide" } }
   },
-  "add_slide_from_code": {
-    "hosts": ["powerpoint"],
-    "description": "Advanced fallback: add or replace a PowerPoint slide from PptxGenJS code.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "code": { "type": "string", "description": "PptxGenJS slide-building code." },
-        "replaceSlideIndex": { "type": "number", "description": "Optional slide index to replace." }
-      },
-      "required": ["code"]
-    },
-    "ui": { "icon": "➕", "activity": { "type": "static", "text": "Creating new slide" } }
-  },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
     "description": "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",

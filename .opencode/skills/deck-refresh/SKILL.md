@@ -39,7 +39,7 @@ Use this skill when the user wants to modernize, tighten, or retheme slides with
 
 - Prefer slide-scoped edits over whole-slide regeneration.
 - Prefer native layout and text tools before generic shape edits.
-- Keep `add_slide_from_code` as a last resort.
+- Stay within the native slide, layout, text, chart, and master tools for slide creation and editing.
 
 ## References
 

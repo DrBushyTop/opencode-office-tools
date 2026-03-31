@@ -5,7 +5,6 @@ import { getSelection } from "./getSelection";
 import { getPresentationContent } from "./getPresentationContent";
 import { getPresentationOverview } from "./getPresentationOverview";
 import { getSlideImage } from "./getSlideImage";
-import { addSlideFromCode } from "./addSlideFromCode";
 import { getWorkbookContent } from "./getWorkbookContent";
 import { setWorkbookContent } from "./setWorkbookContent";
 import { getSelectedRange } from "./getSelectedRange";
@@ -136,7 +135,6 @@ const officeToolHandlers = {
   [manageSlideShapes.name]: manageSlideShapes,
   [manageSlideMedia.name]: manageSlideMedia,
   [manageSlideTable.name]: manageSlideTable,
-  [addSlideFromCode.name]: addSlideFromCode,
   [setSlideNotes.name]: setSlideNotes,
   [setSlideTransition.name]: setSlideTransition,
 } satisfies Record<string, Tool>;
@@ -186,7 +184,6 @@ export const powerpointTools = [
   manageSlideShapes,
   manageSlideMedia,
   manageSlideTable,
-  addSlideFromCode,
   setSlideNotes,
   setSlideTransition,
 ];

@@ -51,7 +51,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `manage_slide_shapes` | Create, update, or delete shapes with generic geometry, styling, text, and text-formatting controls. |
 | `manage_slide_media` | Insert, replace, or delete editable image shapes on a PowerPoint slide. |
 | `manage_slide_table` | Create, update, or delete editable native PowerPoint tables. |
-| `add_slide_from_code` | Programmatically create slides using PptxGenJS API. Supports text, bullets, tables, shapes, and images with full formatting control. |
 | `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
 | `set_slide_transition` | Add, update, or clear a slide transition by round-tripping a slide through Open XML; this may change slide identity. |
 | `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
@@ -109,7 +108,7 @@ This helps OpenCode understand your document structure before making targeted re
 
 ### Surgical Edits vs Full Replacement
 - **Surgical**: Use `set_document_range`, `insert_content_at_selection`, `find_document_text`, `find_and_replace`, `list_slide_shapes`, `read_slide_text`, `edit_slide_text`, `edit_slide_xml`, `edit_slide_chart`, `edit_slide_master`, and `manage_slide_shapes` for targeted changes
-- **Full replacement**: Use `set_document_content`; for PowerPoint, inspect first, prefer layout-driven creation or slide-scoped native edits, and keep `add_slide_from_code` as a last resort for advanced slide generation
+- **Full replacement**: Use `set_document_content`; for PowerPoint, inspect first and prefer layout-driven creation or slide-scoped native edits over broad slide regeneration
 
 ### Word: Generic Part Addressing
 When working with advanced Word structure, prefer document-part addresses:
@@ -133,7 +132,7 @@ Suggested pattern:
 4. Keep `set_document_part` for headers, footers, section setup, and native TOC work
 
 ### PowerPoint: Prefer Native Tools Before Code
-Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring. Use `add_slide_from_code` only when these native tools still cannot express the result cleanly.
+Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring.
 
 Suggested workflow:
 1. Use `get_presentation_overview`, `get_presentation_structure`, and `list_slide_layouts` to understand the deck, slide size, theme, and available layouts.
@@ -143,18 +142,6 @@ Suggested workflow:
 5. Use `edit_slide_chart` for chart updates and `edit_slide_master` for supported master/theme changes.
 6. Keep `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for geometry, styling, native media, and native table operations.
 7. Refresh slide ids, shape ids, or shape refs after round-trip mutations before making the next targeted edit.
-
-The `add_slide_from_code` tool accepts JavaScript code using the PptxGenJS API:
-
-```javascript
-// Example: Create a title slide
-slide.addText("Quarterly Report", { x: 0.5, y: 0.3, w: 9, h: 0.8, fontSize: 32, bold: true });
-slide.addText("Q3 2024", { x: 0.5, y: 1, w: 9, h: 0.5, fontSize: 18, color: "666666" });
-slide.addText([
-  { text: "Revenue up 25%", options: { bullet: true } },
-  { text: "10,000 customers", options: { bullet: true } }
-], { x: 0.5, y: 1.8, w: 9, h: 2.5, fontSize: 16 });
-```
 
 ### PowerPoint: Shape Design for Animation-Readiness
 When building slides that will later be animated, keep shapes structured so each animatable element is a **separate shape** with a **descriptive name**:

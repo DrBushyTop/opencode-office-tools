@@ -16,7 +16,6 @@
 | Move/resize/fill/group shapes | `manage_slide_shapes` |
 | Insert or replace image | `manage_slide_media` |
 | Insert or update native table | `manage_slide_table` |
-| Anything else still not expressible | `add_slide_from_code` |
 
 ## Refresh Rule
 
