@@ -8,7 +8,7 @@ const { z } = require('zod');
 const { createApiRouter, createBridgeRouter } = require('./server/api');
 const { OpencodeRuntime } = require('./server/opencodeRuntime');
 const { OfficeToolBridge } = require('./server/officeToolBridge');
-const { bridgeTokenDirectory, bridgeTokenPath } = require('./server/bridgeTokenPath');
+const { writeBridgeToken, removeBridgeToken } = require('./server/bridgeTokenPath');
 const { logInfo, logError } = require('./server/devLogger');
 
 const devServerConfigSchema = z.object({
@@ -31,10 +31,7 @@ async function createServer() {
   const bridgeApp = express();
   const runtime = new OpencodeRuntime();
   const bridge = new OfficeToolBridge();
-  const bridgeTokenFile = bridgeTokenPath(BRIDGE_PORT);
-  fs.mkdirSync(bridgeTokenDirectory(), { recursive: true, mode: 0o700 });
-  process.env.OPENCODE_OFFICE_BRIDGE_TOKEN = bridge.bridgeToken;
-  fs.writeFileSync(bridgeTokenFile, bridge.bridgeToken, { encoding: 'utf8', mode: 0o600 });
+  writeBridgeToken(BRIDGE_PORT, bridge.bridgeToken);
   const apiRouter = createApiRouter(runtime, bridge);
   app.use('/api', apiRouter);
   bridgeApp.use('/api', createBridgeRouter(bridge));
@@ -75,7 +72,7 @@ async function createServer() {
     runtime.close();
     httpsServer.close();
     bridgeServer.close();
-    if (fs.existsSync(bridgeTokenFile)) fs.unlinkSync(bridgeTokenFile);
+    removeBridgeToken(BRIDGE_PORT);
   };
 
   process.once('SIGINT', () => {

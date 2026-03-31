@@ -54,7 +54,60 @@ function sessionEventSessionId(event) {
 }
 
 function isSecureRequest(req) {
-  return Boolean(req.secure || req.socket?.encrypted || req.get('x-forwarded-proto') === 'https');
+  return Boolean(req.secure || req.socket?.encrypted);
+}
+
+function requestOrigin(req) {
+  return `${isSecureRequest(req) ? 'https' : 'http'}://${String(req.get('host') || '')}`;
+}
+
+function hasMatchingOrigin(value, expectedOrigin) {
+  try {
+    return new URL(String(value)).origin === expectedOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedUiRequest(req) {
+  const expectedOrigin = requestOrigin(req);
+  const origin = req.get('origin');
+  if (origin && !hasMatchingOrigin(origin, expectedOrigin)) {
+    return false;
+  }
+
+  const referer = req.get('referer');
+  if (referer && !hasMatchingOrigin(referer, expectedOrigin)) {
+    return false;
+  }
+
+  const fetchSite = String(req.get('sec-fetch-site') || '').toLowerCase();
+  if (fetchSite && !['same-origin', 'none'].includes(fetchSite)) {
+    return false;
+  }
+
+  return true;
+}
+
+function requireTrustedUiRequest(req, res, next) {
+  if (!isSecureRequest(req)) {
+    return res.status(403).json({ error: 'Office UI requests must use HTTPS' });
+  }
+  if (!isTrustedUiRequest(req)) {
+    return res.status(403).json({ error: 'Office UI request must come from the local add-in UI' });
+  }
+  next();
+}
+
+function sanitizeUploadFilename(name, extension) {
+  const suggestedBase = typeof name === 'string'
+    ? path.basename(name, path.extname(name))
+    : 'image';
+  const safeBase = suggestedBase
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return `${safeBase || 'image'}-${Date.now()}-${crypto.randomUUID()}.${extension}`;
 }
 
 function bridgeSessionToken(req) {
@@ -122,7 +175,7 @@ function createApiRouter(runtime, bridge) {
     res.json({ message: 'Hello from backend!', timestamp: new Date().toISOString() });
   });
 
-  apiRouter.post('/upload-image', async (req, res) => {
+  apiRouter.post('/upload-image', requireTrustedUiRequest, async (req, res) => {
     try {
       const parsedBody = uploadImageBodySchema.safeParse(req.body);
       if (!parsedBody.success) {
@@ -145,7 +198,7 @@ function createApiRouter(runtime, bridge) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      const filename = name || `image-${Date.now()}.${extension}`;
+      const filename = sanitizeUploadFilename(name, extension);
       const filepath = path.join(tempDir, filename);
       fs.writeFileSync(filepath, buffer);
 
@@ -156,7 +209,7 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
-  apiRouter.get('/fetch', async (req, res) => {
+  apiRouter.get('/fetch', requireTrustedUiRequest, async (req, res) => {
     const parsedQuery = fetchQuerySchema.safeParse(req.query);
     if (!parsedQuery.success) {
       return res.status(400).json({ error: 'Missing url parameter' });
@@ -168,6 +221,9 @@ function createApiRouter(runtime, bridge) {
       const https = require('https');
       const http = require('http');
       const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return res.status(400).json({ error: 'Only http and https URLs are supported' });
+      }
       const client = parsedUrl.protocol === 'https:' ? https : http;
 
       const options = {

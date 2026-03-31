@@ -1,9 +1,30 @@
 import { tool } from "@opencode-ai/plugin"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
+
+declare const Buffer: {
+  from(input: string, encoding: string): { readonly length: number }
+}
+declare const crypto: { randomUUID(): string }
+declare const process: {
+  readonly platform: string
+  readonly env: Record<string, string | undefined>
+  getuid?: () => number
+}
+declare function require(name: string): any
+
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 
 const url = process.env.OPENCODE_OFFICE_BRIDGE_URL || "http://127.0.0.1:52391/api/office-tools/execute"
+
+function isPosix() {
+  return process.platform !== "win32" && typeof process.getuid === "function"
+}
+
+function currentUserSuffix() {
+  const getuid = process.getuid
+  return isPosix() && typeof getuid === "function" ? String(getuid()) : os.userInfo().username
+}
 
 type Binary = {
   data: string
@@ -26,17 +47,33 @@ function resolveBridgeTokenPath() {
     }
   })()
 
-  return path.join(os.tmpdir(), "opencode-office-bridge", os.userInfo().username, `${port}.token`)
+  return path.join(os.tmpdir(), `opencode-office-bridge-${currentUserSuffix()}`, `${port}.token`)
+}
+
+function validateBridgeTokenFile(tokenPath: string) {
+  const stats = fs.lstatSync(tokenPath)
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing to use symbolic link for Office bridge token file: ${tokenPath}`)
+  }
+  if (!stats.isFile()) {
+    throw new Error(`Office bridge token path is not a file: ${tokenPath}`)
+  }
+  if (isPosix()) {
+    const getuid = process.getuid
+    if (typeof getuid !== "function" || stats.uid !== getuid()) {
+      throw new Error(`Office bridge token file is not owned by the current user: ${tokenPath}`)
+    }
+    if ((stats.mode & 0o077) !== 0) {
+      throw new Error(`Office bridge token file permissions are too broad: ${tokenPath}`)
+    }
+  }
 }
 
 function resolveBridgeToken() {
   const tokenPath = resolveBridgeTokenPath()
   if (fs.existsSync(tokenPath)) {
+    validateBridgeTokenFile(tokenPath)
     return fs.readFileSync(tokenPath, "utf8").trim()
-  }
-
-  if (process.env.OPENCODE_OFFICE_BRIDGE_TOKEN) {
-    return process.env.OPENCODE_OFFICE_BRIDGE_TOKEN
   }
 
   return ""
@@ -107,10 +144,10 @@ export async function execute(host: string, name: string, args: Record<string, u
   return JSON.stringify(result.result, null, 2)
 }
 
-export function hostTool<Args extends typeof tool.schema.shape>(host: string, name: string, description: string, args: Args) {
+export function hostTool<Args>(host: string, name: string, description: string, args: Args) {
   return tool({
     description,
-    args,
+    args: args as any,
     async execute(input) {
       return execute(host, name, input as Record<string, unknown>)
     },
