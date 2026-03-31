@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeToolExecutionResult } from "./index";
+import { getToolNamesForHost, getToolsForHost, normalizeToolExecutionResult } from "./index";
 
 describe("normalizeToolExecutionResult", () => {
   it("preserves successful structured tool results", () => {
@@ -27,5 +27,24 @@ describe("normalizeToolExecutionResult", () => {
       error: "boom",
       toolTelemetry: {},
     })).toThrow("boom");
+  });
+
+  it("resolves every registered PowerPoint tool handler", () => {
+    const hostType = {
+      Word: "Word",
+      PowerPoint: "PowerPoint",
+      Excel: "Excel",
+      OneNote: "OneNote",
+    };
+
+    Object.assign(globalThis, {
+      Office: {
+        HostType: hostType,
+      },
+    });
+
+    expect(getToolsForHost(hostType.PowerPoint as never).map((tool) => tool.name).sort()).toEqual(
+      [...getToolNamesForHost("powerpoint")].sort(),
+    );
   });
 });

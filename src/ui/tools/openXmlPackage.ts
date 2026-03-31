@@ -46,6 +46,10 @@ export class OpenXmlPackage {
     this.entries[path] = strToU8(contents);
   }
 
+  delete(path: OpenXmlPartPath): void {
+    delete this.entries[path];
+  }
+
   toBase64(): string {
     return encodeBase64(zipSync(this.entries, { level: 1 }));
   }

@@ -45,7 +45,7 @@ export function formatAvailableShapeTargets(
 }
 
 export function roundTripRefreshHint() {
-  return "Hint: this can happen after an Open XML round-trip replaces a slide. Re-run get_presentation_overview or get_slide_shapes to refresh current slideIndex and shapeId values, then retry.";
+  return "Hint: this can happen after an Open XML round-trip replaces a slide. Re-run get_presentation_overview to refresh current slideIndex values, then retry with current shape refs or shapeId values from the latest tool results.";
 }
 
 export function roundTripSlideRefreshHint() {
@@ -60,7 +60,9 @@ export function shouldAddRoundTripRefreshHint(error: unknown) {
 export function shouldAddRoundTripShapeTargetRefreshHint(error: unknown) {
   const text = describeError(error);
   return shouldAddRoundTripRefreshHint(error)
-    || /^Shape .+ was not found on slide \d+\./i.test(text);
+    || /^Shape .+ was not found on slide \d+\./i.test(text)
+    || /^Slide .+ was not found in the current presentation\./i.test(text)
+    || /^Could not find shape ref .+ on exported slide .+/i.test(text);
 }
 
 export function isPowerPointRequirementSetSupported(version: string) {
@@ -231,7 +233,9 @@ export async function loadShapeSummaries(
     visible: readOfficeValue(() => shape.visible, undefined),
     text: includeText && textFrames[index] && !textFrames[index].isNullObject && textFrames[index].hasText
       ? readOfficeValue(() => textFrames[index].textRange.text, "")
-      : undefined,
+      : includeText && textFrames[index] && !textFrames[index].isNullObject
+        ? ""
+        : undefined,
     placeholderType: readOfficeValue(() => (placeholderFormats[index]?.type ? String(placeholderFormats[index]?.type) : undefined), undefined),
     placeholderContainedType: readOfficeValue(
       () => (placeholderFormats[index]?.containedType ? String(placeholderFormats[index]?.containedType) : placeholderFormats[index] ? null : undefined),

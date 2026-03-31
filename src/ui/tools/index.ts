@@ -37,14 +37,19 @@ import { getSlideTransition } from "./getSlideTransition";
 import { setSlideNotes } from "./setSlideNotes";
 import { setSlideTransition } from "./setSlideTransition";
 import { getPresentationStructure } from "./getPresentationStructure";
-import { getSlideShapes } from "./getSlideShapes";
+import { listSlideShapes } from "./listSlideShapes";
+import { readSlideText } from "./readSlideText";
+import { editSlideText } from "./editSlideText";
+import { editSlideXml } from "./editSlideXml";
+import { editSlideChart } from "./editSlideChart";
+import { editSlideMaster } from "./editSlideMaster";
+import { listSlideLayouts } from "./listSlideLayouts";
+import { duplicateSlide } from "./duplicateSlide";
+import { createSlideFromLayout } from "./createSlideFromLayout";
 import { manageSlide } from "./manageSlide";
 import { manageSlideShapes } from "./manageSlideShapes";
 import { manageSlideMedia } from "./manageSlideMedia";
 import { manageSlideTable } from "./manageSlideTable";
-import { manageSlideChart } from "./manageSlideChart";
-import { insertBusinessLayout } from "./insertBusinessLayout";
-import { createSlideFromTemplate } from "./createSlideFromTemplate";
 
 // New Excel tools
 import { getWorkbookOverview } from "./getWorkbookOverview";
@@ -113,19 +118,24 @@ const officeToolHandlers = {
   [getPresentationStructure.name]: getPresentationStructure,
   [getPresentationContent.name]: getPresentationContent,
   [getSlideImage.name]: getSlideImage,
-  [getSlideShapes.name]: getSlideShapes,
   [addSlideAnimation.name]: addSlideAnimation,
   [clearSlideAnimations.name]: clearSlideAnimations,
   [getSlideAnimations.name]: getSlideAnimations,
   [getSlideNotes.name]: getSlideNotes,
   [getSlideTransition.name]: getSlideTransition,
+  [listSlideShapes.name]: listSlideShapes,
+  [readSlideText.name]: readSlideText,
+  [editSlideText.name]: editSlideText,
+  [editSlideXml.name]: editSlideXml,
+  [editSlideChart.name]: editSlideChart,
+  [editSlideMaster.name]: editSlideMaster,
+  [listSlideLayouts.name]: listSlideLayouts,
+  [duplicateSlide.name]: duplicateSlide,
+  [createSlideFromLayout.name]: createSlideFromLayout,
   [manageSlide.name]: manageSlide,
   [manageSlideShapes.name]: manageSlideShapes,
   [manageSlideMedia.name]: manageSlideMedia,
   [manageSlideTable.name]: manageSlideTable,
-  [manageSlideChart.name]: manageSlideChart,
-  [insertBusinessLayout.name]: insertBusinessLayout,
-  [createSlideFromTemplate.name]: createSlideFromTemplate,
   [addSlideFromCode.name]: addSlideFromCode,
   [setSlideNotes.name]: setSlideNotes,
   [setSlideTransition.name]: setSlideTransition,
@@ -158,19 +168,24 @@ export const powerpointTools = [
   getPresentationStructure,
   getPresentationContent,
   getSlideImage,
-  getSlideShapes,
   addSlideAnimation,
   clearSlideAnimations,
   getSlideAnimations,
   getSlideNotes,
   getSlideTransition,
+  listSlideShapes,
+  readSlideText,
+  editSlideText,
+  editSlideXml,
+  editSlideChart,
+  editSlideMaster,
+  listSlideLayouts,
+  duplicateSlide,
+  createSlideFromLayout,
   manageSlide,
   manageSlideShapes,
   manageSlideMedia,
   manageSlideTable,
-  manageSlideChart,
-  insertBusinessLayout,
-  createSlideFromTemplate,
   addSlideFromCode,
   setSlideNotes,
   setSlideTransition,

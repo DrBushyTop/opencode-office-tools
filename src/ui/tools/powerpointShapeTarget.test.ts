@@ -1,7 +1,11 @@
 import { DOMParser as XmldomParser, XMLSerializer as XmldomSerializer } from "@xmldom/xmldom";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it, vi } from "vitest";
-import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
+import {
+  getShapeTextAutoSizeSetting,
+  reapplyShapeTextAutoSizeSetting,
+  resolveSlideShapeByIdWithXmlFallback,
+} from "./powerpointShapeTarget";
 
 function createPresentationBase64(entries: Record<string, string>) {
   let binary = "";
@@ -102,5 +106,61 @@ describe("resolveSlideShapeByIdWithXmlFallback", () => {
       shapeIndex: 1,
     });
     expect(exportAsBase64).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("shape text auto-size helpers", () => {
+  it("reads a text frame auto-size setting through XML id fallback", async () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+    const frame = {
+      isNullObject: false,
+      autoSizeSetting: "AutoSizeShapeToFitText",
+      load: vi.fn(),
+    };
+    const shape = {
+      id: "office-body",
+      name: "Body",
+      getTextFrameOrNullObject: vi.fn(() => frame),
+    } as unknown as PowerPoint.Shape;
+    const context = { sync: vi.fn().mockResolvedValue(undefined) } as unknown as PowerPoint.RequestContext;
+    const slide = {
+      shapes: { items: [{ id: "office-title", name: "Title" }, shape], load: vi.fn() },
+      exportAsBase64: vi.fn(() => ({ value: base64 })),
+    } as unknown as PowerPoint.Slide;
+
+    vi.stubGlobal("Office", { context: { requirements: { isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8") } } });
+
+    await expect(getShapeTextAutoSizeSetting(context, slide, 0, "11")).resolves.toBe("AutoSizeShapeToFitText");
+    expect(frame.load).toHaveBeenCalledWith(["isNullObject", "autoSizeSetting"]);
+  });
+
+  it("reapplies AutoSizeShapeToFitText after a round-trip when the replacement shape is still text-capable", async () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+    });
+    const frame = {
+      isNullObject: false,
+      autoSizeSetting: "AutoSizeNone",
+      load: vi.fn(),
+    };
+    const shape = {
+      id: "office-body-new",
+      name: "Body",
+      getTextFrameOrNullObject: vi.fn(() => frame),
+    } as unknown as PowerPoint.Shape;
+    const context = { sync: vi.fn().mockResolvedValue(undefined) } as unknown as PowerPoint.RequestContext;
+    const slide = {
+      shapes: { items: [{ id: "office-title-new", name: "Title" }, shape], load: vi.fn() },
+      exportAsBase64: vi.fn(() => ({ value: base64 })),
+    } as unknown as PowerPoint.Slide;
+
+    vi.stubGlobal("Office", { context: { requirements: { isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8") } } });
+
+    await expect(reapplyShapeTextAutoSizeSetting(context, slide, 0, "11", "AutoSizeShapeToFitText")).resolves.toBe(true);
+    expect(frame.autoSizeSetting).toBe("AutoSizeShapeToFitText");
   });
 });

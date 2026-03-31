@@ -42,7 +42,7 @@ Your code can be either:
 
 The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
 The slide canvas is automatically sized to match the active deck's dimensions. Use get_presentation_structure to learn the actual slide width and height before designing layouts.
-This path does not build directly against the live deck's layout placeholders. Prefer create_slide_from_template and native slide editing tools for template-aware work on the open deck.
+This path does not build directly against the live deck. Prefer native slide editing tools for work on the open deck when possible.
 
 Available in scope:
   - slide

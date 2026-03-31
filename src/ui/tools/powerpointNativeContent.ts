@@ -35,11 +35,46 @@ export async function getSlideByIndex(context: PowerPoint.RequestContext, slideI
   return slide;
 }
 
+export async function getSlideById(context: PowerPoint.RequestContext, slideId: string) {
+  const slides = context.presentation.slides;
+  slides.load("items/id");
+  await context.sync();
+  const slideIndex = slides.items.findIndex((slide) => slide.id === slideId);
+  if (slideIndex < 0) {
+    throw new Error(`Slide ${JSON.stringify(slideId)} was not found in the current presentation.`);
+  }
+  const slide = slides.items[slideIndex];
+  return { slide, slideIndex };
+}
+
 export async function fetchImageUrlAsBase64(imageUrl: string) {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch {
+    throw new Error("imageUrl must be a valid HTTPS URL.");
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error("imageUrl must use HTTPS.");
+  }
+
   const response = await fetch(imageUrl);
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
   }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().startsWith("image/")) {
+    throw new Error("imageUrl did not return an image content type.");
+  }
+
+  const contentLengthHeader = response.headers.get("content-length");
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : 0;
+  if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
+    throw new Error("imageUrl is too large.");
+  }
+
   const blob = await response.blob();
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();

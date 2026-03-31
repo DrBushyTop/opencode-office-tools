@@ -14,6 +14,8 @@ export interface ResolvedShapeIdentity {
   shapeIndex: number;
 }
 
+export type PowerPointTextAutoSizeSetting = "AutoSizeNone" | "AutoSizeTextToFitShape" | "AutoSizeShapeToFitText";
+
 async function exportSlideShapeIds(context: PowerPoint.RequestContext, slide: PowerPoint.Slide) {
   if (!isPowerPointRequirementSetSupported("1.8")) return null;
   const exported = slide.exportAsBase64();
@@ -72,4 +74,42 @@ export async function resolveSlideShapeByIdWithXmlFallback(
     shapeId: resolved.officeShapeId,
     shapeIndex: resolved.shapeIndex,
   };
+}
+
+export async function getShapeTextAutoSizeSetting(
+  context: PowerPoint.RequestContext,
+  slide: PowerPoint.Slide,
+  slideIndex: number,
+  shapeId: PowerPointShapeIdentifier,
+): Promise<PowerPointTextAutoSizeSetting | null> {
+  const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, shapeId);
+  const frame = resolved.shape.getTextFrameOrNullObject();
+  frame.load(["isNullObject", "autoSizeSetting"]);
+  await context.sync();
+
+  return frame.isNullObject ? null : (frame.autoSizeSetting as PowerPointTextAutoSizeSetting | null);
+}
+
+export async function reapplyShapeTextAutoSizeSetting(
+  context: PowerPoint.RequestContext,
+  slide: PowerPoint.Slide,
+  slideIndex: number,
+  shapeId: PowerPointShapeIdentifier,
+  autoSizeSetting: PowerPointTextAutoSizeSetting | null | undefined,
+): Promise<boolean> {
+  if (autoSizeSetting !== "AutoSizeShapeToFitText") {
+    return false;
+  }
+
+  const resolved = await resolveSlideShapeByIdWithXmlFallback(context, slide, slideIndex, shapeId);
+  const frame = resolved.shape.getTextFrameOrNullObject();
+  frame.load("isNullObject");
+  await context.sync();
+  if (frame.isNullObject) {
+    return false;
+  }
+
+  frame.autoSizeSetting = autoSizeSetting;
+  await context.sync();
+  return true;
 }

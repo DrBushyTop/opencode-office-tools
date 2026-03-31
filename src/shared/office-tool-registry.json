@@ -542,21 +542,6 @@
     },
     "ui": { "icon": "📄", "activity": { "type": "presentation_content_range" } }
   },
-  "get_slide_shapes": {
-    "hosts": ["powerpoint"],
-    "description": "Inspect PowerPoint shapes on one slide or across the deck.",
-    "mutating": false,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "Optional 0-based slide index. Omit to inspect all slides." },
-        "includeFormatting": { "type": "boolean", "description": "Include fill and line formatting details. Default true." },
-        "includeTableValues": { "type": "boolean", "description": "Include table cell values for table shapes. Default false." },
-        "detail": { "type": "boolean", "description": "Return full text and table data instead of previews. Default false." }
-      }
-    },
-    "ui": { "icon": "🔎", "activity": { "type": "slide_index_plus_one_or_all", "field": "slideIndex", "prefix": "Inspecting slide ", "default": "Inspecting all slide shapes" } }
-  },
   "get_slide_image": {
     "hosts": ["powerpoint"],
     "description": "Capture a slide image from PowerPoint.",
@@ -582,6 +567,7 @@
         "shapeId": {
           "anyOf": [
             { "type": "string" },
+            { "type": "number" },
             { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] } }
           ],
           "description": "Shape id target(s). Pass a single id or an array of ids to animate multiple shapes in one call. When an array is provided, the first shape uses the specified start trigger and the rest use withPrevious."
@@ -655,6 +641,278 @@
       "required": ["slideIndex"]
     },
     "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Inspecting transition on slide ", "suffix": "" } }
+  },
+  "list_slide_shapes": {
+    "hosts": ["powerpoint"],
+    "description": "List shapes on one PowerPoint slide and return stable shape refs for follow-up text and chart operations.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "Optional 0-based slide index. If omitted, the active slide is used when it can be inferred safely." },
+        "detail": { "type": "boolean", "description": "When true, include full text instead of summarized previews." }
+      }
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "slide_index_plus_one_or_all", "field": "slideIndex", "prefix": "Listing shapes on slide ", "suffix": "", "default": "Listing shapes on the active slide" } }
+  },
+  "read_slide_text": {
+    "hosts": ["powerpoint"],
+    "description": "Read the raw paragraph XML from one PowerPoint text shape using a stable shape ref.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "pattern": "^slide-id:[^/]+/shape:\\d+$", "description": "Stable shape ref in the format slide-id:<slideId>/shape:<xmlShapeId>." }
+      },
+      "required": ["ref"]
+    },
+    "ui": { "icon": "📄", "activity": { "type": "static", "text": "Reading slide text XML" } }
+  },
+  "edit_slide_text": {
+    "hosts": ["powerpoint"],
+    "description": "Replace one PowerPoint shape's paragraph XML in place while preserving the rest of the slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "pattern": "^slide-id:[^/]+/shape:\\d+$", "description": "Stable shape ref in the format slide-id:<slideId>/shape:<xmlShapeId>." },
+        "paragraphsXml": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Replacement raw <a:p> paragraph XML for the targeted shape."
+        }
+      },
+      "required": ["ref", "paragraphsXml"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "static", "text": "Updating slide text XML" } }
+  },
+  "edit_slide_xml": {
+    "hosts": ["powerpoint"],
+    "description": "Batch-update paragraph XML for multiple text shapes on one slide in a single native PowerPoint round-trip.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "replacements": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Text-shape replacements to apply on a single slide.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ref": { "type": "string", "minLength": 1, "pattern": "^slide-id:[^/]+/shape:\\d+$", "description": "Stable shape ref in the format slide-id:<slideId>/shape:<xmlShapeId>." },
+              "paragraphsXml": { "type": "array", "items": { "type": "string" }, "description": "Replacement raw <a:p> paragraph XML for the targeted shape." }
+            },
+            "required": ["ref", "paragraphsXml"]
+          }
+        }
+      },
+      "required": ["replacements"]
+    },
+    "ui": { "icon": "🧬", "activity": { "type": "static", "text": "Batch updating slide text XML" } }
+  },
+  "edit_slide_chart": {
+    "hosts": ["powerpoint"],
+    "description": "Create, update, or delete native PowerPoint charts on one slide.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "update", "delete"], "description": "Chart operation to perform." },
+        "slideIndex": { "type": "number", "description": "0-based slide index for create. Defaults to the active slide when available." },
+        "ref": { "type": "string", "minLength": 1, "pattern": "^slide-id:[^/]+/shape:\\d+$", "description": "Stable chart ref in the format slide-id:<slideId>/shape:<xmlShapeId> for update or delete." },
+        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie", "doughnut", "area", "scatter"], "description": "Chart type for create or update." },
+        "title": { "type": "string", "description": "Optional chart title." },
+        "categories": { "type": "array", "items": { "type": "string" }, "description": "Category labels for the chart." },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "values": { "type": "array", "minItems": 1, "items": { "type": "number" } }
+            },
+            "required": ["name", "values"]
+          },
+          "description": "Chart series definitions."
+        },
+        "stacked": { "type": "boolean", "description": "Whether the chart should use stacked series when supported." },
+        "left": { "type": "number", "description": "Left position in points." },
+        "top": { "type": "number", "description": "Top position in points." },
+        "width": { "type": "number", "exclusiveMinimum": 0, "description": "Width in points." },
+        "height": { "type": "number", "exclusiveMinimum": 0, "description": "Height in points." }
+      },
+      "required": ["action"]
+    },
+    "ui": { "icon": "📈", "activity": { "type": "json_value", "field": "action", "prefix": "Slide chart: " } }
+  },
+  "edit_slide_master": {
+    "hosts": ["powerpoint"],
+    "description": "Update supported PowerPoint slide master theme colors and decorative master shapes.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideMasterId": { "type": "string", "description": "Optional slide master id. Defaults to the first slide master." },
+        "themeColors": {
+          "type": "object",
+          "description": "Optional theme color patch for the chosen slide master.",
+          "properties": {
+            "Dark1": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Light1": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Dark2": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Light2": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent1": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent2": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent3": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent4": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent5": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Accent6": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "Hyperlink": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+            "FollowedHyperlink": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" }
+          }
+        },
+        "decorativeShapes": {
+          "type": "array",
+          "description": "Optional decorative slide master shape operations.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["create"] },
+                  "shapeType": { "type": "string", "enum": ["textBox", "geometricShape"] },
+                  "geometricShapeType": { "type": "string" },
+                  "text": { "type": "string" },
+                  "name": { "type": "string" },
+                  "left": { "type": "number" },
+                  "top": { "type": "number" },
+                  "width": { "type": "number" },
+                  "height": { "type": "number" },
+                  "visible": { "type": "boolean" },
+                  "fillColor": { "type": "string" },
+                  "lineColor": { "type": "string" },
+                  "lineWeight": { "type": "number" },
+                  "fontColor": { "type": "string" },
+                  "fontSize": { "type": "number" }
+                },
+                "required": ["action", "shapeType"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["update"] },
+                  "shapeId": { "type": "string", "minLength": 1 },
+                  "text": { "type": "string" },
+                  "name": { "type": "string" },
+                  "left": { "type": "number" },
+                  "top": { "type": "number" },
+                  "width": { "type": "number" },
+                  "height": { "type": "number" },
+                  "visible": { "type": "boolean" },
+                  "fillColor": { "type": "string" },
+                  "lineColor": { "type": "string" },
+                  "lineWeight": { "type": "number" },
+                  "fontColor": { "type": "string" },
+                  "fontSize": { "type": "number" }
+                },
+                "required": ["action", "shapeId"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["delete"] },
+                  "shapeId": { "type": "string", "minLength": 1 }
+                },
+                "required": ["action", "shapeId"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "ui": { "icon": "🎨", "activity": { "type": "static", "text": "Updating slide master" } }
+  },
+  "list_slide_layouts": {
+    "hosts": ["powerpoint"],
+    "description": "List slide masters and layouts with placeholder metadata for native slide creation.",
+    "mutating": false,
+    "parameters": { "type": "object", "properties": {} },
+    "ui": { "icon": "🗂️", "activity": { "type": "static", "text": "Listing slide layouts" } }
+  },
+  "duplicate_slide": {
+    "hosts": ["powerpoint"],
+    "description": "Duplicate a slide as a convenience wrapper over native PowerPoint slide operations.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "slideIndex": { "type": "number", "description": "0-based source slide index. Defaults to the active slide when available." },
+        "sourceIndex": { "type": "number", "description": "Alias for slideIndex." },
+        "targetIndex": { "type": "number", "description": "Optional 0-based insertion index for the duplicated slide. Defaults to right after the source slide." },
+        "formatting": { "type": "string", "enum": ["KeepSourceFormatting", "UseDestinationTheme"], "description": "Optional formatting behavior for the inserted copy. Default KeepSourceFormatting." }
+      }
+    },
+    "ui": { "icon": "📑", "activity": { "type": "static", "text": "Duplicating slide" } }
+  },
+  "create_slide_from_layout": {
+    "hosts": ["powerpoint"],
+    "description": "Create a new slide from a layout and optionally bind text, images, or tables into layout placeholders.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+         "layoutId": { "type": "string", "minLength": 1, "description": "Layout id to create the slide from." },
+        "slideMasterId": { "type": "string", "description": "Optional slide master id when the layout id is not unique across masters." },
+        "targetIndex": { "type": "number", "description": "Optional 0-based insertion index for the new slide. Defaults to the end of the deck." },
+        "bindings": {
+          "type": "array",
+          "description": "Optional placeholder bindings by placeholderType or placeholderName.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "placeholderType": { "type": "string" },
+                  "placeholderName": { "type": "string" },
+                  "text": { "type": "string" }
+                },
+                "required": ["text"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "placeholderType": { "type": "string" },
+                  "placeholderName": { "type": "string" },
+                   "imageUrl": { "type": "string", "minLength": 1, "pattern": "^https://.+" }
+                },
+                "required": ["imageUrl"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "placeholderType": { "type": "string" },
+                  "placeholderName": { "type": "string" },
+                  "tableData": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] }
+                    }
+                  }
+                },
+                "required": ["tableData"]
+              }
+            ]
+          }
+        }
+      },
+      "required": ["layoutId"]
+    },
+    "ui": { "icon": "➕", "activity": { "type": "json_value", "field": "layoutId", "prefix": "Creating slide from layout " } }
   },
   "manage_slide": {
     "hosts": ["powerpoint"],
@@ -807,97 +1065,6 @@
       "required": ["action"]
     },
     "ui": { "icon": "📋", "activity": { "type": "field_or_default", "field": "action", "prefix": "Slide table: ", "default": "manage table" } }
-  },
-  "manage_slide_chart": {
-    "hosts": ["powerpoint"],
-    "description": "Create, update, or delete editable PowerPoint chart-style business visuals built from native shapes.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "action": { "type": "string", "enum": ["create", "update", "delete"] },
-        "slideIndex": { "type": "number", "description": "0-based slide index. Defaults to the active slide when available." },
-        "shapeId": { "anyOf": [{ "type": "string" }, { "type": "number" }], "description": "Existing chart group shape id for update or delete." },
-        "chartType": { "type": "string", "enum": ["column", "bar", "line", "pie"] },
-        "title": { "type": "string" },
-        "data": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "label": { "type": "string" },
-              "value": { "type": "number" },
-              "color": { "type": "string" }
-            },
-            "required": ["label", "value"]
-          }
-        },
-        "left": { "type": "number" },
-        "top": { "type": "number" },
-        "width": { "type": "number" },
-        "height": { "type": "number" },
-        "name": { "type": "string" }
-      },
-      "required": ["action"]
-    },
-    "ui": { "icon": "📈", "activity": { "type": "field_or_default", "field": "chartType", "prefix": "Slide chart: ", "default": "manage chart" } }
-  },
-  "insert_business_layout": {
-    "hosts": ["powerpoint"],
-    "description": "Insert an editable PowerPoint business layout such as a timeline, process flow, comparison grid, phase plan, or estimate summary.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideIndex": { "type": "number", "description": "Optional slide index. If omitted, the tool prefers creating a new slide from a matching template layout." },
-        "layoutType": { "type": "string", "enum": ["timeline", "phase_plan", "process_flow", "comparison_grid", "estimate_summary"] },
-        "title": { "type": "string" },
-        "themeMode": { "type": "string", "enum": ["deck", "custom"] },
-        "items": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "title": { "type": "string" },
-              "subtitle": { "type": "string" },
-              "value": { "type": "string" },
-              "colorToken": { "type": "string" }
-            },
-            "required": ["title"]
-          }
-        }
-      },
-      "required": ["layoutType", "items"]
-    },
-    "ui": { "icon": "🧩", "activity": { "type": "field_or_default", "field": "layoutType", "prefix": "Business layout: ", "default": "insert layout" } }
-  },
-  "create_slide_from_template": {
-    "hosts": ["powerpoint"],
-    "description": "Create a PowerPoint slide from a chosen layout and bind text, image, or table content into placeholders.",
-    "mutating": true,
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "slideMasterId": { "type": "string" },
-        "layoutId": { "type": "string", "description": "Required PowerPoint layout id to create the slide from." },
-        "targetIndex": { "type": "number" },
-        "bindings": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "placeholderType": { "type": "string" },
-              "placeholderName": { "type": "string" },
-              "text": { "type": "string" },
-              "imageUrl": { "type": "string" },
-              "tableData": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
-            }
-          }
-        }
-      },
-      "required": ["layoutId"]
-    },
-    "ui": { "icon": "🧱", "activity": { "type": "static", "text": "Creating slide from template" } }
   },
   "set_slide_notes": {
     "hosts": ["powerpoint"],

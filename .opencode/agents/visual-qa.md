@@ -56,6 +56,7 @@ You review across all Office hosts: PowerPoint, Word, Excel, and OneNote.
 - Shape creation order that doesn't match logical presentation flow
 - Group shapes that contain unrelated elements, or related elements that should be grouped but aren't
 - Animation sequences that don't match the visual reading order
+- Suspicious text-shape structure after a slide-scoped OOXML text edit (for example, missing paragraphs, unexpected text box splits, or text that appears to have shifted into the wrong shape)
 
 ### Word-Specific
 
@@ -79,10 +80,19 @@ You review across all Office hosts: PowerPoint, Word, Excel, and OneNote.
 ### PowerPoint
 
 1. Start with `get_presentation_structure` to learn slide dimensions and theme colors
-2. For each slide under review, call `get_slide_image` to see the visual result. Use the `read` tool to view the image.
-3. Call `get_slide_shapes` with formatting detail on slides where you spot issues
-4. If animations matter, call `get_slide_animations` to check the animation structure
-5. Compare each slide against the theme and the rest of the deck for consistency
+2. For each slide under review, call `get_slide_image` first to capture the current exact visual result. Use the `read` tool to view the image.
+3. If structure, shape naming, grouping, chart targeting, or text-container issues matter, call `list_slide_shapes` for the current slide.
+4. If a specific text fidelity issue is suspected and one shape needs closer inspection, use `read_slide_text` on that shape.
+5. If animations matter, call `get_slide_animations` to check the animation structure.
+6. Compare each slide against the theme and the rest of the deck for consistency.
+
+Treat these PowerPoint workflows as normal and review the resulting slide state rather than second-guessing the tool choice by itself:
+
+- OOXML text edits with `edit_slide_text` or `edit_slide_xml`
+- Prototype-first revisions that started from `duplicate_slide`
+- Layout-based slide creation with `list_slide_layouts` + `create_slide_from_layout`
+
+Focus on whether the current slide is visually correct, structurally coherent, and professionally readable.
 
 ### Word
 
