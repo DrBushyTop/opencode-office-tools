@@ -44,6 +44,7 @@ const sessionStatusEventSchema = z.object({
 const messagePartDeltaEventSchema = z.object({
   type: z.literal("message.part.delta"),
   properties: z.object({
+    messageID: z.string().optional(),
     partID: z.string().optional(),
     field: z.string().optional(),
     delta: z.string().optional(),
@@ -108,7 +109,7 @@ function getErrorMessage(event: z.infer<typeof sessionErrorEventSchema>): string
   return event.properties?.error?.message || event.properties?.error?.name || "Unknown session error";
 }
 
-export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartState>): UiEvent[] {
+export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartState>, roles?: Map<string, string>): UiEvent[] {
   const sessionErrorEvent = sessionErrorEventSchema.safeParse(event);
   if (sessionErrorEvent.success) {
     return [{ type: "session.error", data: { message: getErrorMessage(sessionErrorEvent.data) } }];
@@ -126,8 +127,10 @@ export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartSt
 
   const messagePartDeltaEvent = messagePartDeltaEventSchema.safeParse(event);
   if (messagePartDeltaEvent.success) {
+    const messageId = messagePartDeltaEvent.data.properties.messageID;
     const partId = messagePartDeltaEvent.data.properties.partID;
     if (!partId) return [];
+    if (roles && roles.get(messageId || "") !== "assistant") return [];
     if (messagePartDeltaEvent.data.properties.field && messagePartDeltaEvent.data.properties.field !== "text") return [];
     const delta = messagePartDeltaEvent.data.properties.delta || "";
     const part = parts.get(partId);
@@ -153,6 +156,7 @@ export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartSt
   if (messagePartUpdatedEvent.success) {
     const part = messagePartUpdatedEvent.data.properties.part;
     if (!part?.id) return [];
+    if (roles && roles.get(part.messageID || "") !== "assistant") return [];
 
     if (part.type === "tool") {
       if (part.state?.status === "running") {
@@ -205,6 +209,7 @@ export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartSt
   const messageUpdatedEvent = messageUpdatedEventSchema.safeParse(event);
   if (messageUpdatedEvent.success) {
     const info = messageUpdatedEvent.data.properties.info;
+    if (roles && info?.id && info.role) roles.set(info.id, info.role);
     if (info?.role === "assistant" && info?.time?.completed) {
       return [
         {

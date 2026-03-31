@@ -124,6 +124,7 @@ export class OpencodeClient {
 
   subscribe(sessionId: string, handlers: SessionEventHandlers, opts: { signal?: AbortSignal } = {}) {
     const parts = new Map<string, { type: string; text: string; pending: string }>();
+    const roles = new Map<string, string>();
     const eventSource = new EventSource(`/api/opencode/events?sessionId=${encodeURIComponent(sessionId)}`);
     let lastAssistantId = "";
     let closed = false;
@@ -179,7 +180,7 @@ export class OpencodeClient {
       void (async () => {
         try {
           const event = JSON.parse(message.data);
-          for (const normalized of normalizeOpencodeEvent(event, parts)) {
+          for (const normalized of normalizeOpencodeEvent(event, parts, roles)) {
             if (normalized.type !== "assistant.message") {
               handlers.onEvent(normalized);
               continue;

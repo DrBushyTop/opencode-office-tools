@@ -30,6 +30,7 @@ export const opencodePartStateSchema = z.object({
 
 export const opencodeMessagePartSchema = z.object({
   id: z.string().optional(),
+  messageID: z.string().optional(),
   type: z.string(),
   synthetic: z.boolean().optional(),
   text: z.string().optional(),
