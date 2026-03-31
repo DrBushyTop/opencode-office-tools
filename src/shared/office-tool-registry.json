@@ -677,7 +677,7 @@
   },
   "add_slide_from_code": {
     "hosts": ["powerpoint"],
-    "description": "Add or replace a PowerPoint slide from PptxGenJS code.",
+    "description": "Advanced fallback: add or replace a PowerPoint slide from PptxGenJS code.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -689,52 +689,68 @@
     },
     "ui": { "icon": "➕", "activity": { "type": "static", "text": "Creating new slide" } }
   },
-  "manage_slide_shapes": {
+  "edit_slide_with_code": {
     "hosts": ["powerpoint"],
-    "description": "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.",
+    "description": "Edit an existing PowerPoint slide in place with live Office.js code.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["create", "update", "delete", "group", "ungroup"], "description": "Shape operation to perform." },
+        "slideIndex": { "type": "number", "description": "Optional 0-based slide index. If omitted, the active slide is used when available." },
+        "shapeId": { "type": "string", "description": "Optional existing shape id to target for pinpoint edits." },
+        "shapeIndex": { "type": "number", "description": "Optional 0-based shape index on the targeted slide." },
+        "code": { "type": "string", "description": "JavaScript function body that runs against the live slide and may reference context, slide, shapes, targetShape, targetShapeId, targetShapeIndex, slideIndex, and PowerPoint." }
+      },
+      "required": ["code"]
+    },
+    "ui": { "icon": "✏️", "activity": { "type": "static", "text": "Editing slide" } }
+  },
+  "manage_slide_shapes": {
+    "hosts": ["powerpoint"],
+    "description": "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["create", "update", "delete", "group", "ungroup"], "description": "Shape operation to perform. Use update as a sparse patch: include only targeting fields and the properties that should change." },
         "slideIndex": {
           "anyOf": [
             { "type": "number" },
             { "type": "array", "items": { "type": "number" } }
           ],
-          "description": "0-based slide index or array of slide indexes. When an array is provided, the same transition is applied to each slide in sequence."
+          "description": "0-based slide index. Optional when the active slide can be inferred from the current selection."
         },
-        "shapeId": { "type": "string", "description": "Existing shape id. Preferred over shapeIndex when available." },
-        "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide." },
+        "shapeId": { "type": "string", "description": "Existing shape id. Preferred targeting field for update/delete/ungroup when available." },
+        "shapeIndex": { "type": "number", "description": "Existing 0-based shape index on the slide. Use this only when shapeId is unavailable." },
         "shapeIds": {
           "type": "array",
           "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
           "description": "Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes."
         },
-        "placeholderType": { "type": "string", "description": "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
-        "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create." },
-        "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
-        "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight." },
-        "text": { "type": "string", "description": "Text content to set or create." },
+        "placeholderType": { "type": "string", "description": "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content. Use this instead of shapeId/shapeIndex when targeting a placeholder by role." },
+        "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create. Create-only; omit for update/delete/group/ungroup." },
+        "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow. Create-only." },
+        "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight. Create-only." },
+        "text": { "type": "string", "description": "Text content to create or replace. For update, omit this unless you intend to replace the current text." },
         "name": { "type": "string", "description": "Descriptive shape name for identification and animation targeting. Use semantic names like 'Bullet 1 - Revenue' or 'Hero Image'." },
-        "left": { "type": "number" },
-        "top": { "type": "number" },
-        "width": { "type": "number" },
-        "height": { "type": "number" },
-        "rotation": { "type": "number" },
-        "visible": { "type": "boolean" },
-        "altTextTitle": { "type": "string" },
-        "altTextDescription": { "type": "string" },
-        "fillColor": { "type": "string" },
-        "fillTransparency": { "type": "number" },
-        "clearFill": { "type": "boolean" },
-        "lineColor": { "type": "string" },
-        "lineWeight": { "type": "number" },
-        "lineTransparency": { "type": "number" },
-        "lineVisible": { "type": "boolean" },
-        "fontName": { "type": "string" },
-        "fontSize": { "type": "number" },
-        "fontColor": { "type": "string" },
+        "left": { "type": "number", "description": "Left position in points. For update, omit to keep the current position." },
+        "top": { "type": "number", "description": "Top position in points. For update, omit to keep the current position." },
+        "width": { "type": "number", "description": "Width in points. For update, omit to keep the current width." },
+        "height": { "type": "number", "description": "Height in points. For update, omit to keep the current height." },
+        "rotation": { "type": "number", "description": "Rotation in degrees. For update, omit to keep the current rotation." },
+        "visible": { "type": "boolean", "description": "Whether the shape is visible. For update, omit to leave visibility unchanged." },
+        "altTextTitle": { "type": "string", "description": "Alt text title. For update, omit to leave unchanged." },
+        "altTextDescription": { "type": "string", "description": "Alt text description. For update, omit to leave unchanged." },
+        "fillColor": { "type": "string", "description": "Solid fill color. For update, omit to leave fill unchanged. Do not send empty strings as placeholders." },
+        "fillTransparency": { "type": "number", "description": "Fill transparency from 0 to 1. For update, omit to leave unchanged." },
+        "clearFill": { "type": "boolean", "description": "Clear the fill entirely. For update, include only when you intentionally want no fill." },
+        "lineColor": { "type": "string", "description": "Line color. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
+        "lineWeight": { "type": "number", "description": "Line weight in points. For update, omit to leave unchanged." },
+        "lineTransparency": { "type": "number", "description": "Line transparency from 0 to 1. For update, omit to leave unchanged." },
+        "lineVisible": { "type": "boolean", "description": "Whether the line is visible. For update, omit to leave unchanged." },
+        "fontName": { "type": "string", "description": "Font family name. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
+        "fontSize": { "type": "number", "description": "Font size in points. For update, omit to leave unchanged." },
+        "fontColor": { "type": "string", "description": "Font color. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
         "bold": { "type": "boolean" },
         "italic": { "type": "boolean" },
         "underline": { "type": "string", "enum": ["None", "Single", "Double", "Heavy", "Dotted", "DottedHeavy", "Dash", "DashHeavy", "DashLong", "DashLongHeavy", "DotDash", "DotDashHeavy", "DotDotDash", "DotDotDashHeavy", "Wavy", "WavyHeavy", "WavyDouble"] },
@@ -750,10 +766,10 @@
         "textAutoSize": { "type": "string", "enum": ["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"] },
         "wordWrap": { "type": "boolean" },
         "verticalAlignment": { "type": "string", "enum": ["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"] },
-        "marginLeft": { "type": "number" },
-        "marginRight": { "type": "number" },
-        "marginTop": { "type": "number" },
-        "marginBottom": { "type": "number" }
+        "marginLeft": { "type": "number", "description": "Left text margin in points. For update, omit to leave unchanged." },
+        "marginRight": { "type": "number", "description": "Right text margin in points. For update, omit to leave unchanged." },
+        "marginTop": { "type": "number", "description": "Top text margin in points. For update, omit to leave unchanged." },
+        "marginBottom": { "type": "number", "description": "Bottom text margin in points. For update, omit to leave unchanged." }
       },
       "required": ["action"]
     },

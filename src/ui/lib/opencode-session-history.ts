@@ -49,11 +49,30 @@ export const sessionHistoryInternals = {
   text,
   images,
   carry,
+  coalesceTranscriptMessages,
 };
 
 export function carry(live: Message[], next: Message[]) {
   const ids = new Set(next.map((item) => item.id));
   return live.filter((item) => item.sender !== "assistant" && !ids.has(item.id));
+}
+
+export function coalesceTranscriptMessages(history: Message[], live: Message[]) {
+  const merged = [...history];
+  const indexes = new Map(merged.map((item, index) => [item.id, index]));
+
+  for (const item of live) {
+    const index = indexes.get(item.id);
+    if (index === undefined) {
+      indexes.set(item.id, merged.length);
+      merged.push(item);
+      continue;
+    }
+
+    merged[index] = { ...merged[index], ...item };
+  }
+
+  return merged;
 }
 
 export function mapAssistantParts(parts: unknown = [], fallbackTime?: number): Message[] {

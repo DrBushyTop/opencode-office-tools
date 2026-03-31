@@ -34,7 +34,7 @@ export function buildGeneratedSlide(code: string, slide: any, pptx: any) {
 
 export const addSlideFromCode: Tool = {
   name: "add_slide_from_code",
-  description: `Add a slide to the PowerPoint presentation by providing PptxGenJS code.
+  description: `Advanced fallback: add a new slide to the PowerPoint presentation by providing PptxGenJS code.
 
 Your code can be either:
 - slide-only code that uses the provided 'slide' object, or
@@ -42,6 +42,7 @@ Your code can be either:
 
 The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
 The slide canvas is automatically sized to match the active deck's dimensions. Use get_presentation_structure to learn the actual slide width and height before designing layouts.
+This path does not build directly against the live deck's layout placeholders. Prefer create_slide_from_template or edit_slide_with_code for template-aware work on the open deck.
 
 Available in scope:
   - slide

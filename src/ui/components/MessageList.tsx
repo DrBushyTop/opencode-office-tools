@@ -5,6 +5,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { z } from "zod";
 import { trafficStats } from "../lib/opencode-events";
+import { coalesceTranscriptMessages } from "../lib/opencode-session-history";
 import { getOfficeToolUi } from "../../shared/office-tool-registry";
 
 const RecordValueSchema: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
@@ -438,9 +439,28 @@ const useStyles = makeStyles({
   },
   toolStatus: {
     marginLeft: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "2px 8px",
+    borderRadius: "999px",
     color: "var(--text-weak)",
-    fontSize: "12px",
+    fontSize: "11px",
+    fontWeight: 600,
+    background: "var(--oc-bg-soft)",
+    border: "1px solid var(--oc-border)",
     whiteSpace: "nowrap",
+  },
+  toolStatusRunning: {
+    color: "var(--oc-accent)",
+    background: "color-mix(in srgb, var(--oc-accent) 12%, var(--oc-bg-soft) 88%)",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 28%, var(--oc-border) 72%)",
+  },
+  toolStatusDone: {
+    color: "var(--oc-success)",
+  },
+  toolStatusError: {
+    color: "var(--oc-danger-text)",
   },
   taskHead: {
     display: "contents",
@@ -474,6 +494,11 @@ const useStyles = makeStyles({
     color: "var(--text-weak)",
     border: "1px solid var(--oc-border)",
     whiteSpace: "nowrap",
+  },
+  taskBadgeRunning: {
+    color: "var(--oc-accent)",
+    background: "color-mix(in srgb, var(--oc-accent) 12%, var(--oc-bg-soft) 88%)",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 28%, var(--oc-border) 72%)",
   },
   taskBadgeDone: {
     color: "var(--oc-success)",
@@ -550,6 +575,61 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     gap: "4px",
+  },
+  liveStatusDock: {
+    position: "sticky",
+    bottom: "12px",
+    zIndex: 1,
+  },
+  liveStatusCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "color-mix(in srgb, var(--oc-bg-strong) 78%, transparent)",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 22%, var(--oc-border) 78%)",
+    boxShadow: "0 12px 28px rgba(0, 0, 0, 0.18)",
+    backdropFilter: "blur(12px)",
+  },
+  liveStatusHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  liveStatusDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "50%",
+    background: "var(--oc-accent)",
+    animationName: {
+      "0%": { transform: "scale(1)", opacity: 0.95 },
+      "50%": { transform: "scale(1.4)", opacity: 0.35 },
+      "100%": { transform: "scale(1)", opacity: 0.95 },
+    },
+    animationDuration: "1.2s",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
+  },
+  liveStatusLabel: {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--oc-accent)",
+  },
+  liveStatusTitle: {
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "var(--text-strong)",
+    overflowWrap: "anywhere",
+  },
+  liveStatusMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
   },
 });
 
@@ -672,6 +752,16 @@ function stripThinkingHeading(text: string) {
   return markdown.slice(match.length).trim();
 }
 
+function liveStatusText(messages: Message[], activity?: string) {
+  if (activity?.trim()) return activity.trim();
+  const item = [...messages].reverse().find((message) => message.sender !== "user");
+  if (!item) return "Generating response";
+  if (item.sender === "thinking") return thinkingHeading(item.text) || "Reasoning";
+  if (item.sender === "tool" && item.toolName) return formatToolCall(item.toolName, item.toolArgs || {}).description;
+  if (item.sender === "assistant") return item.text.trim() ? "Drafting response" : "Generating response";
+  return "Working";
+}
+
 // Live traffic counter that polls trafficStats (reset by App before each query)
 const TrafficCounter: React.FC = () => {
   const [stats, setStats] = useState({ bytesIn: 0, bytesOut: 0 });
@@ -752,7 +842,7 @@ const TaskToolMessage: React.FC<{
               <span className={styles.taskTitleText}>{summarizeTaskTool(message.toolArgs || {})}</span>
               <span className={styles.toolMetaText}>{meta}</span>
             </div>
-            <div className={`${styles.taskBadge} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
+            <div className={`${styles.taskBadge} ${running ? styles.taskBadgeRunning : ""} ${done ? styles.taskBadgeDone : ""} ${failed ? styles.taskBadgeError : ""}`.trim()}>
               {running && <span className={styles.taskSpinner} />}
               <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
             </div>
@@ -795,6 +885,8 @@ const ToolMessage: React.FC<{
     ? formatToolCall(message.toolName, message.toolArgs || {})
     : null;
   const toolTitle = message.toolName ? message.toolName.replace(/_/g, " ") : "tool";
+  const running = message.toolStatus === "running";
+  const failed = message.toolStatus === "error";
 
   if (message.toolName === "task") {
     return <TaskToolMessage message={message} expanded={expanded} toggle={toggle} showToolResponses={showToolResponses} />;
@@ -812,7 +904,10 @@ const ToolMessage: React.FC<{
               <span className={styles.toolTitleText}>{toolTitle}</span>
               <span className={styles.toolMetaText}>{toolDisplay.description}</span>
             </div>
-            <span className={styles.toolStatus}>{message.toolStatus === "running" ? "Running" : message.toolStatus === "error" ? "Error" : "Done"}</span>
+            <span className={`${styles.toolStatus} ${running ? styles.toolStatusRunning : failed ? styles.toolStatusError : styles.toolStatusDone}`.trim()}>
+              {running && <span className={styles.taskSpinner} />}
+              <span>{running ? "Running" : failed ? "Error" : "Done"}</span>
+            </span>
           </div>
         </button>
       </div>
@@ -861,6 +956,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     () => (debugEvents ? z.array(DebugEventSchema).catch([]).parse(debugEvents) : undefined),
     [debugEvents],
   );
+  const liveStatus = React.useMemo(() => liveStatusText(safeLiveMessages, currentActivity), [safeLiveMessages, currentActivity]);
 
   useEffect(() => {
     const el = chatRef.current;
@@ -900,11 +996,15 @@ export const MessageList: React.FC<MessageListProps> = ({
     () => safeLiveMessages.filter((message) => showThinking || message.sender !== "thinking"),
     [safeLiveMessages, showThinking],
   );
+  const visibleMessages = React.useMemo(
+    () => coalesceTranscriptMessages(visibleHistory, visibleLive),
+    [visibleHistory, visibleLive],
+  );
 
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={styles.content}>
-        {visibleHistory.length === 0 && visibleLive.length === 0 && !isConnecting && (
+        {visibleMessages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
             <div className={styles.emptyTitle}>What can I do for you?</div>
             <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}` : "Connected to your document"}</div>
@@ -917,7 +1017,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {[...visibleHistory, ...visibleLive].map((message) => {
+        {visibleMessages.map((message) => {
           const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
           const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
 
@@ -970,32 +1070,37 @@ export const MessageList: React.FC<MessageListProps> = ({
           );
         })}
 
-        {isTyping && visibleLive.length === 0 && (
-          <div className={styles.messageAssistant}>
-            <div className={styles.assistantBody}>
-              <>
+        {isTyping && (
+          <div className={styles.liveStatusDock}>
+            <div className={styles.liveStatusCard}>
+              <div className={styles.liveStatusHeader}>
+                <span className={styles.liveStatusDot} />
+                <span className={styles.liveStatusLabel}>OpenCode is running</span>
+                <span className={styles.liveStatusTitle}>{liveStatus}</span>
+              </div>
+              <div className={styles.liveStatusMeta}>
                 <span className={styles.streamingIndicator}>
-                  {currentActivity || "Thinking"}
+                  Streaming
                   <StreamingDots />
                   <ElapsedTime />
                 </span>
-                <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
-              </>
-              <TrafficCounter />
-                {safeDebugEvents && safeDebugEvents.length > 0 && (
-                 <div style={{
-                   marginTop: '8px',
-                   maxHeight: '120px',
-                   overflowY: 'auto',
-                   fontSize: '10px',
-                   fontFamily: 'monospace',
-                   lineHeight: '1.6',
-                   color: 'var(--text-weak, #999)',
-                   backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
-                   borderRadius: '8px',
-                   padding: '6px 8px',
-                   border: '1px solid var(--oc-border, #e5e5e5)',
-                 }}>
+                <TrafficCounter />
+              </div>
+              <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
+              {safeDebugEvents && safeDebugEvents.length > 0 && (
+                <div style={{
+                  marginTop: '2px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  lineHeight: '1.6',
+                  color: 'var(--text-weak, #999)',
+                  backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
+                  borderRadius: '8px',
+                  padding: '6px 8px',
+                  border: '1px solid var(--oc-border, #e5e5e5)',
+                }}>
                   {safeDebugEvents.map((ev, i) => (
                     <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <span style={{ color: 'var(--oc-accent, #0078d4)' }}>{ev.type}</span>

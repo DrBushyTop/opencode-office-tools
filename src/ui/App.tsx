@@ -240,6 +240,9 @@ function mergeQaModel(config: OpencodeConfig, model: ModelType) {
 
 function previewEvent(eventType: string, data: Record<string, unknown>) {
   if (eventType === "assistant.message_delta") return String(data.deltaContent || "").slice(0, 80);
+  if (eventType === "assistant.message_update") return String(data.content || "").slice(0, 80);
+  if (eventType === "assistant.reasoning_delta") return String(data.deltaContent || "").slice(0, 80);
+  if (eventType === "assistant.reasoning_update") return String(data.content || "").slice(0, 80);
   if (eventType === "assistant.message") return String(data.content || "").slice(0, 80);
   if (eventType === "tool.execution_start") {
     const toolName = String(data.toolName || "");
@@ -359,6 +362,7 @@ export const App: React.FC = () => {
   const sessionCreatedAt = useRef<string>("");
   const messagesRef = useRef<Message[]>([]);
   const liveRef = useRef<Message[]>([]);
+  const streamTextRef = useRef<Map<string, string>>(new Map());
   const streamRef = useRef<SessionStream | null>(null);
   const eventHandlerRef = useRef<(event: UiEvent) => void>(() => undefined);
 
@@ -385,6 +389,20 @@ export const App: React.FC = () => {
     setLiveMessages((prev) => mergeLiveMessages(prev, next));
   };
 
+  const streamText = (id: string, sender: "assistant" | "thinking", text: string, append: boolean) => {
+    const current = streamTextRef.current.get(id)
+      || [...messagesRef.current, ...liveRef.current].find((item) => item.id === id)?.text
+      || "";
+    const nextText = append ? `${current}${text}` : text;
+    streamTextRef.current.set(id, nextText);
+    upsertStreamMessage({
+      id,
+      text: nextText,
+      sender,
+      timestamp: new Date(),
+    });
+  };
+
   eventHandlerRef.current = (event: UiEvent) => {
     const data = event.data || {};
     const preview = previewEvent(event.type, data);
@@ -394,12 +412,14 @@ export const App: React.FC = () => {
 
     if (event.type === "assistant.message_delta") {
       setIsTyping(true);
-      upsertStreamMessage({
-        id: String(event.id || `assistant-${Date.now()}`),
-        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-        sender: "assistant",
-        timestamp: new Date(),
-      });
+      streamText(String(event.id || `assistant-${Date.now()}`), "assistant", String(data.deltaContent || ""), true);
+      setCurrentActivity("");
+      return;
+    }
+
+    if (event.type === "assistant.message_update") {
+      setIsTyping(true);
+      streamText(String(event.id || `assistant-${Date.now()}`), "assistant", String(data.content || ""), false);
       setCurrentActivity("");
       return;
     }
@@ -410,7 +430,9 @@ export const App: React.FC = () => {
       const parts = Array.isArray(data.parts) ? data.parts : [];
       const mapped = mapAssistantParts(parts, Date.now());
       const kept = carry(liveRef.current, mapped);
+      streamTextRef.current.clear();
       setLiveMessages([]);
+      setIsTyping(false);
       setCurrentActivity("");
       if (mapped.length > 0) {
         setMessages((prev) => mergeMessages(prev, [...kept, ...mapped]));
@@ -495,12 +517,14 @@ export const App: React.FC = () => {
 
     if (event.type === "assistant.reasoning_delta") {
       setIsTyping(true);
-      upsertStreamMessage({
-        id: String(event.id || `thinking-${Date.now()}`),
-        text: `${[...messagesRef.current, ...liveRef.current].find((item) => item.id === String(event.id || ""))?.text || ""}${String(data.deltaContent || "")}`,
-        sender: "thinking",
-        timestamp: new Date(),
-      });
+      streamText(String(event.id || `thinking-${Date.now()}`), "thinking", String(data.deltaContent || ""), true);
+      setCurrentActivity("Thinking...");
+      return;
+    }
+
+    if (event.type === "assistant.reasoning_update") {
+      setIsTyping(true);
+      streamText(String(event.id || `thinking-${Date.now()}`), "thinking", String(data.content || ""), false);
       setCurrentActivity("Thinking...");
       return;
     }
@@ -519,6 +543,7 @@ export const App: React.FC = () => {
 
     if (event.type === "session.error") {
       const text = String(data.message || "Unknown session error");
+      streamTextRef.current.clear();
       setIsTyping(false);
       setCurrentActivity("");
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
@@ -723,6 +748,7 @@ export const App: React.FC = () => {
     setPermission(null);
     setPermissionSessionTitle(null);
     setLiveMessages([]);
+    streamTextRef.current.clear();
 
     const host = Office.context.host;
     const office = getHostFromOfficeHost(host);
@@ -780,6 +806,13 @@ export const App: React.FC = () => {
 
     const userInput = inputValue;
     const userImages = [...images];
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      text: userInput || `Sent ${userImages.length} image${userImages.length === 1 ? "" : "s"}`,
+      sender: "user",
+      timestamp: new Date(),
+      images: userImages.length > 0 ? userImages.map((image) => ({ dataUrl: image.dataUrl, name: image.name })) : undefined,
+    };
     const isFirstUserTurn = !messages.some((message) => message.sender === "user");
     const wasTyping = isTyping;
     const carried = wasTyping ? liveRef.current : [];
@@ -795,13 +828,9 @@ export const App: React.FC = () => {
 
     setMessages((prev) => {
       const next = mergeMessages(prev, carried);
-      return [...next, {
-        id: crypto.randomUUID(),
-        text: userInput || `Sent ${userImages.length} image${userImages.length === 1 ? "" : "s"}`,
-        sender: "user",
-        timestamp: new Date(),
-        images: userImages.length > 0 ? userImages.map((image) => ({ dataUrl: image.dataUrl, name: image.name })) : undefined,
-      }];
+      const merged = [...next, userMessage];
+      messagesRef.current = merged;
+      return merged;
     });
 
     setInputValue("");
@@ -811,12 +840,15 @@ export const App: React.FC = () => {
     setError("");
 
     if (carried.length > 0) {
+      liveRef.current = [];
       setLiveMessages([]);
     }
 
     if (!wasTyping) {
+      liveRef.current = [];
       setLiveMessages([]);
       setDebugEvents([]);
+      streamTextRef.current.clear();
       trafficStats.reset();
     }
 
@@ -878,6 +910,7 @@ export const App: React.FC = () => {
 
     try {
       await client.abortSession(currentSessionId);
+      streamTextRef.current.clear();
       setMessages((prev) => mergeMessages(prev, liveRef.current));
       setLiveMessages([]);
       setIsTyping(false);

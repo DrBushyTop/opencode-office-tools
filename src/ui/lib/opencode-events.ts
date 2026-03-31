@@ -5,8 +5,10 @@ import { jsonObjectSchema, opencodeMessagePartSchema, type OpencodeMessage, open
 export const uiEventSchema = z.object({
   type: z.enum([
     "assistant.message_delta",
+    "assistant.message_update",
     "assistant.message",
     "assistant.reasoning_delta",
+    "assistant.reasoning_update",
     "tool.execution_start",
     "tool.execution_complete",
     "assistant.turn_start",
@@ -43,6 +45,7 @@ const messagePartDeltaEventSchema = z.object({
   type: z.literal("message.part.delta"),
   properties: z.object({
     partID: z.string().optional(),
+    field: z.string().optional(),
     delta: z.string().optional(),
   }).passthrough(),
 }).passthrough();
@@ -77,6 +80,18 @@ export const trafficStats = {
   },
 };
 
+type PartState = {
+  type: string;
+  text: string;
+  pending: string;
+};
+
+function partEvent(type: string, mode: "delta" | "update") {
+  if (type === "reasoning") return mode === "delta" ? "assistant.reasoning_delta" : "assistant.reasoning_update";
+  if (type === "text") return mode === "delta" ? "assistant.message_delta" : "assistant.message_update";
+  return null;
+}
+
 function getAssistantText(message: OpencodeMessage): string {
   return (message.parts || [])
     .filter((part) => part.type === "text" && !part.synthetic)
@@ -93,7 +108,7 @@ function getErrorMessage(event: z.infer<typeof sessionErrorEventSchema>): string
   return event.properties?.error?.message || event.properties?.error?.name || "Unknown session error";
 }
 
-export function normalizeOpencodeEvent(event: unknown, partTypes: Map<string, string>): UiEvent[] {
+export function normalizeOpencodeEvent(event: unknown, parts: Map<string, PartState>): UiEvent[] {
   const sessionErrorEvent = sessionErrorEventSchema.safeParse(event);
   if (sessionErrorEvent.success) {
     return [{ type: "session.error", data: { message: getErrorMessage(sessionErrorEvent.data) } }];
@@ -113,29 +128,31 @@ export function normalizeOpencodeEvent(event: unknown, partTypes: Map<string, st
   if (messagePartDeltaEvent.success) {
     const partId = messagePartDeltaEvent.data.properties.partID;
     if (!partId) return [];
-    const type = partTypes.get(partId);
-    if (type === "reasoning") {
-      return [{
-        type: "assistant.reasoning_delta",
-        id: partId,
-        data: { deltaContent: messagePartDeltaEvent.data.properties.delta || "" },
-      }];
+    if (messagePartDeltaEvent.data.properties.field && messagePartDeltaEvent.data.properties.field !== "text") return [];
+    const delta = messagePartDeltaEvent.data.properties.delta || "";
+    const part = parts.get(partId);
+    if (!delta) return [];
+    if (!part) {
+      parts.set(partId, { type: "", text: "", pending: delta });
+      return [];
     }
-    if (type === "text") {
-      return [{
-        type: "assistant.message_delta",
-        id: partId,
-        data: { deltaContent: messagePartDeltaEvent.data.properties.delta || "" },
-      }];
+    const type = partEvent(part.type, "delta");
+    if (!type) {
+      parts.set(partId, { ...part, pending: `${part.pending}${delta}` });
+      return [];
     }
-    return [];
+    parts.set(partId, { ...part, text: `${part.text}${delta}` });
+    return [{
+      type,
+      id: partId,
+      data: { deltaContent: delta },
+    }];
   }
 
   const messagePartUpdatedEvent = messagePartUpdatedEventSchema.safeParse(event);
   if (messagePartUpdatedEvent.success) {
     const part = messagePartUpdatedEvent.data.properties.part;
     if (!part?.id) return [];
-    partTypes.set(part.id, part.type);
 
     if (part.type === "tool") {
       if (part.state?.status === "running") {
@@ -167,6 +184,22 @@ export function normalizeOpencodeEvent(event: unknown, partTypes: Map<string, st
         ];
       }
     }
+
+    const prev = parts.get(part.id);
+    const pending = prev?.pending || "";
+    const text = typeof part.text === "string" && part.text.length > 0
+      ? (part.text.startsWith(pending) ? part.text : `${pending}${part.text}`)
+      : pending || prev?.text || "";
+    parts.set(part.id, { type: part.type, text, pending: "" });
+
+    const type = partEvent(part.type, "update");
+    if (!type || !text || text === prev?.text) return [];
+
+    return [{
+      type,
+      id: part.id,
+      data: { content: text },
+    }];
   }
 
   const messageUpdatedEvent = messageUpdatedEventSchema.safeParse(event);
@@ -184,6 +217,7 @@ export function normalizeOpencodeEvent(event: unknown, partTypes: Map<string, st
         },
       ];
     }
+    return [];
   }
 
   return [];

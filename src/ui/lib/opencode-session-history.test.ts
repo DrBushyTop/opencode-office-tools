@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carry, makeSessionTitle, mapMessages, sessionHistoryInternals } from "./opencode-session-history";
+import { carry, coalesceTranscriptMessages, makeSessionTitle, mapMessages, sessionHistoryInternals } from "./opencode-session-history";
 
 describe("opencode session history", () => {
   it("builds host-aware titles", () => {
@@ -60,6 +60,20 @@ describe("opencode session history", () => {
       { id: "t1", text: "{}", sender: "tool", toolName: "read", timestamp: new Date(2) },
       { id: "m1", text: "Done", sender: "assistant", timestamp: new Date(2) },
     ])).toEqual([]);
+  });
+
+  it("coalesces duplicate history and live transcript rows by id", () => {
+    expect(coalesceTranscriptMessages([
+      { id: "t1", text: "{}", sender: "tool", toolName: "task", toolStatus: "running", timestamp: new Date(1) },
+      { id: "u1", text: "It should really be a timeline like chart, not just text", sender: "user", timestamp: new Date(2) },
+    ], [
+      { id: "t1", text: "{}", sender: "tool", toolName: "task", toolStatus: "completed", timestamp: new Date(3) },
+      { id: "a1", text: "Updating the slide now.", sender: "assistant", timestamp: new Date(4) },
+    ])).toMatchObject([
+      { id: "t1", sender: "tool", toolStatus: "completed" },
+      { id: "u1", sender: "user", text: "It should really be a timeline like chart, not just text" },
+      { id: "a1", sender: "assistant", text: "Updating the slide now." },
+    ]);
   });
 
   it("ignores malformed message payloads", () => {

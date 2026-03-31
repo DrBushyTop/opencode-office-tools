@@ -19,6 +19,105 @@ type UnderlineStyle = "None" | "Single" | "Double" | "Heavy" | "Dotted" | "Dotte
 type TextAutoSize = "AutoSizeNone" | "AutoSizeTextToFitShape" | "AutoSizeShapeToFitText";
 type VerticalAlignment = "Top" | "Middle" | "Bottom" | "TopCentered" | "MiddleCentered" | "BottomCentered";
 
+const createOnlyUpdateKeys = ["shapeType", "geometricShapeType", "connectorType"] as const;
+const blankableUpdateKeys = [
+  "shapeId",
+  "placeholderType",
+  "name",
+  "altTextTitle",
+  "altTextDescription",
+  "fillColor",
+  "lineColor",
+  "fontName",
+  "fontColor",
+] as const;
+const blankableCreateKeys = [
+  "shapeId",
+  "placeholderType",
+  "name",
+  "altTextTitle",
+  "altTextDescription",
+  "fillColor",
+  "lineColor",
+  "fontName",
+  "fontColor",
+  "geometricShapeType",
+] as const;
+const updateMutationKeys = [
+  "text",
+  "name",
+  "left",
+  "top",
+  "width",
+  "height",
+  "rotation",
+  "visible",
+  "altTextTitle",
+  "altTextDescription",
+  "fillColor",
+  "fillTransparency",
+  "clearFill",
+  "lineColor",
+  "lineWeight",
+  "lineTransparency",
+  "lineVisible",
+  "fontName",
+  "fontSize",
+  "fontColor",
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+  "allCaps",
+  "smallCaps",
+  "subscript",
+  "superscript",
+  "doubleStrikethrough",
+  "paragraphAlignment",
+  "bulletVisible",
+  "indentLevel",
+  "textAutoSize",
+  "wordWrap",
+  "verticalAlignment",
+  "marginLeft",
+  "marginRight",
+  "marginTop",
+  "marginBottom",
+] as const;
+const denseUpdateDefaultValues = {
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+  rotation: 0,
+  visible: true,
+  fillTransparency: 0,
+  clearFill: false,
+  lineWeight: 0,
+  lineTransparency: 0,
+  lineVisible: true,
+  fontSize: 0,
+  bold: false,
+  italic: false,
+  underline: "None",
+  strikethrough: false,
+  allCaps: false,
+  smallCaps: false,
+  subscript: false,
+  superscript: false,
+  doubleStrikethrough: false,
+  paragraphAlignment: "Left",
+  bulletVisible: false,
+  indentLevel: 0,
+  textAutoSize: "AutoSizeNone",
+  wordWrap: true,
+  verticalAlignment: "Top",
+  marginLeft: 0,
+  marginRight: 0,
+  marginTop: 0,
+  marginBottom: 0,
+} satisfies Partial<ManageSlideShapesArgs>;
+
 const manageSlideShapesArgsSchema = z.object({
   action: z.enum(["create", "update", "delete", "group", "ungroup"]),
   slideIndex: z.number().optional(),
@@ -107,6 +206,104 @@ function validateRange(name: string, value: unknown, { min, max }: { min?: numbe
   if (min !== undefined && value < min) return `${name} must be >= ${min}.`;
   if (max !== undefined && value > max) return `${name} must be <= ${max}.`;
   return null;
+}
+
+function isBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length === 0;
+}
+
+function deleteKeys<T extends object>(target: T, keys: readonly string[]) {
+  for (const key of keys) {
+    delete target[key as keyof T];
+  }
+}
+
+function removeBlankStrings<T extends object>(target: T, keys: readonly string[]) {
+  for (const key of keys) {
+    if (isBlankString(target[key as keyof T])) {
+      delete target[key as keyof T];
+    }
+  }
+}
+
+function pruneDenseDefaultMutationValues(args: ManageSlideShapesArgs) {
+  const mutationFieldCount = updateMutationKeys.filter((key) => args[key] !== undefined).length;
+  const defaultFieldCount = Object.entries(denseUpdateDefaultValues).filter(([key, value]) => args[key as keyof ManageSlideShapesArgs] === value).length;
+  const looksDense = mutationFieldCount >= 10 && defaultFieldCount >= 8;
+
+  if (!looksDense) {
+    return args;
+  }
+
+  for (const [key, value] of Object.entries(denseUpdateDefaultValues)) {
+    if (args[key as keyof ManageSlideShapesArgs] === value) {
+      delete args[key as keyof ManageSlideShapesArgs];
+    }
+  }
+
+  return args;
+}
+
+function normalizeCreateArgs(args: ManageSlideShapesArgs): ManageSlideShapesArgs {
+  const next: ManageSlideShapesArgs = { ...args };
+
+  if (Array.isArray(next.shapeIds) && next.shapeIds.length === 0) {
+    delete next.shapeIds;
+  }
+
+  removeBlankStrings(next, blankableCreateKeys);
+  deleteKeys(next, ["shapeId", "shapeIndex", "shapeIds", "placeholderType"]);
+
+  if (next.shapeType !== "geometricShape") {
+    delete next.geometricShapeType;
+  }
+  if (next.shapeType !== "line") {
+    delete next.connectorType;
+  }
+
+  if (next.clearFill) {
+    delete next.fillColor;
+    delete next.fillTransparency;
+  }
+
+  if (next.lineVisible === false) {
+    delete next.lineColor;
+    delete next.lineWeight;
+    delete next.lineTransparency;
+  }
+
+  return pruneDenseDefaultMutationValues(next);
+}
+
+function normalizeUpdateArgs(args: ManageSlideShapesArgs): ManageSlideShapesArgs {
+  const next: ManageSlideShapesArgs = { ...args };
+
+  if (Array.isArray(next.shapeIds) && next.shapeIds.length === 0) {
+    delete next.shapeIds;
+  }
+
+  for (const key of blankableUpdateKeys) {
+    if (isBlankString(next[key])) {
+      delete next[key];
+    }
+  }
+
+  for (const key of createOnlyUpdateKeys) {
+    delete next[key];
+  }
+
+  if (next.shapeId !== undefined) {
+    delete next.shapeIndex;
+    delete next.placeholderType;
+    delete next.shapeIds;
+  } else if (next.shapeIndex !== undefined) {
+    delete next.placeholderType;
+    delete next.shapeIds;
+  } else if (next.placeholderType !== undefined) {
+    delete next.shapeIds;
+  }
+
+  return pruneDenseDefaultMutationValues(next);
 }
 
 function hasTarget(args: ManageSlideShapesArgs) {
@@ -234,14 +431,23 @@ async function applyShapeMutation(
 
   if (args.clearFill) {
     shape.fill.clear();
-  } else if (typeof args.fillColor === "string") {
-    shape.fill.setSolidColor(normalizeColor(args.fillColor));
+  } else {
+    if (typeof args.fillColor === "string" && args.fillColor.trim()) {
+      shape.fill.setSolidColor(normalizeColor(args.fillColor));
+    }
+    if (typeof args.fillTransparency === "number") shape.fill.transparency = args.fillTransparency;
   }
-  if (typeof args.fillTransparency === "number") shape.fill.transparency = args.fillTransparency;
-  if (typeof args.lineColor === "string") shape.lineFormat.color = normalizeColor(args.lineColor);
-  if (typeof args.lineWeight === "number") shape.lineFormat.weight = args.lineWeight;
-  if (typeof args.lineTransparency === "number") shape.lineFormat.transparency = args.lineTransparency;
-  if (typeof args.lineVisible === "boolean") shape.lineFormat.visible = args.lineVisible;
+
+  if (typeof args.lineVisible === "boolean") {
+    shape.lineFormat.visible = args.lineVisible;
+  }
+  if (args.lineVisible !== false) {
+    if (typeof args.lineColor === "string" && args.lineColor.trim()) {
+      shape.lineFormat.color = normalizeColor(args.lineColor);
+    }
+    if (typeof args.lineWeight === "number") shape.lineFormat.weight = args.lineWeight;
+    if (typeof args.lineTransparency === "number") shape.lineFormat.transparency = args.lineTransparency;
+  }
 
   if (frame) {
     if (typeof args.text === "string") frame.textRange.text = args.text;
@@ -249,9 +455,9 @@ async function applyShapeMutation(
     const font = frame.textRange.font;
     const paragraph = frame.textRange.paragraphFormat;
 
-    if (typeof args.fontName === "string") font.name = args.fontName;
+    if (typeof args.fontName === "string" && args.fontName.trim()) font.name = args.fontName;
     if (typeof args.fontSize === "number") font.size = args.fontSize;
-    if (typeof args.fontColor === "string") font.color = normalizeColor(args.fontColor);
+    if (typeof args.fontColor === "string" && args.fontColor.trim()) font.color = normalizeColor(args.fontColor);
     if (typeof args.bold === "boolean") font.bold = args.bold;
     if (typeof args.italic === "boolean") font.italic = args.italic;
     if (typeof args.underline === "string") font.underline = args.underline;
@@ -280,50 +486,50 @@ async function applyShapeMutation(
 
 export const manageSlideShapes: Tool = {
   name: "manage_slide_shapes",
-  description: "Create, update, delete, group, or ungroup PowerPoint shapes with generic geometry, styling, and text formatting controls.",
+  description: "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
   parameters: {
     type: "object",
     properties: {
       action: {
         type: "string",
         enum: ["create", "update", "delete", "group", "ungroup"],
-        description: "Shape operation to perform.",
+        description: "Shape operation to perform. Use update as a sparse patch: include only targeting fields and the properties that should change.",
       },
-      slideIndex: { type: "number", description: "0-based slide index." },
+      slideIndex: { type: "number", description: "0-based slide index. Optional when the active slide can be inferred from the current selection." },
       shapeId: {
         anyOf: [{ type: "string" }, { type: "number" }],
-        description: "Existing Office shape id, or an exported XML p:cNvPr id after an Open XML slide replacement.",
+        description: "Existing Office shape id, or an exported XML p:cNvPr id after an Open XML slide replacement. Preferred targeting field for update/delete/ungroup when available.",
       },
-      shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide." },
+      shapeIndex: { type: "number", description: "Existing 0-based shape index on the slide. Use this only when shapeId is unavailable." },
       shapeIds: {
         type: "array",
         items: { anyOf: [{ type: "string" }, { type: "number" }] },
         description: "Array of shape ids to group together. Required for the group action. Must contain at least 2 shapes.",
       },
-      placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content." },
-      shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create." },
-      geometricShapeType: { type: "string", description: "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow." },
-      connectorType: { type: "string", enum: ["Straight", "Elbow", "Curve"], description: "Optional connector type for line creation. Default Straight." },
-      text: { type: "string", description: "Text content to set or create." },
-      name: { type: "string" },
-      left: { type: "number" },
-      top: { type: "number" },
-      width: { type: "number" },
-      height: { type: "number" },
-      rotation: { type: "number" },
-      visible: { type: "boolean" },
-      altTextTitle: { type: "string" },
-      altTextDescription: { type: "string" },
-      fillColor: { type: "string" },
-      fillTransparency: { type: "number" },
-      clearFill: { type: "boolean" },
-      lineColor: { type: "string" },
-      lineWeight: { type: "number" },
-      lineTransparency: { type: "number" },
-      lineVisible: { type: "boolean" },
-      fontName: { type: "string" },
-      fontSize: { type: "number" },
-      fontColor: { type: "string" },
+      placeholderType: { type: "string", description: "Optional placeholder type to target for update or delete, such as Title, Body, Subtitle, or Content. Use this instead of shapeId/shapeIndex when targeting a placeholder by role." },
+      shapeType: { type: "string", enum: ["textBox", "geometricShape", "line"], description: "Shape type to create. Create-only; omit for update/delete/group/ungroup." },
+      geometricShapeType: { type: "string", description: "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow. Create-only." },
+      connectorType: { type: "string", enum: ["Straight", "Elbow", "Curve"], description: "Optional connector type for line creation. Default Straight. Create-only." },
+      text: { type: "string", description: "Text content to create or replace. For update, omit this unless you intend to replace the current text." },
+      name: { type: "string", description: "Shape name to set. For update, omit to leave the current name unchanged." },
+      left: { type: "number", description: "Left position in points. For update, omit to keep the current position." },
+      top: { type: "number", description: "Top position in points. For update, omit to keep the current position." },
+      width: { type: "number", description: "Width in points. For update, omit to keep the current width." },
+      height: { type: "number", description: "Height in points. For update, omit to keep the current height." },
+      rotation: { type: "number", description: "Rotation in degrees. For update, omit to keep the current rotation." },
+      visible: { type: "boolean", description: "Whether the shape is visible. For update, omit to leave visibility unchanged." },
+      altTextTitle: { type: "string", description: "Alt text title. For update, omit to leave unchanged." },
+      altTextDescription: { type: "string", description: "Alt text description. For update, omit to leave unchanged." },
+      fillColor: { type: "string", description: "Solid fill color. For update, omit to leave fill unchanged. Do not send empty strings as placeholders." },
+      fillTransparency: { type: "number", description: "Fill transparency from 0 to 1. For update, omit to leave unchanged." },
+      clearFill: { type: "boolean", description: "Clear the fill entirely. For update, include only when you intentionally want no fill." },
+      lineColor: { type: "string", description: "Line color. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
+      lineWeight: { type: "number", description: "Line weight in points. For update, omit to leave unchanged." },
+      lineTransparency: { type: "number", description: "Line transparency from 0 to 1. For update, omit to leave unchanged." },
+      lineVisible: { type: "boolean", description: "Whether the line is visible. For update, omit to leave unchanged." },
+      fontName: { type: "string", description: "Font family name. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
+      fontSize: { type: "number", description: "Font size in points. For update, omit to leave unchanged." },
+      fontColor: { type: "string", description: "Font color. For update, omit to leave unchanged. Do not send empty strings as placeholders." },
       bold: { type: "boolean" },
       italic: { type: "boolean" },
       underline: {
@@ -342,10 +548,10 @@ export const manageSlideShapes: Tool = {
       textAutoSize: { type: "string", enum: ["AutoSizeNone", "AutoSizeTextToFitShape", "AutoSizeShapeToFitText"] },
       wordWrap: { type: "boolean" },
       verticalAlignment: { type: "string", enum: ["Top", "Middle", "Bottom", "TopCentered", "MiddleCentered", "BottomCentered"] },
-      marginLeft: { type: "number" },
-      marginRight: { type: "number" },
-      marginTop: { type: "number" },
-      marginBottom: { type: "number" },
+      marginLeft: { type: "number", description: "Left text margin in points. For update, omit to leave unchanged." },
+      marginRight: { type: "number", description: "Right text margin in points. For update, omit to leave unchanged." },
+      marginTop: { type: "number", description: "Top text margin in points. For update, omit to leave unchanged." },
+      marginBottom: { type: "number", description: "Bottom text margin in points. For update, omit to leave unchanged." },
     },
     required: ["action", "slideIndex"],
   },
@@ -354,7 +560,12 @@ export const manageSlideShapes: Tool = {
     if (!parsedArgs.success) {
       return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
     }
-    const update = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideShapesArgs);
+    const resolvedArgs = resolvePowerPointTargetingArgs(parsedArgs.data as ManageSlideShapesArgs);
+    const update = resolvedArgs.action === "create"
+      ? normalizeCreateArgs(resolvedArgs)
+      : resolvedArgs.action === "update"
+        ? normalizeUpdateArgs(resolvedArgs)
+        : resolvedArgs;
 
     if (!isNonNegativeInteger(update.slideIndex)) {
       return toolFailure("slideIndex must be a non-negative integer.");
@@ -539,6 +750,13 @@ export const manageSlideShapes: Tool = {
         return `Updated shape on slide ${slideIndex + 1}.`;
       });
     } catch (error: unknown) {
+      const errorText = error instanceof Error ? `${error.message} ${(error as { code?: string }).code || ""}` : String(error);
+      if (update.action === "update" && /invalidargument/i.test(errorText)) {
+        return toolFailure(
+          error,
+          "Hint: for update, pass only the target (`shapeId`, `shapeIndex`, or `placeholderType`) plus the specific properties to change. Omit unchanged/default fields like empty strings, placeholder text, create-only fields, or filler values from prior inspection output.",
+        );
+      }
       return toolFailure(error);
     }
   },
