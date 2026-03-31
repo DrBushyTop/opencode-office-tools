@@ -1,43 +1,38 @@
 import type { Tool } from "./types";
-import { loadShapeSummaries, readOfficeValue, supportsPowerPointPlaceholders, toolFailure } from "./powerpointShared";
+import { isPowerPointRequirementSetSupported, readOfficeValue, toolFailure } from "./powerpointShared";
+import {
+  loadPresentationLayoutCatalogFromDocument,
+  lookupPresentationLayoutMetadata,
+  resolveSlideLayoutMetadata,
+  type PresentationLayoutCatalog,
+} from "./powerpointLayoutCatalog";
 import { z } from "zod";
 
 const listSlideLayoutsArgsSchema = z.object({}).strict();
 
-interface LayoutPlaceholderCatalogEntry {
-  shapeId: string;
-  placeholderName: string;
-  placeholderType?: string;
-  placeholderContainedType?: string | null;
-  text?: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-interface SlideLayoutCatalogEntry {
+interface SlideLayoutOverviewEntry {
   slideMasterId: string;
   slideMasterName: string;
   layoutId: string;
   layoutName: string;
   layoutType: string;
-  placeholders: LayoutPlaceholderCatalogEntry[];
 }
 
-function buildSummary(layouts: SlideLayoutCatalogEntry[], masterCount: number, placeholderMetadataSupported: boolean) {
-  const lines = [`Found ${layouts.length} layout${layouts.length === 1 ? "" : "s"} across ${masterCount} slide master${masterCount === 1 ? "" : "s"}.`];
-  if (!placeholderMetadataSupported) {
-    lines.push("Placeholder metadata is unavailable on this host.");
-  }
+interface SlideMasterLayoutOverview {
+  slideMasterId: string;
+  slideMasterName: string;
+  layoutCount: number;
+  layouts: SlideLayoutOverviewEntry[];
+}
 
-  for (const layout of layouts) {
-    const placeholderSummary = !placeholderMetadataSupported
-      ? "(placeholder metadata unavailable on this host)"
-      : layout.placeholders.length > 0
-      ? layout.placeholders.map((placeholder) => `${placeholder.placeholderType || "(unknown)"}:${JSON.stringify(placeholder.placeholderName)}`).join(", ")
-      : "(no placeholders detected)";
-    lines.push(`- ${JSON.stringify(layout.layoutName)} (${layout.layoutId}, ${layout.layoutType}) on ${JSON.stringify(layout.slideMasterName)}: ${placeholderSummary}`);
+function buildSummary(slideMasters: SlideMasterLayoutOverview[], layoutCount: number) {
+  const lines = [`Found ${layoutCount} layout${layoutCount === 1 ? "" : "s"} across ${slideMasters.length} slide master${slideMasters.length === 1 ? "" : "s"}.`];
+
+  for (const master of slideMasters) {
+    lines.push(`Master ${JSON.stringify(master.slideMasterName)} (${master.slideMasterId}), ${master.layoutCount} layout${master.layoutCount === 1 ? "" : "s"}:`);
+    for (const layout of master.layouts) {
+      lines.push(`- ${JSON.stringify(layout.layoutName)} (${layout.layoutId}, ${layout.layoutType})`);
+    }
   }
 
   return lines.join("\n");
@@ -45,7 +40,7 @@ function buildSummary(layouts: SlideLayoutCatalogEntry[], masterCount: number, p
 
 export const listSlideLayouts: Tool = {
   name: "list_slide_layouts",
-  description: "List available slide layouts in a direct catalog with slide master ids, layout ids, names, types, and placeholder inventory.",
+  description: "List slide masters and layouts as a concise overview with ids, names, and types.",
   parameters: {
     type: "object",
     properties: {},
@@ -56,70 +51,85 @@ export const listSlideLayouts: Tool = {
       return toolFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.");
     }
 
+    let openXmlCatalog: PresentationLayoutCatalog | null = null;
+    try {
+      openXmlCatalog = await loadPresentationLayoutCatalogFromDocument();
+    } catch {
+      openXmlCatalog = null;
+    }
+
     try {
       return await PowerPoint.run(async (context) => {
         const slideMasters = context.presentation.slideMasters;
+        const supportsLayoutType = isPowerPointRequirementSetSupported("1.8");
         slideMasters.load("items");
         await context.sync();
 
         for (const master of slideMasters.items) {
-          master.load(["id", "name", "layouts/items/id", "layouts/items/name", "layouts/items/type"]);
+          master.load(supportsLayoutType ? ["id", "name", "layouts/items/id", "layouts/items/name", "layouts/items/type"] : ["id", "name", "layouts/items/id", "layouts/items/name"]);
         }
         await context.sync();
 
-        const placeholderMetadataSupported = supportsPowerPointPlaceholders();
-        const layouts: SlideLayoutCatalogEntry[] = [];
-
         for (const master of slideMasters.items) {
           for (const layout of master.layouts.items) {
-            layout.shapes.load("items");
+            layout.load(supportsLayoutType ? ["id", "name", "type"] : ["id", "name"]);
           }
-          await context.sync();
+        }
+        await context.sync();
 
-          for (const layout of master.layouts.items) {
-            const shapeSummaries = await loadShapeSummaries(context, layout.shapes.items, {
-              includeText: true,
-              includeFormatting: false,
-              includeTableValues: false,
-            });
-            const placeholders = shapeSummaries
-              .filter((shape) => placeholderMetadataSupported && Boolean(shape.placeholderType))
-              .map<LayoutPlaceholderCatalogEntry>((shape) => ({
-                shapeId: shape.id,
-                placeholderName: shape.name,
-                placeholderType: shape.placeholderType,
-                placeholderContainedType: shape.placeholderContainedType,
-                text: shape.text,
-                left: shape.left,
-                top: shape.top,
-                width: shape.width,
-                height: shape.height,
-              }));
+        const slideMasterOverviews: SlideMasterLayoutOverview[] = [];
+        const layouts: SlideLayoutOverviewEntry[] = [];
 
-            layouts.push({
-              slideMasterId: readOfficeValue(() => master.id, "(missing)"),
-              slideMasterName: readOfficeValue(() => master.name, ""),
-              layoutId: readOfficeValue(() => layout.id, "(missing)"),
-              layoutName: readOfficeValue(() => layout.name, ""),
-              layoutType: readOfficeValue(() => String(layout.type), "Unknown"),
-              placeholders,
+        for (const [masterIndex, master] of slideMasters.items.entries()) {
+          const slideMasterId = readOfficeValue(() => master.id, "(missing)");
+          const fallbackMasterName = lookupPresentationLayoutMetadata(openXmlCatalog, { slideMasterId, masterIndex })?.slideMasterName || "";
+          const slideMasterName = readOfficeValue(() => master.name, "") || fallbackMasterName;
+
+          const masterLayouts = master.layouts.items.map<SlideLayoutOverviewEntry>((layout, layoutIndex) => {
+            const layoutId = readOfficeValue(() => layout.id, "(missing)");
+            const fallback = lookupPresentationLayoutMetadata(openXmlCatalog, {
+              slideMasterId,
+              layoutId,
+              masterIndex,
+              layoutIndex,
             });
-          }
+            const resolved = resolveSlideLayoutMetadata(
+              readOfficeValue(() => layout.name, ""),
+              readOfficeValue(() => String(layout.type), ""),
+              fallback,
+            );
+
+            return {
+              slideMasterId,
+              slideMasterName,
+              layoutId,
+              layoutName: resolved.layoutName,
+              layoutType: resolved.layoutType,
+            };
+          });
+
+          slideMasterOverviews.push({
+            slideMasterId,
+            slideMasterName,
+            layoutCount: masterLayouts.length,
+            layouts: masterLayouts,
+          });
+          layouts.push(...masterLayouts);
         }
 
         const slideMasterCount = slideMasters.items.length;
-        const summary = buildSummary(layouts, slideMasterCount, placeholderMetadataSupported);
+        const layoutCount = layouts.length;
 
         return {
           resultType: "success",
-          textResultForLlm: summary,
+          textResultForLlm: buildSummary(slideMasterOverviews, layoutCount),
           slideMasterCount,
-          layoutCount: layouts.length,
-          placeholderMetadataSupported,
+          layoutCount,
+          slideMasters: slideMasterOverviews,
           layouts,
           toolTelemetry: {
             slideMasterCount,
-            layoutCount: layouts.length,
+            layoutCount,
           },
         };
       });

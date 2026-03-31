@@ -855,10 +855,24 @@
   },
   "list_slide_layouts": {
     "hosts": ["powerpoint"],
-    "description": "List slide masters and layouts with placeholder metadata for native slide creation.",
+    "description": "List slide masters and layouts as a concise overview with ids, names, and types.",
     "mutating": false,
     "parameters": { "type": "object", "properties": {} },
     "ui": { "icon": "🗂️", "activity": { "type": "static", "text": "Listing slide layouts" } }
+  },
+  "get_slide_layout_details": {
+    "hosts": ["powerpoint"],
+    "description": "Inspect one slide layout and return its resolved name, type, and placeholder geometry.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "layoutId": { "type": "string", "minLength": 1, "description": "Layout id from list_slide_layouts." },
+        "slideMasterId": { "type": "string", "description": "Optional slide master id to disambiguate when the same layout id appears under multiple masters." }
+      },
+      "required": ["layoutId"]
+    },
+    "ui": { "icon": "🧩", "activity": { "type": "field_or_default", "field": "layoutId", "prefix": "Inspecting layout " } }
   },
   "duplicate_slide": {
     "hosts": ["powerpoint"],

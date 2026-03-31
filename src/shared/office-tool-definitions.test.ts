@@ -26,6 +26,7 @@ describe("office tool definitions", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_xml");
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_chart");
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_master");
+    expect(getOfficeToolNames("powerpoint")).toContain("get_slide_layout_details");
     expect(getOfficeToolNames("powerpoint")).toContain("list_slide_layouts");
     expect(getOfficeToolNames("powerpoint")).toContain("duplicate_slide");
     expect(getOfficeToolNames("powerpoint")).toContain("create_slide_from_layout");

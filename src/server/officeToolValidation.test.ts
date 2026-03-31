@@ -25,6 +25,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { slideIndex: 0, code: "const xml = await zip.file(slidePath).async('string'); setResult({ size: xml.length });", autosize_shape_ids: [10, "11"] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_chart", { action: "update", ref: "slide-id:256/shape:8", chartType: "bar", categories: ["North"], series: [{ name: "Revenue", values: [12] }] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_master", { themeColors: { Accent1: "#123ABC" } })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "get_slide_layout_details", { layoutId: "layout-1" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "list_slide_layouts", {})).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "duplicate_slide", { slideIndex: 0, targetIndex: 1 })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_layout", { layoutId: "layout-1", bindings: [{ placeholderType: "Title", text: "Quarterly review" }] })).not.toThrow();

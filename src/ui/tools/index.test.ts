@@ -17,7 +17,21 @@ describe("normalizeToolExecutionResult", () => {
       toolTelemetry: {},
     };
 
-    expect(normalizeToolExecutionResult(result)).toEqual(result);
+    expect(normalizeToolExecutionResult(result)).toEqual({
+      binaryResultsForLlm: result.binaryResultsForLlm,
+      resultType: "success",
+      toolTelemetry: {},
+    });
+  });
+
+  it("keeps plain success text when no structured payload exists", () => {
+    const result = {
+      textResultForLlm: "Simple message",
+      resultType: "success",
+      toolTelemetry: {},
+    };
+
+    expect(normalizeToolExecutionResult(result)).toBe("Simple message");
   });
 
   it("throws on failure results", () => {

@@ -53,6 +53,7 @@ describe("office tool registry", () => {
     expect(wrapperFiles).toContain("edit_slide_xml.ts");
     expect(wrapperFiles).toContain("edit_slide_chart.ts");
     expect(wrapperFiles).toContain("edit_slide_master.ts");
+    expect(wrapperFiles).toContain("get_slide_layout_details.ts");
     expect(wrapperFiles).toContain("list_slide_layouts.ts");
     expect(wrapperFiles).toContain("duplicate_slide.ts");
     expect(wrapperFiles).toContain("create_slide_from_layout.ts");
@@ -85,6 +86,7 @@ describe("office tool registry", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_xml");
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_chart");
     expect(getOfficeToolNames("powerpoint")).toContain("edit_slide_master");
+    expect(getOfficeToolNames("powerpoint")).toContain("get_slide_layout_details");
     expect(getOfficeToolNames("powerpoint")).toContain("list_slide_layouts");
     expect(getOfficeToolNames("powerpoint")).toContain("duplicate_slide");
     expect(getOfficeToolNames("powerpoint")).toContain("create_slide_from_layout");

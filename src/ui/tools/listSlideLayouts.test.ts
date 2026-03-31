@@ -1,34 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { supportsPowerPointPlaceholdersMock } = vi.hoisted(() => ({
-  supportsPowerPointPlaceholdersMock: vi.fn(() => true),
+const { loadPresentationLayoutCatalogFromDocumentMock, lookupPresentationLayoutMetadataMock } = vi.hoisted(() => ({
+  loadPresentationLayoutCatalogFromDocumentMock: vi.fn<() => Promise<unknown | null>>(async () => null),
+  lookupPresentationLayoutMetadataMock: vi.fn<(catalog: unknown, options: { layoutId?: string; slideMasterId?: string }) => unknown | null>(() => null),
 }));
 
 vi.mock("./powerpointShared", () => ({
-  loadShapeSummaries: vi.fn(async (_context, shapes: Array<{ id: string; name: string; placeholderType?: string; placeholderContainedType?: string; left?: number; top?: number; width?: number; height?: number; text?: string }>) =>
-    shapes.map((shape, index) => ({
-      index,
-      id: shape.id,
-      name: shape.name,
-      type: "placeholder",
-      text: shape.text || "",
-      placeholderType: shape.placeholderType,
-      placeholderContainedType: shape.placeholderContainedType,
-      left: shape.left ?? 0,
-      top: shape.top ?? 0,
-      width: shape.width ?? 100,
-      height: shape.height ?? 20,
-    }))),
+  isPowerPointRequirementSetSupported: vi.fn(() => true),
   readOfficeValue: vi.fn((reader: () => unknown, fallback: unknown) => {
     try {
       const value = reader();
-      return value === undefined ? fallback : value;
+      return value ?? fallback;
     } catch {
       return fallback;
     }
   }),
-  supportsPowerPointPlaceholders: supportsPowerPointPlaceholdersMock,
   toolFailure: vi.fn((error: unknown) => ({ resultType: "failure", error: error instanceof Error ? error.message : String(error) })),
+}));
+
+vi.mock("./powerpointLayoutCatalog", () => ({
+  loadPresentationLayoutCatalogFromDocument: loadPresentationLayoutCatalogFromDocumentMock,
+  lookupPresentationLayoutMetadata: lookupPresentationLayoutMetadataMock,
+  resolveSlideLayoutMetadata: vi.fn((officeLayoutName: string, officeLayoutType: string, fallback?: { layoutName?: string; layoutType?: string } | null) => ({
+    layoutName: officeLayoutName || fallback?.layoutName || (officeLayoutType === "TitleAndContent" ? "Title and Content" : officeLayoutType || fallback?.layoutType || ""),
+    layoutType: officeLayoutType || fallback?.layoutType || "Unknown",
+  })),
 }));
 
 import { listSlideLayouts } from "./listSlideLayouts";
@@ -36,24 +32,98 @@ import { listSlideLayouts } from "./listSlideLayouts";
 describe("listSlideLayouts", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    supportsPowerPointPlaceholdersMock.mockReturnValue(true);
+    loadPresentationLayoutCatalogFromDocumentMock.mockResolvedValue(null);
+    lookupPresentationLayoutMetadataMock.mockReturnValue(null);
   });
 
-  it("returns a flat layout catalog with placeholder inventory", async () => {
-    const layout = {
-      id: "layout-1",
-      name: "Title and Content",
-      type: "TitleAndContent",
-      shapes: {
+  it("returns a concise grouped overview", async () => {
+    const masterA = {
+      id: "master-1",
+      name: "Corporate",
+      layouts: {
         items: [
-          { id: "shape-title", name: "Title 1", placeholderType: "Title", text: "Click to add title" },
-          { id: "shape-body", name: "Content Placeholder 2", placeholderType: "Body", placeholderContainedType: "Text", text: "Click to add text" },
+          { id: "layout-1", name: "Title and Content", type: "TitleAndContent", load: vi.fn() },
+          { id: "layout-2", name: "Section Header", type: "SectionHeader", load: vi.fn() },
         ],
-        load: vi.fn(),
+      },
+      load: vi.fn(),
+    };
+    const masterB = {
+      id: "master-2",
+      name: "Alt",
+      layouts: {
+        items: [{ id: "layout-3", name: "Blank", type: "Blank", load: vi.fn() }],
+      },
+      load: vi.fn(),
+    };
+    const context = {
+      presentation: {
+        slideMasters: { items: [masterA, masterB], load: vi.fn() },
+      },
+      sync: vi.fn().mockResolvedValue(undefined),
+    } as unknown as PowerPoint.RequestContext;
+
+    vi.stubGlobal("PowerPoint", {
+      run: vi.fn(async (callback: (ctx: PowerPoint.RequestContext) => Promise<unknown>) => callback(context)),
+    });
+
+    const result = await listSlideLayouts.handler();
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      slideMasterCount: 2,
+      layoutCount: 3,
+      slideMasters: [
+        {
+          slideMasterId: "master-1",
+          slideMasterName: "Corporate",
+          layoutCount: 2,
+          layouts: [
+            { layoutId: "layout-1", layoutName: "Title and Content", layoutType: "TitleAndContent" },
+            { layoutId: "layout-2", layoutName: "Section Header", layoutType: "SectionHeader" },
+          ],
+        },
+        {
+          slideMasterId: "master-2",
+          slideMasterName: "Alt",
+          layoutCount: 1,
+          layouts: [
+            { layoutId: "layout-3", layoutName: "Blank", layoutType: "Blank" },
+          ],
+        },
+      ],
+      layouts: [
+        { layoutId: "layout-1", layoutName: "Title and Content", layoutType: "TitleAndContent" },
+        { layoutId: "layout-2", layoutName: "Section Header", layoutType: "SectionHeader" },
+        { layoutId: "layout-3", layoutName: "Blank", layoutType: "Blank" },
+      ],
+    });
+    expect(result).toMatchObject({
+      textResultForLlm: expect.stringContaining("Found 3 layouts across 2 slide masters."),
+    });
+  });
+
+  it("falls back to Open XML layout metadata when Office returns blanks", async () => {
+    loadPresentationLayoutCatalogFromDocumentMock.mockResolvedValue({ slideMasters: [] });
+    lookupPresentationLayoutMetadataMock.mockImplementation((_catalog: unknown, options: { layoutId?: string; slideMasterId?: string }) => {
+      if (!options.layoutId) return { slideMasterName: "Corporate XML" };
+      return {
+        slideMasterName: "Corporate XML",
+        layoutName: "Light: Title and Subtitle",
+        layoutType: "Title",
+      };
+    });
+
+    const layout = {
+      id: "2147483700#2384306777",
+      name: "",
+      load: vi.fn(),
+      get type() {
+        throw new Error("type not available");
       },
     };
     const master = {
-      id: "master-1",
+      id: "2147483698#626277182",
       name: "Corporate",
       layouts: { items: [layout] },
       load: vi.fn(),
@@ -73,48 +143,26 @@ describe("listSlideLayouts", () => {
 
     expect(result).toMatchObject({
       resultType: "success",
-      slideMasterCount: 1,
-      layoutCount: 1,
-      placeholderMetadataSupported: true,
-      layouts: [
+      slideMasters: [
         {
-          slideMasterId: "master-1",
-          slideMasterName: "Corporate",
-          layoutId: "layout-1",
-          layoutName: "Title and Content",
-          layoutType: "TitleAndContent",
-          placeholders: [
+          layouts: [
             {
-              shapeId: "shape-title",
-              placeholderName: "Title 1",
-              placeholderType: "Title",
-            },
-            {
-              shapeId: "shape-body",
-              placeholderName: "Content Placeholder 2",
-              placeholderType: "Body",
-              placeholderContainedType: "Text",
+              layoutId: "2147483700#2384306777",
+              layoutName: "Light: Title and Subtitle",
+              layoutType: "Title",
             },
           ],
         },
       ],
     });
-    expect(result).toMatchObject({
-      textResultForLlm: expect.stringContaining("Found 1 layout across 1 slide master."),
-    });
   });
 
-  it("distinguishes unsupported placeholder metadata from missing placeholders", async () => {
-    supportsPowerPointPlaceholdersMock.mockReturnValue(false);
-
+  it("loads layout metadata directly so host type values are available", async () => {
     const layout = {
       id: "layout-1",
-      name: "Title and Content",
-      type: "TitleAndContent",
-      shapes: {
-        items: [{ id: "shape-title", name: "Title 1", placeholderType: "Title", text: "Click to add title" }],
-        load: vi.fn(),
-      },
+      name: "Overview",
+      type: "Custom",
+      load: vi.fn(),
     };
     const master = {
       id: "master-1",
@@ -135,11 +183,9 @@ describe("listSlideLayouts", () => {
 
     const result = await listSlideLayouts.handler();
 
+    expect(layout.load).toHaveBeenCalled();
     expect(result).toMatchObject({
-      resultType: "success",
-      placeholderMetadataSupported: false,
-      layouts: [{ placeholders: [] }],
-      textResultForLlm: expect.stringContaining("Placeholder metadata is unavailable on this host."),
+      layouts: [{ layoutId: "layout-1", layoutName: "Overview", layoutType: "Custom" }],
     });
   });
 });

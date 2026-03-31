@@ -43,6 +43,7 @@ import { editSlideText } from "./editSlideText";
 import { editSlideXml } from "./editSlideXml";
 import { editSlideChart } from "./editSlideChart";
 import { editSlideMaster } from "./editSlideMaster";
+import { getSlideLayoutDetails } from "./getSlideLayoutDetails";
 import { listSlideLayouts } from "./listSlideLayouts";
 import { duplicateSlide } from "./duplicateSlide";
 import { createSlideFromLayout } from "./createSlideFromLayout";
@@ -130,6 +131,7 @@ const officeToolHandlers = {
   [editSlideXml.name]: editSlideXml,
   [editSlideChart.name]: editSlideChart,
   [editSlideMaster.name]: editSlideMaster,
+  [getSlideLayoutDetails.name]: getSlideLayoutDetails,
   [listSlideLayouts.name]: listSlideLayouts,
   [duplicateSlide.name]: duplicateSlide,
   [createSlideFromLayout.name]: createSlideFromLayout,
@@ -180,6 +182,7 @@ export const powerpointTools = [
   editSlideXml,
   editSlideChart,
   editSlideMaster,
+  getSlideLayoutDetails,
   listSlideLayouts,
   duplicateSlide,
   createSlideFromLayout,
@@ -258,6 +261,18 @@ export function normalizeToolExecutionResult(result: ToolHandlerResult) {
   if (isToolResultFailure(result)) {
     throw new Error(result.error || result.textResultForLlm || "Tool execution failed");
   }
+
+  if (result && typeof result === "object" && "textResultForLlm" in result) {
+    const meaningfulKeys = Object.keys(result).filter((key) => !["textResultForLlm", "resultType", "toolTelemetry"].includes(key));
+    if (meaningfulKeys.length === 0 && typeof result.textResultForLlm === "string") {
+      return result.textResultForLlm;
+    }
+    if (meaningfulKeys.length > 0) {
+      const { textResultForLlm: _ignored, ...rest } = result;
+      return rest;
+    }
+  }
+
   return result;
 }
 
