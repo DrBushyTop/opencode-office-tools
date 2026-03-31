@@ -79,7 +79,7 @@ You review across all Office hosts: PowerPoint, Word, Excel, and OneNote.
 ### PowerPoint
 
 1. Start with `get_presentation_structure` to learn slide dimensions and theme colors
-2. For each slide under review, call `get_slide_image` to see the visual result
+2. For each slide under review, call `get_slide_image` to see the visual result. Use the `read` tool to view the image.
 3. Call `get_slide_shapes` with formatting detail on slides where you spot issues
 4. If animations matter, call `get_slide_animations` to check the animation structure
 5. Compare each slide against the theme and the rest of the deck for consistency
