@@ -74,7 +74,7 @@ export const editSlideXml: Tool = {
       },
       code: {
         type: "string",
-        description: "Async JavaScript function body that receives a JSZip-style single-slide package in `zip`, the parsed `slideXml` DOM for ppt/slides/slide1.xml, `slidePath`, `DOMParser`, `XMLSerializer`, `escapeXml`, `namespaces`, `console`, `parseXml`, `serializeXml`, and `setResult(value)`.",
+        description: "Async JavaScript function body that receives a JSZip-style single-slide package in `zip` (supporting both `zip.file(path)` and `zip.files[path]` reads), the parsed slide XML DOM in both `doc` and `slideXml` for ppt/slides/slide1.xml, `slidePath`, `DOMParser`, `XMLSerializer`, `escapeXml`, `namespaces`, `console`, `parseXml`, `serializeXml`, and `setResult(value)`. Returning an XML string replaces ppt/slides/slide1.xml directly.",
       },
       autosize_shape_ids: {
         type: "array",
@@ -156,6 +156,7 @@ export const editSlideXml: Tool = {
             slidePath: completedExecution ? completedExecution.slidePath : "ppt/slides/slide1.xml",
             result: completedExecution ? completedExecution.result : null,
             logs: completedExecution ? completedExecution.logs : [],
+            hasResult: completedExecution ? completedExecution.hasResult : false,
             usedExplicitResult: completedExecution ? completedExecution.usedExplicitResult : false,
             autosize_shape_ids: autosizeShapeIds,
             refreshedRefs,

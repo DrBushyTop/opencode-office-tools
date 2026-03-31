@@ -225,12 +225,17 @@ setResult({ slidePath, textCount: textNodes.length });
 `,
     });
 
+    if ((result as any).resultType === "failure") {
+      throw new Error((result as any).error);
+    }
+
     expect(result).toMatchObject({
       resultType: "success",
       slideId: "slide-new",
       slideIndex: 0,
       slidePath: "ppt/slides/slide1.xml",
       result: { slidePath: "ppt/slides/slide1.xml", textCount: 2 },
+      hasResult: true,
       usedExplicitResult: true,
       autosize_shape_ids: ["10"],
       refreshedRefs: [{ ref: "slide-id:slide-new/shape:10", xmlShapeId: "10" }],
@@ -248,5 +253,230 @@ setResult({ slidePath, textCount: textNodes.length });
     expect(inspection.slidePath).toBe("ppt/slides/slide1.xml");
     expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("After title");
     expect(inspection.shapes[1]?.textBody?.textContent || "").toContain("After body & more");
+  });
+
+  it("supports doc as an alias for the slide XML document", async () => {
+    const sourceBase64 = createSlideBase64("Before title", "Before body");
+    const replacementBase64Holder = { value: sourceBase64 };
+
+    const replacementSlide = {
+      id: "slide-new",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: replacementBase64Holder.value })),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const sourceSlide = {
+      id: "slide-old",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
+      delete: vi.fn(),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn(() => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [replacementSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn((mutated: string) => {
+        replacementBase64Holder.value = mutated;
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const contextStub = {
+      presentation,
+      sync: vi.fn(async () => undefined),
+    } as any;
+
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub)),
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+
+    const result = await editSlideXml.handler({
+      slideIndex: 0,
+      code: `
+const textNodes = doc.getElementsByTagNameNS(namespaces.a, "t");
+textNodes[0].textContent = "Updated through doc";
+setResult({ count: textNodes.length });
+`,
+    });
+
+    if ((result as any).resultType === "failure") {
+      throw new Error((result as any).error);
+    }
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      result: { count: 2 },
+      hasResult: true,
+      usedExplicitResult: true,
+    });
+
+    const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
+    expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("Updated through doc");
+  });
+
+  it("supports zip.files[path].async and returned slide XML strings", async () => {
+    const sourceBase64 = createSlideBase64("Before title", "Before body");
+    const replacementBase64Holder = { value: sourceBase64 };
+
+    const replacementSlide = {
+      id: "slide-new",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: replacementBase64Holder.value })),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const sourceSlide = {
+      id: "slide-old",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
+      delete: vi.fn(),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn(() => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [replacementSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn((mutated: string) => {
+        replacementBase64Holder.value = mutated;
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const contextStub = {
+      presentation,
+      sync: vi.fn(async () => undefined),
+    } as any;
+
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub)),
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+
+    const result = await editSlideXml.handler({
+      slideIndex: 0,
+      code: `
+const parser = new DOMParser();
+const doc = parser.parseFromString(await zip.files[slidePath].async("string"), "application/xml");
+const textNodes = doc.getElementsByTagNameNS(namespaces.a, "t");
+textNodes[0].textContent = "Returned XML title";
+return new XMLSerializer().serializeToString(doc);
+`,
+    });
+
+    if ((result as any).resultType === "failure") {
+      throw new Error((result as any).error);
+    }
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      slideId: "slide-new",
+      slideIndex: 0,
+      slidePath: "ppt/slides/slide1.xml",
+      result: null,
+      hasResult: false,
+      usedExplicitResult: false,
+    });
+
+    const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
+    expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("Returned XML title");
+  });
+
+  it("surfaces returned strings when slide XML was already written through zip.file", async () => {
+    const sourceBase64 = createSlideBase64("Before title", "Before body");
+    const replacementBase64Holder = { value: sourceBase64 };
+
+    const replacementSlide = {
+      id: "slide-new",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: replacementBase64Holder.value })),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const sourceSlide = {
+      id: "slide-old",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
+      delete: vi.fn(),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn(() => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [replacementSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn((mutated: string) => {
+        replacementBase64Holder.value = mutated;
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const contextStub = {
+      presentation,
+      sync: vi.fn(async () => undefined),
+    } as any;
+
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub)),
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+
+    const result = await editSlideXml.handler({
+      slideIndex: 0,
+      code: `
+const xmlStr = await zip.files[slidePath].async("string");
+zip.file(slidePath, xmlStr);
+return xmlStr.substring(0, 80);
+`,
+    });
+
+    if ((result as any).resultType === "failure") {
+      throw new Error((result as any).error);
+    }
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      result: expect.any(String),
+      hasResult: true,
+      usedExplicitResult: false,
+    });
+    expect((result as any).result.startsWith("<?xml") || (result as any).result.startsWith("<p:sld")).toBe(true);
   });
 });

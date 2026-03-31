@@ -36,6 +36,14 @@ type Binary = {
 type Result = {
   textResultForLlm?: string
   binaryResultsForLlm?: Binary[]
+  toolTelemetry?: unknown
+  [key: string]: unknown
+}
+
+function jsonResultPayload(result: Result) {
+  return Object.fromEntries(
+    Object.entries(result).filter(([key]) => key !== "binaryResultsForLlm" && key !== "toolTelemetry"),
+  )
 }
 
 function resolveBridgeTokenPath() {
@@ -112,14 +120,24 @@ function readHint(result: Result, files: string[]) {
 function format(name: string, result: Result) {
   const files = result.binaryResultsForLlm?.length ? persist(name, result.binaryResultsForLlm) : []
   const text = typeof result.textResultForLlm === "string" ? result.textResultForLlm : ""
-  if (!files.length) return text || JSON.stringify(result, null, 2)
+  const payload = jsonResultPayload(result)
+  const payloadKeys = Object.keys(payload)
+  const hasStructuredPayload = payloadKeys.some((key) => key !== "textResultForLlm")
+  const payloadJson = JSON.stringify(payload, null, 2)
+
+  if (!files.length) {
+    return hasStructuredPayload ? payloadJson : text || payloadJson
+  }
   return [
     text || `Saved ${files.length} file${files.length === 1 ? "" : "s"}.`,
+    ...(hasStructuredPayload ? [payloadJson] : []),
     "Saved tool files:",
     ...files.map((file) => `- ${file}`),
     readHint(result, files),
   ].filter(Boolean).join("\n")
 }
+
+export const __testFormat = format
 
 export async function execute(host: string, name: string, args: Record<string, unknown>) {
   const bridgeToken = resolveBridgeToken()

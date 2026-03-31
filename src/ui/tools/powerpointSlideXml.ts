@@ -60,6 +60,8 @@ export interface SlideXmlCodeExecutionResult {
   result: unknown;
   logs: ScriptLogEntry[];
   usedExplicitResult: boolean;
+  hasResult: boolean;
+  wroteSlideXml: boolean;
 }
 
 export interface EditSlideXmlCodeOptions {
@@ -472,6 +474,8 @@ function createSlideZipAdapter(
   pkg: OpenXmlPackage,
   options: { slidePath: string; getSlideDoc: () => XMLDocument },
 ) {
+  let wroteSlideXml = false;
+
   const readAsBase64 = (bytes: Uint8Array) => {
     let binary = "";
     for (const byte of bytes) {
@@ -484,6 +488,7 @@ function createSlideZipAdapter(
     if (typeof value === "string") {
       pkg.writeText(path, value);
       if (path === options.slidePath) {
+        wroteSlideXml = true;
         replaceXmlDocumentContents(options.getSlideDoc(), parseXml(value));
       }
       return;
@@ -492,6 +497,7 @@ function createSlideZipAdapter(
     const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
     pkg.writeBytes(path, bytes);
     if (path === options.slidePath) {
+      wroteSlideXml = true;
       const xmlText = new TextDecoder().decode(bytes);
       replaceXmlDocumentContents(options.getSlideDoc(), parseXml(xmlText));
     }
@@ -541,7 +547,26 @@ function createSlideZipAdapter(
     };
   };
 
+  const files = new Proxy<Record<string, SlideXmlZipHandle | null>>({}, {
+    get: (_target, property) => {
+      if (typeof property !== "string") return undefined;
+      return readHandle(property);
+    },
+    has: (_target, property) => typeof property === "string" && pkg.has(property),
+    ownKeys: () => pkg.listPaths(),
+    getOwnPropertyDescriptor: (_target, property) => {
+      if (typeof property !== "string" || !pkg.has(property)) return undefined;
+      return {
+        configurable: true,
+        enumerable: true,
+        value: readHandle(property),
+        writable: false,
+      };
+    },
+  });
+
   return {
+    files,
     file(path: string, data?: string | Uint8Array | ArrayBuffer) {
       if (arguments.length === 1) {
         return readHandle(path);
@@ -558,6 +583,9 @@ function createSlideZipAdapter(
     },
     paths() {
       return pkg.listPaths();
+    },
+    get wroteSlideXml() {
+      return wroteSlideXml;
     },
   };
 }
@@ -589,7 +617,7 @@ export async function executeSlideXmlCodeInBase64Presentation(
     "setResult",
     "parseXml",
     "serializeXml",
-    code,
+    `const doc = slideXml; return await (async () => {\n${code}\n})();`,
   );
 
   const returned = await runner(
@@ -609,13 +637,31 @@ export async function executeSlideXmlCodeInBase64Presentation(
     serializeXml,
   );
 
+  const rawResult = explicitResult === NO_RESULT ? returned : explicitResult;
+  let surfacedResult: unknown = rawResult;
+  let hasResult = rawResult !== undefined;
+
+  if (explicitResult === NO_RESULT && !zip.wroteSlideXml) {
+    if (typeof returned === "string" && returned.trim().startsWith("<")) {
+      replaceXmlDocumentContents(slideDoc, parseXml(returned));
+      surfacedResult = null;
+      hasResult = false;
+    } else if (returned && typeof returned === "object" && "documentElement" in (returned as Record<string, unknown>)) {
+      replaceXmlDocumentContents(slideDoc, returned as XMLDocument);
+      surfacedResult = null;
+      hasResult = false;
+    }
+  }
+
   pkg.writeText(slidePath, serializeXml(slideDoc));
 
   return {
     mutatedBase64: pkg.toBase64(),
     slidePath,
-    result: normalizeScriptValue(explicitResult === NO_RESULT ? returned : explicitResult),
+    result: hasResult ? normalizeScriptValue(surfacedResult) : null,
     logs,
     usedExplicitResult: explicitResult !== NO_RESULT,
+    hasResult,
+    wroteSlideXml: zip.wroteSlideXml,
   };
 }
