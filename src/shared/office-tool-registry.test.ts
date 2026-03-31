@@ -24,6 +24,7 @@ describe("office tool registry", () => {
     const wrapperFiles = fs.readdirSync(toolsDir).filter((name) => name.endsWith(".ts")).sort();
     const registryFiles = Object.keys(officeToolRegistry).map((name) => `${name}.ts`).sort();
     const addSlideAnimationWrapper = fs.readFileSync(path.join(toolsDir, "add_slide_animation.ts"), "utf8");
+    const executeOfficeJsWrapper = fs.readFileSync(path.join(toolsDir, "execute_office_js.ts"), "utf8");
     const listSlideShapesWrapper = fs.readFileSync(path.join(toolsDir, "list_slide_shapes.ts"), "utf8");
     const editSlideChartWrapper = fs.readFileSync(path.join(toolsDir, "edit_slide_chart.ts"), "utf8");
     const createSlideFromLayoutWrapper = fs.readFileSync(path.join(toolsDir, "create_slide_from_layout.ts"), "utf8");
@@ -43,8 +44,9 @@ describe("office tool registry", () => {
     expect(manageRangeWrapper).toContain('export default excel("manage_range"');
     expect(manageRangeWrapper).toContain('tool.schema.enum(["clear", "insert", "delete", "copy", "fill", "sort", "filter"])');
     expect(manageSlideWrapper).toContain('export default powerpoint("manage_slide"');
-    expect(manageSlideWrapper).toContain('tool.schema.enum(["create", "duplicate", "delete", "move", "clear"])');
+    expect(manageSlideWrapper).toContain('tool.schema.enum(["create", "delete", "move", "clear"])');
     expect(addSlideAnimationWrapper).toContain('tool.schema.union([tool.schema.string(), tool.schema.number(), tool.schema.array(tool.schema.union([tool.schema.string(), tool.schema.number()]))])');
+    expect(wrapperFiles).toContain("execute_office_js.ts");
     expect(wrapperFiles).toContain("list_slide_shapes.ts");
     expect(wrapperFiles).toContain("read_slide_text.ts");
     expect(wrapperFiles).toContain("edit_slide_text.ts");
@@ -55,6 +57,7 @@ describe("office tool registry", () => {
     expect(wrapperFiles).toContain("duplicate_slide.ts");
     expect(wrapperFiles).toContain("create_slide_from_layout.ts");
     expect(wrapperFiles).not.toContain("add_slide_from_code.ts");
+    expect(executeOfficeJsWrapper).toContain('export default powerpoint("execute_office_js"');
     expect(listSlideShapesWrapper).toContain('export default powerpoint("list_slide_shapes"');
     expect(editSlideChartWrapper).toContain('export default powerpoint("edit_slide_chart"');
     expect(editSlideChartWrapper).toContain('tool.schema.enum(["create", "update", "delete"])');
@@ -73,6 +76,7 @@ describe("office tool registry", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("add_slide_animation");
     expect(getOfficeToolNames("powerpoint")).toContain("clear_slide_animations");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_animations");
+    expect(getOfficeToolNames("powerpoint")).toContain("execute_office_js");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_notes");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_transition");
     expect(getOfficeToolNames("powerpoint")).toContain("list_slide_shapes");

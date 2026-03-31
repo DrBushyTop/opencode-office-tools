@@ -40,10 +40,12 @@ Route work through the narrowest tool that matches the task:
 2. **Need shape-level inspection on an existing slide?**
    - Use `list_slide_shapes` before editing slide text, charts, or shape-level structure.
 3. **Single text shape, fidelity matters?**
-   - Use `read_slide_text` to inspect the paragraph XML.
-   - Then use `edit_slide_text` for the in-place update.
+    - Use `read_slide_text` to inspect the paragraph XML.
+    - Then use `edit_slide_text` for the in-place update.
 4. **Several text shapes on the same slide need coordinated edits?**
-   - Use `edit_slide_xml` for one slide-scoped OOXML update.
+    - Use `edit_slide_xml` for one slide-scoped OOXML update.
+    - Do not iterate `manage_slide_shapes` one text box at a time for this case.
+    - This tool exports a single-slide ZIP package and exposes `ppt/slides/slide1.xml` for DOM-based mutation.
 5. **Need to edit or replace a chart?**
    - Use `edit_slide_chart`.
 6. **Need theme or supported master-level changes?**
@@ -58,6 +60,9 @@ Route work through the narrowest tool that matches the task:
     - Use `manage_slide`.
 11. **Need native images or tables?**
     - Use `manage_slide_media` or `manage_slide_table`.
+12. **Need a custom visualization or host operation the other tools still cannot express cleanly?**
+    - Use `execute_office_js` as the primary Office.js escape hatch.
+    - This is the route for `slides.add({ layoutId })`, `slide.moveTo(idx)`, `addGeometricShape(...)`, direct shape positioning, fills, and z-order operations when you need host-native control.
 
 ## Slide Dimensions
 
@@ -74,9 +79,25 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 - Prefer the OOXML-first text workflow for fidelity:
   - single shape: `read_slide_text` + `edit_slide_text`
   - multiple text shapes on one slide: `edit_slide_xml`
+- If 2 or more existing text shapes on one slide need wording changes, default to `edit_slide_xml` instead of a sequence of `manage_slide_shapes` calls.
+- Treat `edit_slide_xml` as the general single-slide XML editor too, not just a text batch helper. Use it for diagrams, advanced formatting, and single-slide structural XML work when DOM-level control is the cleanest path.
 - Use `edit_slide_chart` for chart edits and `edit_slide_master` for supported master/theme updates.
-- Use `manage_slide_shapes` for geometry, fill, line, grouping, naming, z-order-adjacent cleanup, and other shape-structure edits that do not require OOXML text fidelity.
+- Use `manage_slide_shapes` for geometry, fill, line, grouping, naming, z-order-adjacent cleanup, and other shape-structure edits. Keep it as a secondary option for text only when the change is very simple and fidelity is not a concern.
 - Use `manage_slide_media` and `manage_slide_table` for first-class native image and table content.
+- Use `execute_office_js` for Office.js-native slide and shape work that needs more power than the higher-level tools expose, especially custom visualizations, geometric shapes, slide insertion/movement, fills, and z-order control.
+
+## XML Editing
+
+- `edit_slide_xml` works on a single exported slide package, so the main slide XML part is always `ppt/slides/slide1.xml` regardless of the slide's position in the live deck.
+- Prefer `DOMParser` + `XMLSerializer` mutation patterns over string concatenation when writing XML-edit code.
+- Use the provided `escapeXml(...)` helper when embedding raw text into generated XML strings.
+- Use `autosize_shape_ids` when you need specific text shapes reset to `AutoSizeShapeToFitText` after the slide is reimported.
+
+## Office.js Execution
+
+- `execute_office_js` runs inside `PowerPoint.run(...)` with `context` in scope.
+- Prefer it for host-native geometric shape creation like `addGeometricShape(...)`, direct `.left/.top/.width/.height` updates, fill control, and z-order adjustments when the higher-level tools are too constraining.
+- When you need a simple icon fallback, geometric shapes with accent fills and centered text are acceptable.
 - Prefer stable shape refs from `list_slide_shapes` or ids returned by the latest mutation over shape indices when a later edit needs to target an existing object reliably.
 - For `manage_slide_shapes` with `action: "update"`, treat the call as a sparse patch: pass one targeting field (`shapeId`, `shapeIndex`, or `placeholderType`) plus only the properties that should change
 - Do not send create-only fields, empty strings, placeholder text like `"Click to edit text"`, or filler zero values in an update call unless you explicitly want to set them

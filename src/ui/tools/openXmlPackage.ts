@@ -42,8 +42,18 @@ export class OpenXmlPackage {
     return strFromU8(entry);
   }
 
+  readBytes(path: OpenXmlPartPath): Uint8Array {
+    const entry = this.entries[path];
+    if (!entry) throw new Error(`Open XML part not found: ${path}`);
+    return entry.slice();
+  }
+
   writeText(path: OpenXmlPartPath, contents: string): void {
     this.entries[path] = strToU8(contents);
+  }
+
+  writeBytes(path: OpenXmlPartPath, contents: Uint8Array): void {
+    this.entries[path] = contents.slice();
   }
 
   delete(path: OpenXmlPartPath): void {

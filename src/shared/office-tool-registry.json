@@ -642,6 +642,19 @@
     },
     "ui": { "icon": "🎬", "activity": { "type": "slide_index_plus_one", "field": "slideIndex", "prefix": "Inspecting transition on slide ", "suffix": "" } }
   },
+  "execute_office_js": {
+    "hosts": ["powerpoint"],
+    "description": "Primary Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context) for custom visualizations, advanced shape work, slide creation, positioning, fills, and host operations the higher-level tools cannot express cleanly.",
+    "mutating": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "description": "Async JavaScript function body that runs inside PowerPoint.run with context, presentation, PowerPoint, Office, console, sync(), and setResult(value) in scope." }
+      },
+      "required": ["code"]
+    },
+    "ui": { "icon": "🧪", "activity": { "type": "static", "text": "Executing custom Office.js" } }
+  },
   "list_slide_shapes": {
     "hosts": ["powerpoint"],
     "description": "List shapes on one PowerPoint slide and return stable shape refs for follow-up text and chart operations.",
@@ -657,7 +670,7 @@
   },
   "read_slide_text": {
     "hosts": ["powerpoint"],
-    "description": "Read the raw paragraph XML from one PowerPoint text shape using a stable shape ref.",
+    "description": "Read the raw paragraph XML from one PowerPoint text shape using a stable shape ref. Use this before fidelity-sensitive text edits.",
     "mutating": false,
     "parameters": {
       "type": "object",
@@ -670,7 +683,7 @@
   },
   "edit_slide_text": {
     "hosts": ["powerpoint"],
-    "description": "Replace one PowerPoint shape's paragraph XML in place while preserving the rest of the slide.",
+    "description": "Preferred text-editing tool for one PowerPoint text shape. Replaces paragraph XML in place while preserving the rest of the slide.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -688,15 +701,22 @@
   },
   "edit_slide_xml": {
     "hosts": ["powerpoint"],
-    "description": "Batch-update paragraph XML for multiple text shapes on one slide in a single native PowerPoint round-trip.",
+    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
+        "slideIndex": { "type": "number", "description": "Optional 0-based slide index. Required when no active slide can be inferred safely. Use this for arbitrary single-slide XML edits." },
+        "code": { "type": "string", "minLength": 1, "description": "Async JavaScript function body that receives a JSZip-style single-slide package in zip, the parsed slideXml DOM for ppt/slides/slide1.xml, slidePath, DOMParser, XMLSerializer, escapeXml, namespaces, console, parseXml, serializeXml, and setResult(value)." },
+        "autosize_shape_ids": {
+          "type": "array",
+          "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+          "description": "Optional XML cNvPr shape ids that should be reset to AutoSizeShapeToFitText after the edited slide is reimported."
+        },
         "replacements": {
           "type": "array",
           "minItems": 1,
-          "description": "Text-shape replacements to apply on a single slide.",
+          "description": "Legacy shorthand for text-only multi-shape updates on one slide. Prefer code for general slide XML edits.",
           "items": {
             "type": "object",
             "properties": {
@@ -706,10 +726,9 @@
             "required": ["ref", "paragraphsXml"]
           }
         }
-      },
-      "required": ["replacements"]
+      }
     },
-    "ui": { "icon": "🧬", "activity": { "type": "static", "text": "Batch updating slide text XML" } }
+    "ui": { "icon": "🧬", "activity": { "type": "static", "text": "Editing slide XML" } }
   },
   "edit_slide_chart": {
     "hosts": ["powerpoint"],
@@ -916,18 +935,17 @@
   },
   "manage_slide": {
     "hosts": ["powerpoint"],
-    "description": "Create, duplicate, delete, move, or clear PowerPoint slides with one generic slide-management tool.",
+    "description": "Create, delete, move, or clear PowerPoint slides with one generic slide-management tool.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
-        "action": { "type": "string", "enum": ["create", "duplicate", "delete", "move", "clear"], "description": "Slide operation to perform." },
+        "action": { "type": "string", "enum": ["create", "delete", "move", "clear"], "description": "Slide operation to perform." },
         "slideIndex": { "type": "number", "description": "0-based target slide index for delete, move, or clear." },
-        "sourceIndex": { "type": "number", "description": "0-based source slide index for duplicate." },
-        "targetIndex": { "type": "number", "description": "0-based destination or insertion index for create, duplicate, or move." },
+        "targetIndex": { "type": "number", "description": "0-based destination or insertion index for create or move." },
         "slideMasterId": { "type": "string", "description": "Optional slide master id for create." },
         "layoutId": { "type": "string", "description": "Optional layout id for create." },
-        "formatting": { "type": "string", "enum": ["KeepSourceFormatting", "UseDestinationTheme"], "description": "Formatting behavior for duplicate. Default KeepSourceFormatting." }
+        "formatting": { "type": "string", "enum": ["KeepSourceFormatting", "UseDestinationTheme"], "description": "Formatting behavior hint used when the host needs to insert created content. Default KeepSourceFormatting." }
       },
       "required": ["action"]
     },
@@ -935,7 +953,7 @@
   },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
-    "description": "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
+    "description": "Create, update, delete, group, or ungroup PowerPoint shapes for geometry, styling, naming, and structure changes. For wording or rich-text edits, prefer read_slide_text plus edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -959,7 +977,7 @@
         "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create. Create-only; omit for update/delete/group/ungroup." },
         "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow. Create-only." },
         "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight. Create-only." },
-        "text": { "type": "string", "description": "Text content to create or replace. For update, omit this unless you intend to replace the current text." },
+        "text": { "type": "string", "description": "Text content to create or replace. Best for simple labels or newly created shapes. For fidelity-sensitive wording changes, prefer read_slide_text plus edit_slide_text, or edit_slide_xml for several text shapes on one slide." },
         "name": { "type": "string", "description": "Descriptive shape name for identification and animation targeting. Use semantic names like 'Bullet 1 - Revenue' or 'Hero Image'." },
         "left": { "type": "number", "description": "Left position in points. For update, omit to keep the current position." },
         "top": { "type": "number", "description": "Top position in points. For update, omit to keep the current position." },

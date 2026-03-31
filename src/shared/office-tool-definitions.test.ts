@@ -17,6 +17,7 @@ describe("office tool definitions", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("add_slide_animation");
     expect(getOfficeToolNames("powerpoint")).toContain("clear_slide_animations");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_animations");
+    expect(getOfficeToolNames("powerpoint")).toContain("execute_office_js");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_notes");
     expect(getOfficeToolNames("powerpoint")).toContain("get_slide_transition");
     expect(getOfficeToolNames("powerpoint")).toContain("list_slide_shapes");

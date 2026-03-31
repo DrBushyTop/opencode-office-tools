@@ -1669,7 +1669,7 @@ export interface RoundTripOptions {
 export async function replaceSlideWithMutatedOpenXml(
   context: PowerPoint.RequestContext,
   slideIndex: number,
-  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string | Promise<string>,
   options?: RoundTripOptions,
 ): Promise<OpenXmlRoundTripResult> {
   if (!isPowerPointRequirementSetSupported("1.8")) {
@@ -1761,11 +1761,11 @@ async function replaceSlideWithMutatedOpenXmlPhase2(
   targetSlideId: string | undefined,
   sourceSlide: PowerPoint.Slide,
   sourceBase64: string,
-  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string,
+  mutate: (base64: string, sourceSlide: PowerPoint.Slide) => string | Promise<string>,
   _slides: PowerPoint.SlideCollection,
 ): Promise<OpenXmlRoundTripResult> {
   // ── Phase 2: Mutate the exported (or cached) package ──────────────────
-  const mutated = mutate(sourceBase64, sourceSlide);
+  const mutated = await mutate(sourceBase64, sourceSlide);
 
   // ── Phase 3: Insert mutated slide, delete original, load final state ──
   // Batch all three operations into a single sync to minimize IPC round-trips.

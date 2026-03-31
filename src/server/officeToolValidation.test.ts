@@ -17,10 +17,12 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "add_slide_animation", { type: "motionPath", start: "afterPrevious", path: "M 0 0 L 0.25 0 E", shapeId: ["shape-1"] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "add_slide_animation", { type: "fade", start: "onClick", shapeId: 7 })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "get_slide_animations", { slideIndex: 0 })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "execute_office_js", { code: "await sync(); return { ok: true };" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "list_slide_shapes", { slideIndex: 0, detail: true })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "read_slide_text", { ref: "slide-id:256/shape:4" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_text", { ref: "slide-id:256/shape:4", paragraphsXml: ["<a:p xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:r><a:t>Hello</a:t></a:r></a:p>"] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { replacements: [{ ref: "slide-id:256/shape:4", paragraphsXml: ["<a:p xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:endParaRPr lang=\"en-US\"/></a:p>"] }] })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { slideIndex: 0, code: "const xml = await zip.file(slidePath).async('string'); setResult({ size: xml.length });", autosize_shape_ids: [10, "11"] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_chart", { action: "update", ref: "slide-id:256/shape:8", chartType: "bar", categories: ["North"], series: [{ name: "Revenue", values: [12] }] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_master", { themeColors: { Accent1: "#123ABC" } })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "list_slide_layouts", {})).not.toThrow();
@@ -56,10 +58,14 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "add_slide_animation", { type: "rotate", start: "onClick" })).toThrow(/args\.angleDegrees/);
     expect(() => validateOfficeToolCall("powerpoint", "add_slide_animation", { type: "changeFillColor", start: "onClick" })).toThrow(/args\.toColor/);
     expect(() => validateOfficeToolCall("powerpoint", "add_slide_animation", { type: "fade", start: "onClick", shapeId: [] })).toThrow(/args\.shapeId/);
+    expect(() => validateOfficeToolCall("powerpoint", "execute_office_js", { code: "   " })).toThrow(/cannot be empty/);
     expect(() => validateOfficeToolCall("powerpoint", "read_slide_text", { ref: "   " })).toThrow(/cannot be empty/);
     expect(() => validateOfficeToolCall("powerpoint", "read_slide_text", { ref: "shape:4" })).toThrow(/args\.ref/);
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_text", { ref: "slide-id:256\/shape:4", paragraphsXml: [] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { replacements: [] })).toThrow(/at least one replacement/);
+    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", {})).toThrow(/args\.code|args\.replacements|Provide args.code or args.replacements/);
+    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { code: "   " })).toThrow(/cannot be empty/);
+    expect(() => validateOfficeToolCall("powerpoint", "edit_slide_xml", { code: "return 1;", replacements: [{ ref: "slide-id:256/shape:4", paragraphsXml: [] }] })).toThrow(/either args\.code or args\.replacements|not both/);
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_chart", { action: "delete" })).toThrow(/args\.ref/);
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_chart", { action: "update", ref: "slide-id:256/shape:8", chartType: "bar", series: [] })).toThrow(/args\.series/);
     expect(() => validateOfficeToolCall("powerpoint", "edit_slide_chart", { action: "create", slideIndex: 0, chartType: "bar", series: [{ name: "Revenue", values: [12] }], width: 0 })).toThrow(/args\.width/);
@@ -69,6 +75,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_layout", { layoutId: "layout-1", bindings: [{ placeholderName: "Hero", imageUrl: "http://example.com/a.png" }] })).toThrow(/args\.bindings\[0\]\.imageUrl/);
     expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_layout", { layoutId: "layout-1", bindings: [{ placeholderName: "Table", tableData: [["A", "B"], [1]] }] })).toThrow(/args\.bindings\[0\]\.tableData/);
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "randomBar", direction: "left" })).toThrow(/args\.direction/);
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide", { action: "duplicate", sourceIndex: 0 })).toThrow(/expected one of/);
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "split", direction: "left" })).toThrow(/args\.direction/);
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "fade", slideIndex: [] })).toThrow(/args\.slideIndex/);
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "replaceImage", slideIndex: 0 })).toThrow(/args\.imageUrl|args\.shapeId/);

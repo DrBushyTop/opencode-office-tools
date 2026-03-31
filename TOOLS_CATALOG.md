@@ -36,19 +36,20 @@ This document lists all available tools that OpenCode can use when working with 
 | `add_slide_animation` | Add a slide animation through an Open XML fallback with timing control; supports motion paths, scale emphasis, and rotation, and replaces the slide in the deck. |
 | `clear_slide_animations` | Remove all animations from a slide through an Open XML fallback; this replaces the slide in the deck. |
 | `get_slide_animations` | Inspect the animation sequence on a slide, including effect types, targets, timing, and order. |
+| `execute_office_js` | Primary Office.js escape hatch for the live PowerPoint deck. Use it for custom visualizations, geometric shapes, slide insertion/movement, fills, z-order, and other host operations the higher-level tools do not cover cleanly. |
 | `get_slide_notes` | Read speaker notes by exporting slides through an Open XML fallback when the native PowerPoint API does not expose notes directly. |
 | `get_slide_transition` | Inspect a slide transition through an Open XML fallback. |
 | `list_slide_shapes` | List shapes on a slide and return stable shape refs you can reuse across the new PowerPoint text and chart workflow. |
-| `read_slide_text` | Read the raw paragraph XML for one text shape by stable shape ref. Use this before XML-level text edits. |
-| `edit_slide_text` | Replace one shape's paragraph XML in place while preserving the rest of the slide. Best for targeted text-only updates. |
-| `edit_slide_xml` | Batch-update paragraph XML for multiple shapes on one slide in a single round-trip. Use when several related text changes should stay together. |
+| `read_slide_text` | Read the raw paragraph XML for one text shape by stable shape ref. Use this before fidelity-sensitive text edits. |
+| `edit_slide_text` | Preferred text-editing tool for one existing text shape. Replaces paragraph XML in place while preserving the rest of the slide. |
+| `edit_slide_xml` | General-purpose single-slide XML editor. Use it for batch text, diagrams, advanced formatting, and other OOXML edits against the exported `ppt/slides/slide1.xml` part. |
 | `edit_slide_chart` | Create, update, or delete native PowerPoint charts on a slide using stable chart refs. |
 | `edit_slide_master` | Update supported slide master theme colors and decorative master shapes. |
 | `list_slide_layouts` | Catalog slide masters and layouts, including placeholder metadata, before creating new slides from layouts. |
 | `duplicate_slide` | Duplicate a slide as a convenience wrapper for native slide duplication. |
 | `create_slide_from_layout` | Create a new slide from a layout and optionally bind text, images, or tables into placeholders. |
-| `manage_slide` | Create, duplicate, delete, move, or clear slides with one generic slide-management tool. |
-| `manage_slide_shapes` | Create, update, or delete shapes with generic geometry, styling, text, and text-formatting controls. |
+| `manage_slide` | Create, delete, move, or clear slides with one generic slide-management tool. |
+| `manage_slide_shapes` | Create, update, or delete shapes with generic geometry, styling, grouping, naming, and simple text controls. Prefer the XML text tools for rewriting copy in existing text boxes. |
 | `manage_slide_media` | Insert, replace, or delete editable image shapes on a PowerPoint slide. |
 | `manage_slide_table` | Create, update, or delete editable native PowerPoint tables. |
 | `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
@@ -132,15 +133,18 @@ Suggested pattern:
 4. Keep `set_document_part` for headers, footers, section setup, and native TOC work
 
 ### PowerPoint: Prefer Native Tools Before Code
-Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring.
+Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring. Keep `execute_office_js` as an advanced escape hatch for custom visualizations or unsupported host operations.
 
 Suggested workflow:
 1. Use `get_presentation_overview`, `get_presentation_structure`, and `list_slide_layouts` to understand the deck, slide size, theme, and available layouts.
 2. Use `create_slide_from_layout` for layout-based creation, or `duplicate_slide` when you want a safe prototype branch before editing.
 3. Use `list_slide_shapes` to get current shape refs before text or chart edits.
 4. Prefer OOXML-first text edits for fidelity: `read_slide_text` + `edit_slide_text` for one shape, or `edit_slide_xml` for several text shapes on the same slide.
-5. Use `edit_slide_chart` for chart updates and `edit_slide_master` for supported master/theme changes.
-6. Keep `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for geometry, styling, native media, and native table operations.
+5. Use `edit_slide_xml` as the general single-slide OOXML editor for diagrams, advanced formatting, and structural XML edits on one slide.
+6. If multiple existing text boxes on one slide need copy changes, do not default to one-by-one `manage_slide_shapes` updates.
+7. Use `edit_slide_chart` for chart updates and `edit_slide_master` for supported master/theme changes.
+8. Use `execute_office_js` for host-native PowerPoint work such as `addGeometricShape(...)`, slide insertion or movement, fills, and z-order when the higher-level tools are too limiting.
+9. Keep `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for geometry, styling, native media, and native table operations.
 7. Refresh slide ids, shape ids, or shape refs after round-trip mutations before making the next targeted edit.
 
 ### PowerPoint: Shape Design for Animation-Readiness

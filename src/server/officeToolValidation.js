@@ -170,6 +170,10 @@ function validateOfficeToolCall(host, toolName, args) {
     throw new Error('Invalid args.ref: cannot be empty')
   }
 
+  if ((toolName === 'execute_office_js' || toolName === 'edit_slide_xml') && isBlankString(normalizedArgs.code)) {
+    throw new Error('Invalid args.code: cannot be empty')
+  }
+
   validateSchema(normalizedArgs, entry.parameters, 'args')
 
   if (toolName === 'manage_range'
@@ -209,13 +213,22 @@ function validateOfficeToolCall(host, toolName, args) {
   }
 
   if (toolName === 'edit_slide_xml') {
-    if (!Array.isArray(normalizedArgs.replacements) || normalizedArgs.replacements.length === 0) {
-      throw new Error('Invalid args.replacements: provide at least one replacement')
+    const hasCode = hasNonBlankString(normalizedArgs.code)
+    const hasReplacements = Array.isArray(normalizedArgs.replacements) && normalizedArgs.replacements.length > 0
+
+    if (!hasCode && !hasReplacements) {
+      throw new Error('Provide args.code or args.replacements')
     }
 
-    const invalidReplacementIndex = normalizedArgs.replacements.findIndex((replacement) => !replacement || isBlankString(replacement.ref))
-    if (invalidReplacementIndex >= 0) {
-      throw new Error(`Invalid args.replacements[${invalidReplacementIndex}].ref: cannot be empty`)
+    if (hasCode && hasReplacements) {
+      throw new Error('Provide either args.code or args.replacements, not both')
+    }
+
+    if (hasReplacements) {
+      const invalidReplacementIndex = normalizedArgs.replacements.findIndex((replacement) => !replacement || isBlankString(replacement.ref))
+      if (invalidReplacementIndex >= 0) {
+        throw new Error(`Invalid args.replacements[${invalidReplacementIndex}].ref: cannot be empty`)
+      }
     }
   }
 

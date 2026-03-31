@@ -21,13 +21,15 @@ Use this skill when the user wants to modernize, tighten, or retheme slides with
 3. **Inspect slide structure before precision edits**
    - Use `list_slide_shapes` on each target slide.
 4. **Route each change narrowly**
-   - One text shape with formatting fidelity concerns → `read_slide_text` + `edit_slide_text`
-   - Several related text shapes on one slide → `edit_slide_xml`
+    - One text shape with formatting fidelity concerns → `read_slide_text` + `edit_slide_text`
+    - Several related text shapes on one slide → `edit_slide_xml` in one call, not repeated `manage_slide_shapes` updates
+    - Single-slide diagrams or advanced formatting through OOXML → `edit_slide_xml`
    - Chart refresh → `edit_slide_chart`
    - Master/theme adjustment → `edit_slide_master`
-   - New slide that should fit an existing layout → `list_slide_layouts` + `create_slide_from_layout`
-   - Shape-only cleanup such as position, fill, line, naming, grouping → `manage_slide_shapes`
-   - Images/tables → `manage_slide_media` / `manage_slide_table`
+    - New slide that should fit an existing layout → `list_slide_layouts` + `create_slide_from_layout`
+    - Shape-only cleanup such as position, fill, line, naming, grouping → `manage_slide_shapes`
+    - Images/tables → `manage_slide_media` / `manage_slide_table`
+    - Custom visualization, geometric shape work, or unsupported host operation → `execute_office_js`
 5. **Refresh targeting after round-trips**
    - Reuse returned ids/refs when available.
    - Otherwise rerun `list_slide_shapes` before the next pinpoint edit.
@@ -39,6 +41,7 @@ Use this skill when the user wants to modernize, tighten, or retheme slides with
 
 - Prefer slide-scoped edits over whole-slide regeneration.
 - Prefer native layout and text tools before generic shape edits.
+- Treat `manage_slide_shapes` as geometry/styling cleanup first, not the default path for rewriting copy across existing text boxes.
 - Stay within the native slide, layout, text, chart, and master tools for slide creation and editing.
 
 ## References

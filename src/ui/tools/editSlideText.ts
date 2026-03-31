@@ -14,7 +14,7 @@ const editSlideTextArgsSchema = z.object({
 
 export const editSlideText: Tool = {
   name: "edit_slide_text",
-  description: "Replace only one PowerPoint shape's raw paragraph XML in place via one slide Open XML round-trip, preserving its text body properties.",
+  description: "Preferred text-editing tool for one existing PowerPoint text shape. Replaces raw paragraph XML in place via one slide Open XML round-trip while preserving text body properties.",
   parameters: {
     type: "object",
     properties: {

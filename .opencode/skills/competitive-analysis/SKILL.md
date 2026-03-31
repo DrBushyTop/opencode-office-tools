@@ -30,10 +30,13 @@ Turn observations into an execution plan that fits this repo's PowerPoint tool m
 4. **Map each recommendation to a tool path**
    - Single text shape → `read_slide_text` + `edit_slide_text`
    - Multi-shape same-slide text → `edit_slide_xml`
+   - Single-slide diagram or advanced OOXML formatting → `edit_slide_xml`
    - Chart change → `edit_slide_chart`
    - Layout-based new slide → `list_slide_layouts` + `create_slide_from_layout`
    - Prototype variation → `duplicate_slide` + targeted edits
    - Geometry/fill/grouping cleanup → `manage_slide_shapes`
+   - Avoid planning a one-by-one `manage_slide_shapes` text-rewrite sequence when `edit_slide_xml` fits.
+   - Custom visualization, geometric shape work, or unsupported host operation → `execute_office_js`
 5. **Call out reference freshness risks**
    - If the plan involves round-trip edits or duplication, note that slide ids and shape refs must be refreshed before later targeted edits.
 

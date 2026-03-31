@@ -486,7 +486,7 @@ async function applyShapeMutation(
 
 export const manageSlideShapes: Tool = {
   name: "manage_slide_shapes",
-  description: "Create, update, delete, group, or ungroup PowerPoint shapes. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
+  description: "Create, update, delete, group, or ungroup PowerPoint shapes for geometry, styling, naming, and structure changes. For wording or rich-text edits, prefer read_slide_text with edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
   parameters: {
     type: "object",
     properties: {

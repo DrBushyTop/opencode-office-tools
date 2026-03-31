@@ -47,6 +47,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearSlideExportCache();
+  vi.restoreAllMocks();
 });
 
 describe("editSlideXml", () => {
@@ -152,5 +153,100 @@ describe("editSlideXml", () => {
     const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
     expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("After title");
     expect(inspection.shapes[1]?.textBody?.textContent || "").toContain("After body");
+  });
+
+  it("edits a single exported slide package through zip and DOM helpers", async () => {
+    const sourceBase64 = createSlideBase64("Before title", "Before body");
+    const replacementBase64Holder = { value: sourceBase64 };
+
+    const replacementTitleFrame = { isNullObject: false, autoSizeSetting: "AutoSizeNone", load: vi.fn() };
+    const replacementBodyFrame = { isNullObject: false, autoSizeSetting: "AutoSizeNone", load: vi.fn() };
+    const replacementTitleShape = { id: "10", name: "Title", getTextFrameOrNullObject: vi.fn(() => replacementTitleFrame) };
+    const replacementBodyShape = { id: "11", name: "Body", getTextFrameOrNullObject: vi.fn(() => replacementBodyFrame) };
+    const sourceSlide = {
+      id: "slide-old",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: sourceBase64 })),
+      delete: vi.fn(),
+      shapes: { items: [], load: vi.fn() },
+    };
+    const replacementSlide = {
+      id: "slide-new",
+      load: vi.fn(),
+      exportAsBase64: vi.fn(() => ({ value: replacementBase64Holder.value })),
+      shapes: { items: [replacementTitleShape, replacementBodyShape], load: vi.fn() },
+    };
+    const slides = {
+      items: [sourceSlide],
+      load: vi.fn(),
+      getItemAt: vi.fn(() => sourceSlide),
+    } as any;
+    const finalSlides = {
+      items: [replacementSlide],
+      load: vi.fn(),
+    } as any;
+    const presentation = {
+      slides,
+      insertSlidesFromBase64: vi.fn((mutated: string) => {
+        replacementBase64Holder.value = mutated;
+        presentation.slides = finalSlides;
+      }),
+    } as any;
+    const contextStub = {
+      presentation,
+      sync: vi.fn(async () => undefined),
+    } as any;
+    const runStub = vi.fn(async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub));
+
+    vi.stubGlobal("Office", {
+      context: {
+        requirements: {
+          isSetSupported: vi.fn((setName: string, version: string) => setName === "PowerPointApi" && version === "1.8"),
+        },
+      },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: runStub,
+      InsertSlideFormatting: { keepSourceFormatting: "KeepSourceFormatting" },
+    });
+
+    const result = await editSlideXml.handler({
+      slideIndex: 0,
+      autosize_shape_ids: [10],
+      code: `
+const xmlText = await zip.file(slidePath).async("string");
+const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+const textNodes = doc.getElementsByTagNameNS(namespaces.a, "t");
+textNodes[0].textContent = "After title";
+textNodes[1].textContent = "After body & more";
+console.log(slidePath, textNodes.length);
+zip.file(slidePath, new XMLSerializer().serializeToString(doc));
+setResult({ slidePath, textCount: textNodes.length });
+`,
+    });
+
+    expect(result).toMatchObject({
+      resultType: "success",
+      slideId: "slide-new",
+      slideIndex: 0,
+      slidePath: "ppt/slides/slide1.xml",
+      result: { slidePath: "ppt/slides/slide1.xml", textCount: 2 },
+      usedExplicitResult: true,
+      autosize_shape_ids: ["10"],
+      refreshedRefs: [{ ref: "slide-id:slide-new/shape:10", xmlShapeId: "10" }],
+    });
+
+    expect((result as any).logs).toEqual([
+      {
+        level: "log",
+        values: ["ppt/slides/slide1.xml", 2],
+      },
+    ]);
+    expect(replacementTitleFrame.autoSizeSetting).toBe("AutoSizeShapeToFitText");
+
+    const inspection = inspectSlideXmlFromBase64Presentation(replacementBase64Holder.value, { slideId: "slide-new" });
+    expect(inspection.slidePath).toBe("ppt/slides/slide1.xml");
+    expect(inspection.shapes[0]?.textBody?.textContent || "").toContain("After title");
+    expect(inspection.shapes[1]?.textBody?.textContent || "").toContain("After body & more");
   });
 });

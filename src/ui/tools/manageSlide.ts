@@ -21,26 +21,22 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 export const manageSlide: Tool = {
   name: "manage_slide",
-  description: "Create, duplicate, delete, move, or clear PowerPoint slides with one generic slide-management tool.",
+  description: "Create, delete, move, or clear PowerPoint slides with one generic slide-management tool.",
   parameters: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["create", "duplicate", "delete", "move", "clear"],
+        enum: ["create", "delete", "move", "clear"],
         description: "Slide operation to perform.",
       },
       slideIndex: {
         type: "number",
         description: "0-based target slide index for delete, move, or clear.",
       },
-      sourceIndex: {
-        type: "number",
-        description: "0-based source slide index for duplicate.",
-      },
       targetIndex: {
         type: "number",
-        description: "0-based destination or insertion index for create, duplicate, or move.",
+        description: "0-based destination or insertion index for create or move.",
       },
       slideMasterId: {
         type: "string",
@@ -53,7 +49,7 @@ export const manageSlide: Tool = {
       formatting: {
         type: "string",
         enum: ["KeepSourceFormatting", "UseDestinationTheme"],
-        description: "Formatting behavior for duplicate. Default KeepSourceFormatting.",
+        description: "Formatting behavior hint used when the host needs to insert created content. Default KeepSourceFormatting.",
       },
     },
     required: ["action"],

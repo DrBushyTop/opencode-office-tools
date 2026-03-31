@@ -1,8 +1,10 @@
 import { OpenXmlPackage, parseXml, serializeXml } from "./openXmlPackage";
 import { getSlideByIndex } from "./powerpointNativeContent";
+import { AsyncFunction, createScopedConsole, NO_RESULT, normalizeScriptValue, type ScriptLogEntry } from "./scriptExecutionShared";
 
 const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
+const NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 const PROCESSING_INSTRUCTION_NODE = 7;
@@ -50,6 +52,42 @@ export interface ResolvedSlideXmlShapeTarget extends SlideXmlShapeTargetIdentity
 export interface ShapeParagraphXmlReplacement {
   target: SlideXmlShapeTargetIdentity;
   paragraphsXml: string[];
+}
+
+export interface SlideXmlCodeExecutionResult {
+  mutatedBase64: string;
+  slidePath: string;
+  result: unknown;
+  logs: ScriptLogEntry[];
+  usedExplicitResult: boolean;
+}
+
+export interface EditSlideXmlCodeOptions {
+  slideId?: string;
+}
+
+export function escapeXml(value: string) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function cloneNodeIntoDocument(targetDoc: XMLDocument, node: Node) {
+  return typeof targetDoc.importNode === "function"
+    ? targetDoc.importNode(node, true)
+    : node.cloneNode(true);
+}
+
+function replaceXmlDocumentContents(targetDoc: XMLDocument, nextDoc: XMLDocument) {
+  while (targetDoc.firstChild) {
+    targetDoc.removeChild(targetDoc.firstChild);
+  }
+  Array.from(nextDoc.childNodes).forEach((child) => {
+    targetDoc.appendChild(cloneNodeIntoDocument(targetDoc, child));
+  });
 }
 
 function getOnlySlidePath(pkg: OpenXmlPackage) {
@@ -424,4 +462,160 @@ export function replaceShapeParagraphXmlInBase64Presentation(
   replaceShapeParagraphXmlInSlideInspection(inspection, replacements);
   pkg.writeText(inspection.slidePath, serializeXml(inspection.slideDoc));
   return pkg.toBase64();
+}
+
+type SlideXmlZipHandle = {
+  async: (type?: "string" | "text" | "uint8array" | "arraybuffer" | "base64") => Promise<string | Uint8Array | ArrayBuffer>;
+};
+
+function createSlideZipAdapter(
+  pkg: OpenXmlPackage,
+  options: { slidePath: string; getSlideDoc: () => XMLDocument },
+) {
+  const readAsBase64 = (bytes: Uint8Array) => {
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  };
+
+  const writePart = (path: string, value: string | Uint8Array | ArrayBuffer) => {
+    if (typeof value === "string") {
+      pkg.writeText(path, value);
+      if (path === options.slidePath) {
+        replaceXmlDocumentContents(options.getSlideDoc(), parseXml(value));
+      }
+      return;
+    }
+
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    pkg.writeBytes(path, bytes);
+    if (path === options.slidePath) {
+      const xmlText = new TextDecoder().decode(bytes);
+      replaceXmlDocumentContents(options.getSlideDoc(), parseXml(xmlText));
+    }
+  };
+
+  const readHandle = (path: string): SlideXmlZipHandle | null => {
+    if (!pkg.has(path)) return null;
+    return {
+      async: async (type = "string") => {
+        if (path === options.slidePath) {
+          const currentSlideXml = serializeXml(options.getSlideDoc());
+          if (type === "string" || type === "text") {
+            return currentSlideXml;
+          }
+
+          const bytes = new TextEncoder().encode(currentSlideXml);
+          if (type === "uint8array") {
+            return bytes;
+          }
+          if (type === "arraybuffer") {
+            return bytes.slice().buffer as ArrayBuffer;
+          }
+          if (type === "base64") {
+            return readAsBase64(bytes);
+          }
+
+          throw new Error(`Unsupported zip async() type ${JSON.stringify(type)}.`);
+        }
+
+        if (type === "string" || type === "text") {
+          return pkg.readText(path);
+        }
+
+        const bytes = pkg.readBytes(path);
+        if (type === "uint8array") {
+          return bytes;
+        }
+        if (type === "arraybuffer") {
+          return bytes.slice().buffer as ArrayBuffer;
+        }
+        if (type === "base64") {
+          return readAsBase64(bytes);
+        }
+
+        throw new Error(`Unsupported zip async() type ${JSON.stringify(type)}.`);
+      },
+    };
+  };
+
+  return {
+    file(path: string, data?: string | Uint8Array | ArrayBuffer) {
+      if (arguments.length === 1) {
+        return readHandle(path);
+      }
+      if (data === undefined) {
+        throw new Error(`No data provided when writing zip part ${JSON.stringify(path)}.`);
+      }
+      writePart(path, data);
+      return this;
+    },
+    remove(path: string) {
+      pkg.delete(path);
+      return this;
+    },
+    paths() {
+      return pkg.listPaths();
+    },
+  };
+}
+
+export async function executeSlideXmlCodeInBase64Presentation(
+  base64: string,
+  code: string,
+  options: EditSlideXmlCodeOptions = {},
+): Promise<SlideXmlCodeExecutionResult> {
+  const pkg = new OpenXmlPackage(base64);
+  const slidePath = getOnlySlidePath(pkg);
+  let slideDoc = parseXml(pkg.readText(slidePath));
+  const zip = createSlideZipAdapter(pkg, {
+    slidePath,
+    getSlideDoc: () => slideDoc,
+  });
+  const logs: ScriptLogEntry[] = [];
+  const scopedConsole = createScopedConsole(logs);
+  let explicitResult: unknown = NO_RESULT;
+  const runner = new AsyncFunction(
+    "zip",
+    "slideXml",
+    "slidePath",
+    "DOMParser",
+    "XMLSerializer",
+    "escapeXml",
+    "namespaces",
+    "console",
+    "setResult",
+    "parseXml",
+    "serializeXml",
+    code,
+  );
+
+  const returned = await runner(
+    zip,
+    slideDoc,
+    slidePath,
+    DOMParser,
+    XMLSerializer,
+    escapeXml,
+    { a: NS_A, p: NS_P, r: NS_R },
+    scopedConsole,
+    (value: unknown) => {
+      explicitResult = value;
+      return value;
+    },
+    parseXml,
+    serializeXml,
+  );
+
+  pkg.writeText(slidePath, serializeXml(slideDoc));
+
+  return {
+    mutatedBase64: pkg.toBase64(),
+    slidePath,
+    result: normalizeScriptValue(explicitResult === NO_RESULT ? returned : explicitResult),
+    logs,
+    usedExplicitResult: explicitResult !== NO_RESULT,
+  };
 }
