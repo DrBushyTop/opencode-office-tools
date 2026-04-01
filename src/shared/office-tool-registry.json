@@ -701,13 +701,13 @@
   },
   "edit_slide_xml": {
     "hosts": ["powerpoint"],
-    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip.",
+    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip. Use it for structural OOXML repairs that Office.js cannot express cleanly, including shape geometry and style fixes.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
         "slideIndex": { "type": "number", "description": "Optional 0-based slide index. Required when no active slide can be inferred safely. Use this for arbitrary single-slide XML edits." },
-        "code": { "type": "string", "minLength": 1, "description": "Async JavaScript function body that receives a JSZip-style single-slide package in zip (supporting both zip.file(path) and zip.files[path] reads), the raw slide XML string in xml, the parsed slide XML DOM in both doc and slideXml for ppt/slides/slide1.xml, slidePath, DOMParser, XMLSerializer, escapeXml, namespaces, console, parseXml, serializeXml, and setResult(value). Returning an XML string replaces ppt/slides/slide1.xml directly." },
+        "code": { "type": "string", "minLength": 1, "description": "Async JavaScript function body that receives a JSZip-style single-slide package in zip (supporting both zip.file(path) and zip.files[path] reads), the raw slide XML string in xml, the parsed slide XML DOM in both doc and slideXml for ppt/slides/slide1.xml, slidePath, DOMParser, XMLSerializer, escapeXml, namespaces, console, parseXml, serializeXml, and setResult(value). Returning an XML string replaces ppt/slides/slide1.xml directly. This is the right tool for repairing Office.js-created shapes whose OOXML is wrong, such as `a:prstGeom prst=\"lineInv\"` shapes that ignore fills until you switch the preset to `rect` or `roundRect` and remove `p:style` fill overrides." },
         "autosize_shape_ids": {
           "type": "array",
           "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
@@ -760,7 +760,11 @@
         "left": { "type": "number", "description": "Left position in points." },
         "top": { "type": "number", "description": "Top position in points." },
         "width": { "type": "number", "exclusiveMinimum": 0, "description": "Width in points." },
-        "height": { "type": "number", "exclusiveMinimum": 0, "description": "Height in points." }
+        "height": { "type": "number", "exclusiveMinimum": 0, "description": "Height in points." },
+        "fontColor": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$", "description": "Hex color (e.g. \"FFFFFF\" or \"#FFFFFF\") for all chart text including title, axes, legend, and data labels." },
+        "showDataLabels": { "type": "boolean", "description": "Whether to show data value labels on chart series. Defaults to true." },
+        "showLegend": { "type": "boolean", "description": "Whether to show the chart legend. Defaults to true." },
+        "legendPosition": { "type": "string", "enum": ["top", "bottom", "left", "right"], "description": "Legend placement. Defaults to \"top\"." }
       },
       "required": ["action"]
     },

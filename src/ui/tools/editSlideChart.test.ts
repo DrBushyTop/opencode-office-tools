@@ -10,6 +10,7 @@ vi.mock("./powerpointChartXml", () => ({
   updateChartInBase64Presentation: vi.fn(),
   deleteChartInBase64Presentation: vi.fn(),
   slideChartTypeSchema: z.enum(["column", "bar", "line", "pie", "doughnut", "area", "scatter"]),
+  slideChartLegendPositionSchema: z.enum(["top", "bottom", "left", "right"]),
   slideChartDefinitionSchema: {
     parse: (value: unknown) => value,
   },

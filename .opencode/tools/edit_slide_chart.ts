@@ -17,4 +17,8 @@ export default powerpoint("edit_slide_chart", "Create, update, or delete native 
   top: tool.schema.number().optional().describe("Top position in points."),
   width: tool.schema.number().optional().describe("Width in points."),
   height: tool.schema.number().optional().describe("Height in points."),
+  fontColor: tool.schema.string().optional().describe("Hex color (e.g. \"FFFFFF\" or \"#FFFFFF\") for all chart text including title, axes, legend, and data labels."),
+  showDataLabels: tool.schema.boolean().optional().describe("Whether to show data value labels on chart series. Defaults to true."),
+  showLegend: tool.schema.boolean().optional().describe("Whether to show the chart legend. Defaults to true."),
+  legendPosition: tool.schema.enum(["top", "bottom", "left", "right"]).optional().describe("Legend placement. Defaults to \"top\"."),
 })

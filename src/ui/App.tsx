@@ -1028,7 +1028,6 @@ export const App: React.FC = () => {
             }}
             onShowHistory={() => setShowHistory(true)}
             selectedModel={safeSelectedModel}
-            onModelChange={handleModelChange}
             models={availableModels}
             debugEnabled={safeDebugEnabled}
             onDebugChange={setDebugEnabled}
@@ -1038,8 +1037,6 @@ export const App: React.FC = () => {
             onShowToolResponsesChange={setShowToolResponses}
             qaSubagentModel={safeQaSubagentModel}
             onQaSubagentModelChange={handleQaSubagentModelChange}
-            selectedVariant={safeSelectedVariant}
-            onVariantChange={handleVariantChange}
             qaSubagentVariant={qaSubagentVariant}
             onQaSubagentVariantChange={handleQaSubagentVariantChange}
             themes={themeOptions}
@@ -1073,6 +1070,11 @@ export const App: React.FC = () => {
             isRunning={isTyping}
             images={images}
             onImagesChange={setImages}
+            selectedModel={safeSelectedModel}
+            onModelChange={handleModelChange}
+            models={availableModels}
+            selectedVariant={safeSelectedVariant}
+            onVariantChange={handleVariantChange}
           />
           {permission && (
             <PermissionDialog

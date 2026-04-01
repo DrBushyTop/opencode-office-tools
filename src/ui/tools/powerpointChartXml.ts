@@ -29,6 +29,10 @@ export const slideChartSeriesSchema = z.object({
   values: z.array(z.number().finite()).min(1),
 });
 
+export const slideChartLegendPositionSchema = z.enum(["top", "bottom", "left", "right"]);
+
+const hexColorSchema = z.string().regex(/^#?[0-9A-Fa-f]{6}$/).transform((value) => value.replace(/^#/, "").toUpperCase());
+
 export const slideChartDefinitionSchema = z.object({
   chartType: slideChartTypeSchema,
   title: z.string().optional(),
@@ -39,6 +43,10 @@ export const slideChartDefinitionSchema = z.object({
   top: z.number().finite().optional(),
   width: z.number().finite().positive().optional(),
   height: z.number().finite().positive().optional(),
+  fontColor: hexColorSchema.optional(),
+  showDataLabels: z.boolean().optional(),
+  showLegend: z.boolean().optional(),
+  legendPosition: slideChartLegendPositionSchema.optional(),
 }).superRefine((definition, context) => {
   const seriesLength = definition.series[0]?.values.length ?? 0;
   definition.series.forEach((series, index) => {
@@ -386,20 +394,47 @@ function buildNumberLiteral(values: number[]) {
   return `<c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>${buildNumberPoints(values)}</c:numLit>`;
 }
 
-function buildDataLabelsXml() {
-  return "<c:dLbls><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/><c:showCatName val=\"0\"/><c:showSerName val=\"0\"/><c:showPercent val=\"0\"/><c:showBubbleSize val=\"0\"/></c:dLbls>";
+function buildSolidFillXml(hexColor: string) {
+  return `<a:solidFill><a:srgbClr val="${hexColor}"/></a:solidFill>`;
 }
 
-function buildRichText(text: string) {
-  return `<c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>${escapeXml(text)}</a:t></a:r><a:endParaRPr lang="en-US"/></a:p></c:rich>`;
+function buildDefaultRunPropertiesXml(fontColor?: string) {
+  if (!fontColor) {
+    return "<a:defRPr/>";
+  }
+  return `<a:defRPr>${buildSolidFillXml(fontColor)}</a:defRPr>`;
 }
 
-function buildTitleXml(title: string) {
-  return `<c:title><c:tx>${buildRichText(title)}</c:tx><c:layout/><c:overlay val="0"/></c:title>`;
+function buildChartTextPropertiesXml(fontColor?: string) {
+  if (!fontColor) {
+    return "";
+  }
+  return `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr>${buildDefaultRunPropertiesXml(fontColor)}</a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>`;
 }
 
-function buildLegendXml() {
-  return "<c:legend><c:legendPos val=\"t\"/><c:layout/><c:overlay val=\"0\"/></c:legend>";
+function buildDataLabelsXml(showDataLabels?: boolean, fontColor?: string) {
+  const showVal = showDataLabels === false ? "0" : "1";
+  const textProps = showDataLabels !== false ? buildChartTextPropertiesXml(fontColor) : "";
+  return `<c:dLbls>${textProps}<c:showLegendKey val="0"/><c:showVal val="${showVal}"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>`;
+}
+
+function buildRichText(text: string, fontColor?: string) {
+  const fillXml = fontColor ? buildSolidFillXml(fontColor) : "";
+  return `<c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"${fillXml ? "" : "/"}>${fillXml}${fillXml ? "</a:rPr>" : ""}<a:t>${escapeXml(text)}</a:t></a:r><a:endParaRPr lang="en-US"/></a:p></c:rich>`;
+}
+
+function buildTitleXml(title: string, fontColor?: string) {
+  return `<c:title><c:tx>${buildRichText(title, fontColor)}</c:tx><c:layout/><c:overlay val="0"/></c:title>`;
+}
+
+const LEGEND_POSITION_MAP: Record<string, string> = { top: "t", bottom: "b", left: "l", right: "r" };
+
+function buildLegendXml(showLegend?: boolean, legendPosition?: string, fontColor?: string) {
+  if (showLegend === false) {
+    return "";
+  }
+  const positionValue = (legendPosition && LEGEND_POSITION_MAP[legendPosition]) || "t";
+  return `<c:legend><c:legendPos val="${positionValue}"/><c:layout/><c:overlay val="0"/>${buildChartTextPropertiesXml(fontColor)}</c:legend>`;
 }
 
 function getCategoryValues(definition: SlideChartDefinition) {
@@ -418,10 +453,11 @@ function getScatterXValues(definition: SlideChartDefinition) {
 function buildSeriesXml(definition: SlideChartDefinition) {
   const categories = getCategoryValues(definition);
   const scatterXValues = definition.chartType === "scatter" ? getScatterXValues(definition) : null;
+  const dataLabels = buildDataLabelsXml(definition.showDataLabels, definition.fontColor);
 
   return definition.series.map((series, index) => {
     const header = `<c:ser><c:idx val="${index}"/><c:order val="${index}"/><c:tx><c:v>${escapeXml(series.name)}</c:v></c:tx>`;
-    const footer = `${buildDataLabelsXml()}</c:ser>`;
+    const footer = `${dataLabels}</c:ser>`;
 
     if (definition.chartType === "scatter") {
       return `${header}<c:spPr/><c:xVal>${buildNumberLiteral(scatterXValues || [])}</c:xVal><c:yVal>${buildNumberLiteral(series.values)}</c:yVal>${footer}`;
@@ -434,9 +470,10 @@ function buildSeriesXml(definition: SlideChartDefinition) {
   }).join("");
 }
 
-function buildAxesXml(chartType: SlideChartType) {
+function buildAxesXml(chartType: SlideChartType, fontColor?: string) {
   const categoryAxisId = 48650112;
   const valueAxisId = 48672768;
+  const axisTxPr = buildChartTextPropertiesXml(fontColor);
 
   if (chartType === "scatter") {
     return `
@@ -450,6 +487,7 @@ function buildAxesXml(chartType: SlideChartType) {
         <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
         <c:tickLblPos val="nextTo"/>
+        ${axisTxPr}
         <c:crossAx val="${valueAxisId}"/>
         <c:crosses val="autoZero"/>
         <c:crossBetween val="midCat"/>
@@ -464,6 +502,7 @@ function buildAxesXml(chartType: SlideChartType) {
         <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
         <c:tickLblPos val="nextTo"/>
+        ${axisTxPr}
         <c:crossAx val="${categoryAxisId}"/>
         <c:crosses val="autoZero"/>
         <c:crossBetween val="midCat"/>
@@ -483,6 +522,7 @@ function buildAxesXml(chartType: SlideChartType) {
       <c:majorTickMark val="out"/>
       <c:minorTickMark val="none"/>
       <c:tickLblPos val="nextTo"/>
+      ${axisTxPr}
       <c:crossAx val="${valueAxisId}"/>
       <c:crosses val="autoZero"/>
       <c:auto val="1"/>
@@ -500,6 +540,7 @@ function buildAxesXml(chartType: SlideChartType) {
       <c:majorTickMark val="out"/>
       <c:minorTickMark val="none"/>
       <c:tickLblPos val="nextTo"/>
+      ${axisTxPr}
       <c:crossAx val="${categoryAxisId}"/>
       <c:crosses val="autoZero"/>
       <c:crossBetween val="between"/>
@@ -514,17 +555,17 @@ function buildPlotAreaXml(definition: SlideChartDefinition) {
   switch (definition.chartType) {
     case "column":
     case "bar":
-      return `<c:plotArea><c:layout/><c:barChart><c:barDir val="${definition.chartType === "column" ? "col" : "bar"}"/><c:grouping val="${definition.stacked ? "stacked" : "clustered"}"/><c:varyColors val="0"/>${seriesXml}${definition.stacked ? "<c:overlap val=\"100\"/>" : ""}${axisIds}</c:barChart>${buildAxesXml(definition.chartType)}</c:plotArea>`;
+      return `<c:plotArea><c:layout/><c:barChart><c:barDir val="${definition.chartType === "column" ? "col" : "bar"}"/><c:grouping val="${definition.stacked ? "stacked" : "clustered"}"/><c:varyColors val="0"/>${seriesXml}${definition.stacked ? "<c:overlap val=\"100\"/>" : ""}${axisIds}</c:barChart>${buildAxesXml(definition.chartType, definition.fontColor)}</c:plotArea>`;
     case "line":
-      return `<c:plotArea><c:layout/><c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:lineChart>${buildAxesXml(definition.chartType)}</c:plotArea>`;
+      return `<c:plotArea><c:layout/><c:lineChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:lineChart>${buildAxesXml(definition.chartType, definition.fontColor)}</c:plotArea>`;
     case "area":
-      return `<c:plotArea><c:layout/><c:areaChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:areaChart>${buildAxesXml(definition.chartType)}</c:plotArea>`;
+      return `<c:plotArea><c:layout/><c:areaChart><c:grouping val="${grouping}"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:areaChart>${buildAxesXml(definition.chartType, definition.fontColor)}</c:plotArea>`;
     case "pie":
       return `<c:plotArea><c:layout/><c:pieChart><c:varyColors val="1"/>${seriesXml}<c:firstSliceAng val="0"/></c:pieChart></c:plotArea>`;
     case "doughnut":
       return `<c:plotArea><c:layout/><c:doughnutChart><c:varyColors val="1"/>${seriesXml}<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart></c:plotArea>`;
     case "scatter":
-      return `<c:plotArea><c:layout/><c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:scatterChart>${buildAxesXml(definition.chartType)}</c:plotArea>`;
+      return `<c:plotArea><c:layout/><c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${seriesXml}${axisIds}</c:scatterChart>${buildAxesXml(definition.chartType, definition.fontColor)}</c:plotArea>`;
   }
 }
 
@@ -536,10 +577,10 @@ function buildChartXml(definition: SlideChartDefinition) {
     <c:lang val="en-US"/>
     <c:roundedCorners val="0"/>
     <c:chart>
-      ${buildTitleXml(effectiveTitle)}
+      ${buildTitleXml(effectiveTitle, definition.fontColor)}
       <c:autoTitleDeleted val="0"/>
       ${buildPlotAreaXml(definition)}
-      ${buildLegendXml()}
+      ${buildLegendXml(definition.showLegend, definition.legendPosition, definition.fontColor)}
       <c:plotVisOnly val="1"/>
       <c:dispBlanksAs val="gap"/>
       <c:showDLblsOverMax val="0"/>

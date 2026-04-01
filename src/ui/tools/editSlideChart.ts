@@ -6,6 +6,7 @@ import {
   createChartInBase64Presentation,
   deleteChartInBase64Presentation,
   slideChartDefinitionSchema,
+  slideChartLegendPositionSchema,
   slideChartTypeSchema,
   type SlideChartMutationResult,
   updateChartInBase64Presentation,
@@ -30,6 +31,10 @@ const editSlideChartArgsSchema = z.object({
   top: z.number().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
+  fontColor: z.string().optional(),
+  showDataLabels: z.boolean().optional(),
+  showLegend: z.boolean().optional(),
+  legendPosition: slideChartLegendPositionSchema.optional(),
 });
 
 type EditSlideChartArgs = z.infer<typeof editSlideChartArgsSchema>;
@@ -45,6 +50,10 @@ function buildDefinition(args: EditSlideChartArgs) {
     top: args.top,
     width: args.width,
     height: args.height,
+    fontColor: args.fontColor,
+    showDataLabels: args.showDataLabels,
+    showLegend: args.showLegend,
+    legendPosition: args.legendPosition,
   });
 }
 
@@ -76,6 +85,10 @@ export const editSlideChart: Tool = {
       top: { type: "number" },
       width: { type: "number" },
       height: { type: "number" },
+      fontColor: { type: "string", description: "Hex color (e.g. \"FFFFFF\" or \"#FFFFFF\") for all chart text including title, axes, legend, and data labels." },
+      showDataLabels: { type: "boolean", description: "Whether to show data value labels on chart series. Defaults to true." },
+      showLegend: { type: "boolean", description: "Whether to show the chart legend. Defaults to true." },
+      legendPosition: { type: "string", enum: slideChartLegendPositionSchema.options, description: "Legend placement. Defaults to \"top\"." },
     },
     required: ["action"],
   },

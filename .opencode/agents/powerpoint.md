@@ -92,11 +92,14 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 - Prefer `DOMParser` + `XMLSerializer` mutation patterns over string concatenation when writing XML-edit code.
 - Use the provided `escapeXml(...)` helper when embedding raw text into generated XML strings.
 - Use `autosize_shape_ids` when you need specific text shapes reset to `AutoSizeShapeToFitText` after the slide is reimported.
+- Critical Office.js shape repair pattern: if a shape created through `addGeometricShape(...)` plus `fill.setSolidColor(...)` shows no fill, inspect its OOXML. Some shapes can end up with `a:prstGeom prst="lineInv"`, which renders as an inverse diagonal line and does not support fills.
+- Fix that case with `edit_slide_xml`: change `a:prstGeom/@prst` to `rect` or `roundRect`, and remove the shape's `p:style` element so any `a:solidFill` on the shape is not overridden by `fillRef`.
 
 ## Office.js Execution
 
 - `execute_office_js` runs inside `PowerPoint.run(...)` with `context` in scope.
 - Prefer it for host-native geometric shape creation like `addGeometricShape(...)`, direct `.left/.top/.width/.height` updates, fill control, and z-order adjustments when the higher-level tools are too constraining.
+- If a newly created geometric shape has invisible fill despite a successful `setSolidColor(...)`, treat that as an OOXML geometry/style bug candidate and repair it with `edit_slide_xml` rather than repeatedly retrying the Office.js fill call.
 - When you need a simple icon fallback, geometric shapes with accent fills and centered text are acceptable.
 - Prefer stable shape refs from `list_slide_shapes` or ids returned by the latest mutation over shape indices when a later edit needs to target an existing object reliably.
 - For `manage_slide_shapes` with `action: "update"`, treat the call as a sparse patch: pass one targeting field (`shapeId`, `shapeIndex`, or `placeholderType`) plus only the properties that should change

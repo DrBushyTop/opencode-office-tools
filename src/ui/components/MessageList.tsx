@@ -212,6 +212,7 @@ const useStyles = makeStyles({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
+    overflowX: "hidden",
     padding: "14px 0 0",
     display: "flex",
     flexDirection: "column",
@@ -240,6 +241,7 @@ const useStyles = makeStyles({
     margin: "0 auto",
     padding: "0 14px 24px",
     boxSizing: "border-box",
+    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
     gap: "18px",
@@ -302,6 +304,7 @@ const useStyles = makeStyles({
     width: "100%",
     minWidth: 0,
     boxSizing: "border-box",
+    overflow: "hidden",
     color: "var(--text-strong)",
     "& p:first-child": {
       marginTop: 0,
@@ -314,6 +317,8 @@ const useStyles = makeStyles({
     width: "100%",
     minWidth: 0,
     boxSizing: "border-box",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
     lineHeight: "1.6",
     color: "var(--text-strong)",
     "& pre": {
@@ -327,6 +332,14 @@ const useStyles = makeStyles({
       background: "var(--oc-bg-soft)",
       borderRadius: "6px",
       padding: "1px 4px",
+    },
+    "& table": {
+      display: "block",
+      overflowX: "auto",
+      maxWidth: "100%",
+    },
+    "& a": {
+      wordBreak: "break-all",
     },
   },
   messageThinking: {
