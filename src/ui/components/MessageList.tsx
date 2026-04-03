@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useRef, useEffect, useLayoutEffect, useState } from "react";
-import { makeStyles } from "@fluentui/react-components";
+import { makeStyles, mergeClasses } from "@fluentui/react-components";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { z } from "zod";
@@ -241,10 +241,12 @@ const useStyles = makeStyles({
     margin: "0 auto",
     padding: "0 14px 24px",
     boxSizing: "border-box",
-    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
     gap: "18px",
+    flexShrink: 0,
+  },
+  contentEmpty: {
     minHeight: "100%",
   },
   emptyState: {
@@ -304,7 +306,7 @@ const useStyles = makeStyles({
     width: "100%",
     minWidth: 0,
     boxSizing: "border-box",
-    overflow: "hidden",
+    overflowX: "hidden",
     color: "var(--text-strong)",
     "& p:first-child": {
       marginTop: 0,
@@ -1018,7 +1020,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   return (
     <div ref={chatRef} className={styles.chatContainer}>
-      <div className={styles.content}>
+      <div className={mergeClasses(styles.content, visibleMessages.length === 0 ? styles.contentEmpty : undefined)}>
         {visibleMessages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
             <div className={styles.emptyTitle}>What can I do for you?</div>
