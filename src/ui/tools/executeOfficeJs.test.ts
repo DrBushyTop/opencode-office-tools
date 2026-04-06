@@ -90,6 +90,27 @@ describe("executeOfficeJs helpers", () => {
     expect(result.logs).toEqual([{ level: "info", values: ["[FakeOfficeObject]"] }]);
     expect(result.result).toBe("[FakeOfficeObject]");
   });
+  it("populates external logs array when provided", async () => {
+    vi.stubGlobal("PowerPoint", {});
+    vi.stubGlobal("Office", {});
+    const context = {
+      sync: vi.fn().mockResolvedValue(undefined),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext;
+
+    const externalLogs: Array<{ level: string; values: unknown[] }> = [];
+    const result = await executePowerPointOfficeJs(
+      "console.log('step 1'); console.warn('step 2'); return 'done';",
+      context,
+      externalLogs,
+    );
+
+    expect(result.logs).toBe(externalLogs);
+    expect(externalLogs).toHaveLength(2);
+    expect(externalLogs[0]).toEqual({ level: "log", values: ["step 1"] });
+    expect(externalLogs[1]).toEqual({ level: "warn", values: ["step 2"] });
+    expect(result.result).toBe("done");
+  });
 });
 
 describe("executeOfficeJs tool", () => {
@@ -138,5 +159,47 @@ describe("executeOfficeJs tool", () => {
       hasResult: false,
       usedExplicitResult: false,
     });
+  });
+
+  it("includes console logs captured before an error in the failure message", async () => {
+    const run = vi.fn(async (callback: (context: PowerPoint.RequestContext) => Promise<unknown>) => callback({
+      sync: vi.fn().mockRejectedValue(Object.assign(new Error("InvalidArgument"), { code: "InvalidArgument" })),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext));
+
+    vi.stubGlobal("PowerPoint", { run });
+    vi.stubGlobal("Office", {});
+
+    const result = await executeOfficeJs.handler({
+      code: "console.log('creating shapes'); console.warn('about to sync'); await sync();",
+    }) as { resultType: string; error: string; textResultForLlm: string };
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("InvalidArgument");
+    expect(result.error).toContain("Console output before error");
+    expect(result.error).toContain("[log] creating shapes");
+    expect(result.error).toContain("[warn] about to sync");
+  });
+
+  it("includes debugInfo.errorLocation in the failure message", async () => {
+    const officeError = Object.assign(new Error("InvalidArgument"), {
+      code: "InvalidArgument",
+      debugInfo: { message: "The argument is invalid or missing", errorLocation: "Shapes.addGeometricShape" },
+    });
+    const run = vi.fn(async (callback: (context: PowerPoint.RequestContext) => Promise<unknown>) => callback({
+      sync: vi.fn().mockRejectedValue(officeError),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext));
+
+    vi.stubGlobal("PowerPoint", { run });
+    vi.stubGlobal("Office", {});
+
+    const result = await executeOfficeJs.handler({
+      code: "await sync();",
+    }) as { resultType: string; error: string };
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("Shapes.addGeometricShape");
+    expect(result.error).toContain("The argument is invalid or missing");
   });
 });

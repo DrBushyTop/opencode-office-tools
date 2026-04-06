@@ -18,6 +18,7 @@ const RELATIONSHIP_TYPE_SLIDE = "http://schemas.openxmlformats.org/officeDocumen
 const RELATIONSHIP_TYPE_NOTES_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 const RELATIONSHIP_TYPE_NOTES_MASTER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster";
 const CONTENT_TYPE_NOTES_SLIDE = "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
+const CONTENT_TYPE_NOTES_MASTER = "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml";
 const ANIMATABLE_SHAPE_LOCAL_NAMES = new Set(["sp", "cxnSp", "pic", "graphicFrame", "grpSp", "contentPart"]);
 const ELEMENT_NODE = 1;
 const EMUS_PER_POINT = 12700;
@@ -447,6 +448,45 @@ function buildNotesSlideXml() {
   </p:cSld>
   <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:notes>`;
+}
+
+function buildNotesMasterXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:notesMaster xmlns:a="${NS_A}" xmlns:p="${NS_P}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr>
+        <p:cNvPr id="1" name=""/>
+        <p:cNvGrpSpPr/>
+        <p:nvPr/>
+      </p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+</p:notesMaster>`;
+}
+
+/**
+ * Synthesize a minimal notes master in the package when one doesn't exist.
+ * This happens for presentations created entirely via the Office.js API.
+ * Returns the path of the (existing or newly created) notes master.
+ */
+function ensureNotesMaster(pkg: OpenXmlPackage): string {
+  const existing = getNotesMasterPath(pkg);
+  if (existing) return existing;
+
+  const notesMasterPath = "ppt/notesMasters/notesMaster1.xml";
+  pkg.writeText(notesMasterPath, buildNotesMasterXml());
+  ensureContentTypeOverride(pkg, notesMasterPath, CONTENT_TYPE_NOTES_MASTER);
+  return notesMasterPath;
 }
 
 function getTransitionEffectDetails(transition: Element) {
@@ -1391,10 +1431,7 @@ function setSlideTransitionInDocument(slideDoc: XMLDocument, definition: SlideTr
 }
 
 function ensureNotesSlide(pkg: OpenXmlPackage, slidePath: string) {
-  const notesMasterPath = getNotesMasterPath(pkg);
-  if (!notesMasterPath) {
-    throw new Error("The exported slide package does not contain a notes master. This PowerPoint host cannot round-trip speaker notes through the current Open XML fallback.");
-  }
+  const notesMasterPath = ensureNotesMaster(pkg);
 
   const { relsPath: slideRelsPath, doc: slideRelsDoc } = getOrCreateRelationshipsDoc(pkg, slidePath);
   const existingNotesRelationship = getRelationshipTarget(slideRelsDoc, RELATIONSHIP_TYPE_NOTES_SLIDE);

@@ -9,7 +9,7 @@ import { applyDefaultTaskpaneWidth } from "./lib/taskpaneWidth";
 
 declare global {
   interface Window {
-    __opencodeTaskpaneBoot?: (entry: { level: "info" | "warn" | "error"; tag: string; message: string; detail?: unknown }) => void;
+    __opencodeTaskpaneBoot?: (entry: { level: "info" | "warn" | "error"; tag: string; message: string; detail?: unknown; _skipRemote?: boolean }) => void;
   }
 }
 
@@ -31,7 +31,10 @@ const OfficeReadyInfoSchema = z.object({
 
 function emitBootEvent(level: LogLevel, tag: string, message: string, detail?: unknown) {
   const event = BootEventSchema.parse({ level, tag, message, detail });
-  window.__opencodeTaskpaneBoot?.(event);
+  // Pass _skipRemote so the inline boot monitor updates its UI but does NOT
+  // call sendBootLog — remoteLog below is the single remote transport,
+  // preventing duplicate POST /api/log requests and double terminal output.
+  window.__opencodeTaskpaneBoot?.({ ...event, _skipRemote: true });
   remoteLog(tag, message, detail, level);
 }
 

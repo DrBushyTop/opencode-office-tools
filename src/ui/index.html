@@ -62,7 +62,11 @@
                     detail: stringifyDetail(entry.detail),
                 };
                 bootEntries.push(normalized);
-                sendBootLog(normalized);
+                // Skip remote log when called from bundled code (which uses
+                // remoteLog directly) to avoid double POST to /api/log.
+                if (!entry._skipRemote) {
+                    sendBootLog(normalized);
+                }
                 renderBootLog();
 
                 if (entry.level === 'error') {

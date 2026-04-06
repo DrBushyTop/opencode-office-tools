@@ -76,7 +76,7 @@ function validateAutosizeShapeIds(autosizeShapeIds: string[]) {
 
 export const editSlideXml: Tool = {
   name: "edit_slide_xml",
-  description: "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip.",
+  description: "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip. Use for batch text edits, advanced formatting, structural shape work, and any single-slide edit that benefits from full OOXML fidelity. Prefer this over execute_office_js for text editing and formatting work.",
   parameters: {
     type: "object",
     properties: {

@@ -644,7 +644,7 @@
   },
   "execute_office_js": {
     "hosts": ["powerpoint"],
-    "description": "Primary Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context) for custom visualizations, advanced shape work, slide creation, positioning, fills, and host operations the higher-level tools cannot express cleanly.",
+    "description": "Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context). Use only when the higher-level tools (manage_slide_shapes, edit_slide_xml, edit_slide_text, etc.) cannot express the operation cleanly. Do not use for batch shape creation or text formatting that edit_slide_xml or manage_slide_shapes can handle.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -701,7 +701,7 @@
   },
   "edit_slide_xml": {
     "hosts": ["powerpoint"],
-    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip. Use it for structural OOXML repairs that Office.js cannot express cleanly, including shape geometry and style fixes.",
+    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip. Use for batch text edits across multiple shapes, advanced formatting, structural shape work, shape geometry and style fixes, and any single-slide edit that benefits from full OOXML fidelity. Prefer this over execute_office_js for text editing and formatting work.",
     "mutating": true,
     "parameters": {
       "type": "object",

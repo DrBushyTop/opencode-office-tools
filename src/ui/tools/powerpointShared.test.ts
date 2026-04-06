@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeError,
   formatAvailableShapeTargets,
   invalidSlideIndexMessage,
   roundTripRefreshHint,
@@ -53,5 +54,43 @@ describe("powerpointShared", () => {
   it("separates shape and slide refresh hints", () => {
     expect(roundTripRefreshHint()).toContain("shapeId values");
     expect(roundTripSlideRefreshHint()).not.toContain("shapeId values");
+  });
+
+  describe("describeError with Office.js debugInfo", () => {
+    it("skips redundant [code] suffix when code equals message", () => {
+      const error = Object.assign(new Error("InvalidArgument"), { code: "InvalidArgument" });
+      expect(describeError(error)).toBe("InvalidArgument");
+    });
+
+    it("includes [code] suffix when code differs from message", () => {
+      const error = Object.assign(new Error("Something went wrong"), { code: "GeneralException" });
+      expect(describeError(error)).toBe("Something went wrong [GeneralException]");
+    });
+
+    it("includes debugInfo.errorLocation when available", () => {
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: { errorLocation: "Shapes.addGeometricShape" },
+      });
+      expect(describeError(error)).toContain("Shapes.addGeometricShape");
+    });
+
+    it("includes debugInfo.message when it differs from both message and code", () => {
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: { message: "The argument is invalid or missing", errorLocation: "Fill.setSolidColor" },
+      });
+      const result = describeError(error);
+      expect(result).toContain("The argument is invalid or missing");
+      expect(result).toContain("Fill.setSolidColor");
+    });
+
+    it("does not duplicate debugInfo.message when it matches the error message", () => {
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: { message: "InvalidArgument" },
+      });
+      expect(describeError(error)).toBe("InvalidArgument");
+    });
   });
 });

@@ -3,5 +3,6 @@ dist/
 build/
 .DS_Store
 opencode-repo
+reference-repo
 .opencode/debug.log
 .development

@@ -1,10 +1,9 @@
 import * as React from "react";
 import { makeStyles, Button, Text } from "@fluentui/react-components";
-import { Delete24Regular, Dismiss24Regular } from "@fluentui/react-icons";
+import { Delete24Regular, ArrowLeft24Regular } from "@fluentui/react-icons";
 import { z } from "zod";
 import type { OfficeHost } from "../sessionStorage";
 import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/opencode-session-history";
-import { getOfficeHostLabel } from "../lib/officeHost";
 
 const SessionInfoSchema = z.object({
   id: z.string().min(1),
@@ -31,61 +30,27 @@ const useStyles = makeStyles({
     flex: 1,
     minHeight: 0,
     background: "var(--oc-bg)",
-    borderLeft: "1px solid var(--oc-border)",
   },
   header: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
     gap: "10px",
-    padding: "16px 16px 12px",
+    padding: "14px 14px 12px",
     borderBottom: "1px solid var(--oc-border)",
-    background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-soft) 72%, transparent), transparent)",
-  },
-  headerCopy: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: 0,
-  },
-  headerEyebrow: {
-    fontSize: "11px",
-    fontWeight: "700",
-    color: "var(--oc-text-faint)",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    background: "var(--oc-bg)",
   },
   headerTitle: {
     fontWeight: "700",
-    fontSize: "15px",
+    fontSize: "13px",
     color: "var(--oc-text)",
-  },
-  headerHint: {
-    fontSize: "12px",
-    color: "var(--oc-text-faint)",
-    lineHeight: "1.5",
-  },
-  closeButton: {
-    minWidth: "30px",
-    width: "30px",
-    height: "30px",
-    padding: "4px",
-    borderRadius: "8px",
-    color: "var(--oc-text-muted)",
-    background: "transparent",
-    border: "1px solid transparent",
-    ":hover": {
-      background: "var(--oc-bg-soft)",
-      color: "var(--oc-text)",
-      border: "1px solid var(--oc-border)",
-    },
+    letterSpacing: "0.01em",
   },
   filterRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "10px",
-    padding: "12px 16px",
+    padding: "12px 14px",
     borderBottom: "1px solid var(--oc-border)",
     background: "var(--oc-bg)",
   },
@@ -112,11 +77,26 @@ const useStyles = makeStyles({
     borderRadius: "999px",
     height: "28px",
   },
+  backButton: {
+    minWidth: "30px",
+    width: "30px",
+    height: "30px",
+    padding: "4px",
+    borderRadius: "8px",
+    color: "var(--oc-text-muted)",
+    background: "transparent",
+    border: "1px solid transparent",
+    ":hover": {
+      background: "var(--oc-bg-soft)",
+      color: "var(--oc-text)",
+      border: "1px solid var(--oc-border)",
+    },
+  },
   list: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "12px",
+    padding: "10px",
     scrollbarColor: "var(--oc-text-faint) transparent",
     scrollbarWidth: "thin",
     "&::-webkit-scrollbar": {
@@ -132,6 +112,9 @@ const useStyles = makeStyles({
       backgroundClip: "content-box",
       opacity: 0.45,
     },
+    "&::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "var(--oc-text-muted)",
+    },
   },
   emptyState: {
     display: "flex",
@@ -144,12 +127,12 @@ const useStyles = makeStyles({
     padding: "24px",
     textAlign: "center",
   },
-  sessionItem: {
+  entryRow: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: "10px",
     padding: "12px",
-    borderRadius: "14px",
+    borderRadius: "12px",
     cursor: "pointer",
     marginBottom: "8px",
     background: "var(--oc-bg-soft)",
@@ -162,15 +145,12 @@ const useStyles = makeStyles({
       boxShadow: "0 10px 24px rgba(0,0,0,0.08)",
     },
   },
-  sessionContent: {
+  entryBody: {
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
   },
-  sessionTitle: {
+  entryTitle: {
     fontSize: "13px",
     fontWeight: "600",
     whiteSpace: "nowrap",
@@ -178,14 +158,14 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     color: "var(--oc-text)",
   },
-  sessionMeta: {
+  entryDetail: {
     fontSize: "11px",
     color: "var(--oc-text-faint)",
+    marginTop: "4px",
     display: "flex",
     gap: "8px",
-    flexWrap: "wrap",
   },
-  deleteButton: {
+  removeAction: {
     minWidth: "28px",
     width: "28px",
     height: "28px",
@@ -199,19 +179,23 @@ const useStyles = makeStyles({
   },
 });
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+/** Convert an ISO date string into a compact relative label. */
+function describeRecency(isoString: string): string {
+  const then = new Date(isoString).getTime();
+  const elapsed = Date.now() - then;
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (elapsed < 60_000) return "Moments ago";
+
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(elapsed / 86_400_000);
+  if (days < 7) return `${days}d ago`;
+
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(isoString));
 }
 
 export const SessionHistory: React.FC<SessionHistoryProps> = ({
@@ -230,7 +214,7 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
       .catch(() => setSessions([]));
   }, [host, shared]);
 
-  const handleDelete = (e: React.MouseEvent, sessionId: string) => {
+  const removeEntry = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     deleteSession(sessionId)
       .then(() => listSessions(host, shared))
@@ -238,27 +222,22 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
       .catch(() => setSessions([]));
   };
 
-  const hostLabel = getOfficeHostLabel(host);
+  const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : host === "excel" ? "Excel" : "OneNote";
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.headerCopy}>
-          <Text className={styles.headerEyebrow}>{hostLabel}</Text>
-          <Text className={styles.headerTitle}>Saved chats</Text>
-          <Text className={styles.headerHint}>Jump back into a previous session without leaving the current workspace.</Text>
-        </div>
         <Button
-          icon={<Dismiss24Regular />}
+          icon={<ArrowLeft24Regular />}
           appearance="subtle"
-          className={styles.closeButton}
+          className={styles.backButton}
           onClick={onClose}
-          aria-label="Close history"
+          aria-label="Back"
         />
+        <Text className={styles.headerTitle}>{hostLabel} History</Text>
       </div>
-
       <div className={styles.filterRow}>
-        <Text className={styles.filterLabel}>Scope</Text>
+        <Text className={styles.filterLabel}>Show</Text>
         <div className={styles.filterGroup}>
           <Button
             appearance={shared ? "subtle" : "primary"}
@@ -280,20 +259,20 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
       <div className={styles.list}>
         {sessions.length === 0 ? (
           <div className={styles.emptyState}>
-            No saved conversations yet.<br />
-            Start chatting to create one.
+            Nothing here yet.<br />
+            Your conversations will appear once you start chatting.
           </div>
         ) : (
           sessions.map((session) => (
             <div
               key={session.id}
-              className={styles.sessionItem}
+              className={styles.entryRow}
               onClick={() => onSelectSession(session)}
             >
-              <div className={styles.sessionContent}>
-                <div className={styles.sessionTitle}>{session.title}</div>
-                <div className={styles.sessionMeta}>
-                  <span>{formatDate(new Date(session.time.updated).toISOString())}</span>
+              <div className={styles.entryBody}>
+                <div className={styles.entryTitle}>{session.title}</div>
+                <div className={styles.entryDetail}>
+                  <span>{describeRecency(new Date(session.time.updated).toISOString())}</span>
                   <span>•</span>
                   <span>{session.directory.split(/[\\/]/).pop() || session.directory}</span>
                 </div>
@@ -301,8 +280,8 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
               <Button
                 icon={<Delete24Regular />}
                 appearance="subtle"
-                className={styles.deleteButton}
-                onClick={(e) => handleDelete(e, session.id)}
+                className={styles.removeAction}
+                onClick={(e) => removeEntry(e, session.id)}
                 aria-label="Delete session"
               />
             </div>

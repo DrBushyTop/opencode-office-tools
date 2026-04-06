@@ -36,7 +36,7 @@ This document lists all available tools that OpenCode can use when working with 
 | `add_slide_animation` | Add a slide animation through an Open XML fallback with timing control; supports motion paths, scale emphasis, and rotation, and replaces the slide in the deck. |
 | `clear_slide_animations` | Remove all animations from a slide through an Open XML fallback; this replaces the slide in the deck. |
 | `get_slide_animations` | Inspect the animation sequence on a slide, including effect types, targets, timing, and order. |
-| `execute_office_js` | Primary Office.js escape hatch for the live PowerPoint deck. Use it for custom visualizations, geometric shapes, slide insertion/movement, fills, z-order, and other host operations the higher-level tools do not cover cleanly. |
+| `execute_office_js` | Office.js escape hatch for the live PowerPoint deck. Use only when the higher-level tools cannot express the operation cleanly. Do not use for batch shape creation or text formatting that `edit_slide_xml` or `manage_slide_shapes` can handle. |
 | `get_slide_notes` | Read speaker notes by exporting slides through an Open XML fallback when the native PowerPoint API does not expose notes directly. |
 | `get_slide_transition` | Inspect a slide transition through an Open XML fallback. |
 | `list_slide_shapes` | List shapes on a slide and return stable shape refs you can reuse across the new PowerPoint text and chart workflow. |
@@ -133,7 +133,7 @@ Suggested pattern:
 4. Keep `set_document_part` for headers, footers, section setup, and native TOC work
 
 ### PowerPoint: Prefer Native Tools Before Code
-Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring. Keep `execute_office_js` as an advanced escape hatch for custom visualizations or unsupported host operations.
+Inspect first, then route to the narrowest native tool that matches the task. Use `list_slide_layouts` + `create_slide_from_layout` for layout-driven slide creation, `list_slide_shapes` + `read_slide_text`/`edit_slide_text`/`edit_slide_xml` for stable text-shape editing, `edit_slide_chart` for native charts, and `manage_slide`, `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for broader slide authoring. Keep `execute_office_js` as a last-resort escape hatch for operations the higher-level tools cannot express.
 
 Suggested workflow:
 1. Use `get_presentation_overview`, `get_presentation_structure`, and `list_slide_layouts` to understand the deck, slide size, theme, and available layouts.
@@ -143,7 +143,7 @@ Suggested workflow:
 5. Use `edit_slide_xml` as the general single-slide OOXML editor for diagrams, advanced formatting, and structural XML edits on one slide.
 6. If multiple existing text boxes on one slide need copy changes, do not default to one-by-one `manage_slide_shapes` updates.
 7. Use `edit_slide_chart` for chart updates and `edit_slide_master` for supported master/theme changes.
-8. Use `execute_office_js` for host-native PowerPoint work such as `addGeometricShape(...)`, slide insertion or movement, fills, and z-order when the higher-level tools are too limiting.
+8. Use `execute_office_js` only as a last resort for host-native operations the higher-level tools cannot express.
 9. Keep `manage_slide_shapes`, `manage_slide_media`, and `manage_slide_table` for geometry, styling, native media, and native table operations.
 7. Refresh slide ids, shape ids, or shape refs after round-trip mutations before making the next targeted edit.
 

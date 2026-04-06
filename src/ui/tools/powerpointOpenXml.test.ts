@@ -922,6 +922,53 @@ describe("replaceSlideWithMutatedOpenXml", () => {
 
     expect(extractSpeakerNotesFromBase64Presentation(mutated)).toBe("Canonical notes");
   });
+
+  it("synthesizes a notes master when the package has none", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+      // No notesMasters entry at all
+    });
+
+    const mutated = setSpeakerNotesInBase64Presentation(base64, "Notes without master");
+    const pkg = new OpenXmlPackage(mutated);
+
+    // The notes master was synthesized
+    expect(pkg.has("ppt/notesMasters/notesMaster1.xml")).toBe(true);
+    const notesMasterXml = pkg.readText("ppt/notesMasters/notesMaster1.xml");
+    expect(notesMasterXml).toContain("notesMaster");
+
+    // Content type was registered for the notes master
+    const contentTypes = pkg.readText("[Content_Types].xml");
+    expect(contentTypes).toContain("/ppt/notesMasters/notesMaster1.xml");
+    expect(contentTypes).toContain("notesMaster+xml");
+
+    // The notes slide was created and linked correctly
+    expect(pkg.has("ppt/notesSlides/notesSlide1.xml")).toBe(true);
+    const notesRels = pkg.readText("ppt/notesSlides/_rels/notesSlide1.xml.rels");
+    expect(notesRels).toContain("relationships/notesMaster");
+    expect(notesRels).toContain("notesMaster1.xml");
+
+    // Round-trip: notes are readable
+    expect(extractSpeakerNotesFromBase64Presentation(mutated)).toBe("Notes without master");
+  });
+
+  it("does not duplicate the notes master when one already exists", () => {
+    const base64 = createPresentationBase64({
+      "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/><Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/></Types>',
+      "ppt/slides/slide1.xml": baseSlideXml(),
+      "ppt/notesMasters/notesMaster1.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:notesMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>',
+    });
+
+    const mutated = setSpeakerNotesInBase64Presentation(base64, "Existing master notes");
+    const pkg = new OpenXmlPackage(mutated);
+
+    // Only one notes master exists (the original)
+    const notesMasterPaths = pkg.listPaths().filter((p: string) => /notesMasters\/notesMaster\d+\.xml$/.test(p));
+    expect(notesMasterPaths).toHaveLength(1);
+
+    expect(extractSpeakerNotesFromBase64Presentation(mutated)).toBe("Existing master notes");
+  });
 });
 
 describe("slide export cache", () => {

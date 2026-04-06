@@ -60,12 +60,6 @@ const SessionMessageItemSchema = z.object({
 export type Message = z.infer<typeof MessageSchema>;
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
-type MessageSection = {
-  key: string;
-  sender: Message["sender"];
-  items: Message[];
-};
-
 function summarizeTaskTool(args: Record<string, unknown>) {
   const parsed = TaskToolArgsSchema.safeParse(args);
   const subagentType = parsed.success && parsed.data.subagent_type ? parsed.data.subagent_type : "subagent";
@@ -120,34 +114,6 @@ function toolCountText(count: number, running: boolean) {
   if (count === 0) return running ? "Waiting for first tool call" : "No tool calls used";
   const label = `${count} tool call${count === 1 ? "" : "s"}`;
   return running ? `${label} so far` : label;
-}
-
-function buildMessageSections(messages: Message[]): MessageSection[] {
-  return messages.reduce<MessageSection[]>((sections, message) => {
-    const previous = sections[sections.length - 1];
-    if (!previous || previous.sender !== message.sender) {
-      sections.push({ key: `${message.sender}-${message.id}`, sender: message.sender, items: [message] });
-      return sections;
-    }
-
-    previous.items.push(message);
-    return sections;
-  }, []);
-}
-
-function sectionTitle(sender: Message["sender"]) {
-  switch (sender) {
-    case "user":
-      return "You";
-    case "assistant":
-      return "OpenCode";
-    case "tool":
-      return "Tool activity";
-    case "thinking":
-      return "Reasoning";
-    default:
-      return "Session";
-  }
 }
 
 function useTaskInfo(sessionId: string, active: boolean) {
@@ -271,7 +237,7 @@ const useStyles = makeStyles({
   },
   content: {
     width: "100%",
-    maxWidth: "820px",
+    maxWidth: "760px",
     margin: "0 auto",
     padding: "0 14px 24px",
     boxSizing: "border-box",
@@ -295,7 +261,7 @@ const useStyles = makeStyles({
     gap: "10px",
   },
   emptyTitle: {
-    fontSize: "24px",
+    fontSize: "26px",
     lineHeight: "1.2",
     color: "var(--text-strong)",
     fontWeight: "500",
@@ -303,35 +269,6 @@ const useStyles = makeStyles({
   emptyMeta: {
     fontSize: "13px",
     color: "var(--text-base)",
-    maxWidth: "520px",
-    lineHeight: "1.6",
-  },
-  section: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  sectionTitle: {
-    fontSize: "11px",
-    fontWeight: "700",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    color: "var(--oc-text-faint)",
-  },
-  sectionLine: {
-    flex: 1,
-    height: "1px",
-    background: "color-mix(in srgb, var(--oc-border) 72%, transparent)",
-  },
-  sectionBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
   },
   assistantIcon: {
     display: "none",
@@ -713,28 +650,28 @@ const useStyles = makeStyles({
   },
 });
 
-// Animated dots component for streaming indicator
-const StreamingDots: React.FC = () => {
+// Pulsing dot indicator rendered during active streaming
+const PulsingIndicator: React.FC = () => {
   return (
     <>
       <style>
         {`
-          @keyframes pulse-dot {
+          @keyframes indicator-fade {
             0%, 100% { opacity: 0.3; }
             50% { opacity: 1; }
           }
-          .streaming-dot {
+          .indicator-pip {
             width: 4px;
             height: 4px;
             border-radius: 50%;
             background-color: var(--text-weak, #666);
-            animation: pulse-dot 1.4s ease-in-out infinite;
+            animation: indicator-fade 1.4s ease-in-out infinite;
           }
-          @keyframes progress-slide {
+          @keyframes bar-sweep {
             0% { transform: translateX(-100%); }
             100% { transform: translateX(400%); }
           }
-          .activity-progress-bar {
+          .sweep-track {
             height: 2px;
             width: 100%;
             border-radius: 1px;
@@ -742,50 +679,58 @@ const StreamingDots: React.FC = () => {
             overflow: hidden;
             margin-top: 6px;
           }
-          .activity-progress-fill {
+          .sweep-fill {
             height: 100%;
             width: 25%;
             border-radius: 1px;
             background: var(--oc-accent, #0078d4);
-            animation: progress-slide 1.5s ease-in-out infinite;
+            animation: bar-sweep 1.5s ease-in-out infinite;
           }
         `}
       </style>
       <span style={{ display: 'inline-flex', gap: '3px', marginLeft: '2px' }}>
-        <span className="streaming-dot" style={{ animationDelay: '0s' }} />
-        <span className="streaming-dot" style={{ animationDelay: '0.2s' }} />
-        <span className="streaming-dot" style={{ animationDelay: '0.4s' }} />
+        <span className="indicator-pip" style={{ animationDelay: '0s' }} />
+        <span className="indicator-pip" style={{ animationDelay: '0.2s' }} />
+        <span className="indicator-pip" style={{ animationDelay: '0.4s' }} />
       </span>
     </>
   );
 };
 
-// Elapsed time counter
-const ElapsedTime: React.FC = () => {
-  const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(Date.now());
+// Wall-clock timer shown once the response has been running a few seconds
+const RunTimer: React.FC = () => {
+  const [seconds, setSeconds] = useState(0);
+  const originRef = useRef(Date.now());
 
   useEffect(() => {
-    startRef.current = Date.now();
-    setElapsed(0);
-    const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    originRef.current = Date.now();
+    setSeconds(0);
+    const handle = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - originRef.current) / 1000));
     }, 1000);
-    return () => clearInterval(interval);
+    return () => clearInterval(handle);
   }, []);
 
-  if (elapsed < 3) return null;
+  if (seconds < 3) return null;
   return (
     <span style={{ fontSize: '11px', color: 'var(--text-weak, #999)', marginLeft: '6px' }}>
-      {elapsed}s
+      {seconds}s
     </span>
   );
 };
 
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
+
+function humanizeBytes(raw: number): string {
+  let value = Math.max(0, raw);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return unitIndex === 0
+    ? `${Math.round(value)} ${BYTE_UNITS[unitIndex]}`
+    : `${value.toFixed(1)} ${BYTE_UNITS[unitIndex]}`;
 }
 
 function cleanThinking(value: string) {
@@ -842,22 +787,24 @@ function liveStatusText(messages: Message[], activity?: string) {
   return "Working";
 }
 
-// Live traffic counter that polls trafficStats (reset by App before each query)
-const TrafficCounter: React.FC = () => {
-  const [stats, setStats] = useState({ bytesIn: 0, bytesOut: 0 });
-  const prevInRef = useRef(0);
-  const [flash, setFlash] = useState(false);
+// Bandwidth usage display — polls the shared trafficStats counters
+const BandwidthMeter: React.FC = () => {
+  const [rx, setRx] = useState(0);
+  const [tx, setTx] = useState(0);
+  const lastRxRef = useRef(0);
+  const [highlight, setHighlight] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStats({ bytesIn: trafficStats.bytesIn, bytesOut: trafficStats.bytesOut });
-      if (trafficStats.bytesIn !== prevInRef.current) {
-        prevInRef.current = trafficStats.bytesIn;
-        setFlash(true);
-        setTimeout(() => setFlash(false), 200);
+    const tick = setInterval(() => {
+      setRx(trafficStats.bytesIn);
+      setTx(trafficStats.bytesOut);
+      if (trafficStats.bytesIn !== lastRxRef.current) {
+        lastRxRef.current = trafficStats.bytesIn;
+        setHighlight(true);
+        setTimeout(() => setHighlight(false), 200);
       }
     }, 250);
-    return () => clearInterval(interval);
+    return () => clearInterval(tick);
   }, []);
 
   return (
@@ -871,10 +818,10 @@ const TrafficCounter: React.FC = () => {
       marginLeft: '8px',
       transition: 'color 0.2s',
     }}>
-      <span style={{ color: flash ? 'var(--oc-accent, #0078d4)' : undefined, transition: 'color 0.2s' }}>
-        ↓{formatBytes(stats.bytesIn)}
+      <span style={{ color: highlight ? 'var(--oc-accent, #0078d4)' : undefined, transition: 'color 0.2s' }}>
+        ↓{humanizeBytes(rx)}
       </span>
-      <span>↑{formatBytes(stats.bytesOut)}</span>
+      <span>↑{humanizeBytes(tx)}</span>
     </span>
   );
 };
@@ -1080,15 +1027,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     () => coalesceTranscriptMessages(visibleHistory, visibleLive),
     [visibleHistory, visibleLive],
   );
-  const messageSections = React.useMemo(() => buildMessageSections(visibleMessages), [visibleMessages]);
 
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={mergeClasses(styles.content, visibleMessages.length === 0 ? styles.contentEmpty : undefined)}>
         {visibleMessages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
-            <div className={styles.emptyTitle}>Ready when you are.</div>
-            <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}. Ask for edits, analysis, slide work, or spreadsheet cleanup.` : "Connected to your document. Ask for edits, analysis, or automation help."}</div>
+            <div className={styles.emptyTitle}>What can I do for you?</div>
+            <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}` : "Connected to your document"}</div>
           </div>
         )}
 
@@ -1098,68 +1044,58 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {messageSections.map((section) => (
-          <div key={section.key} className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionTitle}>{sectionTitle(section.sender)}</span>
-              <div className={styles.sectionLine} />
-            </div>
-            <div className={styles.sectionBody}>
-              {section.items.map((message) => {
-                const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
-                const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
+        {visibleMessages.map((message) => {
+          const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
+          const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
 
-                return (
-                  <div
-                    key={message.id}
-                    className={
-                      message.sender === "user"
-                        ? styles.messageUser
-                        : message.sender === "tool"
-                          ? undefined
-                          : message.sender === "thinking"
-                            ? styles.messageThinking
-                            : styles.messageAssistant
-                    }
-                  >
-                    {message.sender === "tool" ? (
-                      <ToolMessage
-                        message={message}
-                        expanded={expandedTools.has(message.id)}
-                        toggle={() => toggleTool(message.id)}
-                        showToolResponses={showToolResponses}
-                      />
-                    ) : message.sender === "assistant" ? (
-                      <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
-                    ) : message.sender === "thinking" ? (
-                      <>
-                        <div className={styles.thinkingHeader}>
-                          <span className={styles.thinkingLabel}>Thinking</span>
-                          <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
-                        </div>
-                        {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
-                      </>
-                    ) : (
-                      <div className={styles.userBody}>
-                        {message.images && message.images.length > 0 && (
-                          <div className={styles.attachmentContainer}>
-                            {message.images.map((img, idx) => (
-                              <div key={idx}>
-                                <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
-                                <div className={styles.attachmentBadge}>📎 {img.name}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div className={styles.userText}>{message.text}</div>
-                      </div>
-                    )}
+          return (
+            <div
+              key={message.id}
+              className={
+                message.sender === "user"
+                  ? styles.messageUser
+                  : message.sender === "tool"
+                    ? undefined
+                    : message.sender === "thinking"
+                      ? styles.messageThinking
+                      : styles.messageAssistant
+              }
+            >
+              {message.sender === "tool" ? (
+                <ToolMessage
+                  message={message}
+                  expanded={expandedTools.has(message.id)}
+                  toggle={() => toggleTool(message.id)}
+                  showToolResponses={showToolResponses}
+                />
+              ) : message.sender === "assistant" ? (
+                <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
+              ) : message.sender === "thinking" ? (
+                <>
+                  <div className={styles.thinkingHeader}>
+                    <span className={styles.thinkingLabel}>Thinking</span>
+                    <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
                   </div>
-                );
-              })}
+                  {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
+                </>
+              ) : (
+                <div className={styles.userBody}>
+                  {message.images && message.images.length > 0 && (
+                    <div className={styles.attachmentContainer}>
+                      {message.images.map((img, idx) => (
+                        <div key={idx}>
+                          <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
+                          <div className={styles.attachmentBadge}>📎 {img.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className={styles.userText}>{message.text}</div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isTyping && (
           <div className={styles.liveStatusDock}>
@@ -1172,12 +1108,12 @@ export const MessageList: React.FC<MessageListProps> = ({
               <div className={styles.liveStatusMeta}>
                 <span className={styles.streamingIndicator}>
                   Streaming
-                  <StreamingDots />
-                  <ElapsedTime />
+                  <PulsingIndicator />
+                  <RunTimer />
                 </span>
-                <TrafficCounter />
+                <BandwidthMeter />
               </div>
-              <div className="activity-progress-bar"><div className="activity-progress-fill" /></div>
+              <div className="sweep-track"><div className="sweep-fill" /></div>
               {safeDebugEvents && safeDebugEvents.length > 0 && (
                 <div style={{
                   marginTop: '2px',

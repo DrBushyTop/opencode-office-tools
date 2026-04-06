@@ -43,7 +43,22 @@ export function describeError(error: unknown): string {
 export function describeErrorWithCode(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const code = (error as { code?: string }).code;
-  return code ? `${error.message} [${code}]` : error.message;
+  const debugInfo = (error as { debugInfo?: { message?: string; errorLocation?: string } }).debugInfo;
+
+  let base = error.message;
+
+  // Use debugInfo.message if it provides additional detail beyond the base message
+  if (debugInfo?.message && debugInfo.message !== base && debugInfo.message !== code) {
+    base = `${base}: ${debugInfo.message}`;
+  }
+
+  // Append error location from debugInfo (e.g. "Shapes.addGeometricShape")
+  if (debugInfo?.errorLocation) {
+    base = `${base} (at ${debugInfo.errorLocation})`;
+  }
+
+  // Only append [code] if it adds information not already in the message
+  return code && code !== error.message ? `${base} [${code}]` : base;
 }
 
 export function createToolFailure(
