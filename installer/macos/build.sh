@@ -15,7 +15,7 @@ ensure_icon_assets() {
     return
   fi
 
-  echo "Generating icons..."
+  echo "Generating installer icons..."
   (
     cd "${ROOT_DIR}"
     bun run build:icons
@@ -23,7 +23,7 @@ ensure_icon_assets() {
 }
 
 build_desktop_bundle() {
-  echo "Building Electron app..."
+  echo "Building desktop bundle..."
   (
     cd "${ROOT_DIR}"
     bun run clean:extraneous
@@ -79,13 +79,13 @@ write_installer_documents() {
 </head>
 <body>
     <h1>OpenCode Office Add-in</h1>
-    <p>This installer will set up the OpenCode Office Add-in on your Mac.</p>
-    <p>The installer will:</p>
+    <p>This installer prepares OpenCode Office Add-in for local Office sideloading on your Mac.</p>
+    <p>During setup, it will:</p>
     <ul>
-        <li>Install the add-in application to your Applications folder</li>
-        <li>Register the add-in with Word, PowerPoint, Excel, and OneNote</li>
-        <li>Configure the service to start automatically at login</li>
-        <li>Add a menu bar icon for easy access</li>
+        <li>Copy the desktop app into your Applications folder</li>
+        <li>Refresh the OpenCode sideload manifest for Word, PowerPoint, Excel, and OneNote</li>
+        <li>Configure the helper app to start automatically at login</li>
+        <li>Expose a menu bar entry for status and troubleshooting</li>
     </ul>
     <p>Click Continue to proceed with the installation.</p>
 </body>
@@ -104,17 +104,17 @@ EOF
     </style>
 </head>
 <body>
-    <h1>Installation Complete!</h1>
-    <p class="success">✓ OpenCode Office Add-in has been installed successfully.</p>
-    <p>The add-in is now running in your menu bar.</p>
+    <h1>Installation Complete</h1>
+    <p class="success">✓ OpenCode Office Add-in is installed and the local helper has been started.</p>
+    <p>You should now see the app in your menu bar.</p>
     <p><strong>Next steps:</strong></p>
     <ol>
-        <li>Look for the OpenCode icon in your menu bar</li>
+        <li>Confirm the OpenCode icon is visible in your menu bar</li>
         <li>Open Word, PowerPoint, Excel, or OneNote</li>
-        <li>Find the "OpenCode" button on the Home ribbon</li>
-        <li>Click the button to open the OpenCode panel</li>
+        <li>Open the "OpenCode" command from the Home ribbon</li>
+        <li>Wait for the task pane to connect to the local helper</li>
     </ol>
-    <p>The app will start automatically when you log in.</p>
+    <p>The app will relaunch automatically the next time you sign in.</p>
 </body>
 </html>
 EOF
@@ -172,27 +172,27 @@ cleanup_stage_layout() {
 }
 
 main() {
-  echo "Building macOS installer..."
+  echo "Building macOS installer package..."
   ensure_icon_assets
   build_desktop_bundle
 
   local app_bundle
   app_bundle="$(locate_app_bundle)"
-  echo "App location: ${app_bundle}"
+  echo "Resolved app bundle: ${app_bundle}"
 
   prepare_stage_layout
   copy_payload_assets "$app_bundle"
   write_installer_documents
   write_distribution_spec
 
-  echo "Building component package..."
+  echo "Creating component package..."
   build_component_pkg
-  echo "Building distribution package..."
+  echo "Creating distribution package..."
   build_distribution_pkg
   cleanup_stage_layout
 
   echo ""
-  echo "✓ macOS installer built successfully!"
+  echo "✓ macOS installer package built successfully"
   echo "  Output: ${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg"
 }
 

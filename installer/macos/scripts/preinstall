@@ -31,7 +31,7 @@ run_cleanup_action() {
     case "$action_name" in
         unload-launch-agent)
             if [ -f "$action_value" ]; then
-                echo "Stopping existing service..."
+                echo "Stopping any existing login helper..."
                 sudo -u "$install_user" launchctl unload "$action_value" 2>/dev/null || true
             fi
             ;;
@@ -55,7 +55,7 @@ main() {
     run_cleanup_action "$install_user" kill-process "copilot-office-server"
     run_cleanup_action "$install_user" kill-process "opencode-office-server"
 
-    echo "Pre-install cleanup complete"
+    echo "Installer preflight cleanup complete"
 }
 
 main "$@"

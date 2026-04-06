@@ -62,13 +62,11 @@ function Remove-OpenCodeRegistrations {
     return $removed
 }
 
-# Check if running from release (exe exists) or dev (manifest in root)
+# Prefer packaged resources when the desktop bundle is present; otherwise use repo-local assets.
 if (Test-Path $appPath) {
-    # Release mode: certs and manifest are in resources subfolder
     $manifestPath = "$PSScriptRoot\resources\manifest.xml"
     $certPath = "$PSScriptRoot\resources\certs\localhost.pem"
 } else {
-    # Dev mode: certs and manifest are in the repo root
     $manifestPath = "$PSScriptRoot\manifest.xml"
     $certPath = "$PSScriptRoot\certs\localhost.pem"
 }
@@ -76,15 +74,15 @@ if (Test-Path $appPath) {
 $manifestFullPath = (Resolve-Path $manifestPath).Path
 $manifestId = Get-OfficeManifestId -Path $manifestFullPath
 
-Write-Host "Setting up Office Add-in for Windows..." -ForegroundColor Cyan
+Write-Host "Preparing OpenCode Office Add-in on Windows..." -ForegroundColor Cyan
 Write-Host ""
 
-# Step 1: Trust the SSL certificate
-Write-Host "Step 1: Trusting development SSL certificate..." -ForegroundColor Yellow
+# Step 1: Trust the localhost HTTPS certificate used by the local add-in server.
+Write-Host "Step 1: Trusting the localhost HTTPS certificate..." -ForegroundColor Yellow
 
 if (!(Test-Path $certPath)) {
-    Write-Host "Error: Certificate not found at $certPath" -ForegroundColor Red
-    Write-Host "Certificates are required for HTTPS. Please ensure certs are in the repository." -ForegroundColor Red
+    Write-Host "Error: Missing certificate at $certPath" -ForegroundColor Red
+    Write-Host "The local HTTPS endpoint cannot start without it." -ForegroundColor Red
     exit 1
 }
 
@@ -92,22 +90,22 @@ $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate
 $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "CurrentUser")
 $store.Open("ReadWrite")
 
-# Check if certificate is already trusted
+# Reuse trust if the same certificate thumbprint is already installed.
 $existing = $store.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
 if ($existing) {
-    Write-Host "  ✓ Certificate already trusted" -ForegroundColor Green
+    Write-Host "  ✓ Certificate trust is already in place" -ForegroundColor Green
 } else {
     $store.Add($cert)
-    Write-Host "  ✓ Certificate trusted" -ForegroundColor Green
+    Write-Host "  ✓ Certificate trust installed" -ForegroundColor Green
 }
 
 $store.Close()
 
 Write-Host ""
 
-# Step 2: Register manifest
-Write-Host "Step 2: Registering add-in manifest..." -ForegroundColor Yellow
-Write-Host "  Manifest: $manifestFullPath"
+# Step 2: Refresh the Office sideload manifest registration.
+Write-Host "Step 2: Refreshing Office sideload manifest..." -ForegroundColor Yellow
+Write-Host "  Manifest source: $manifestFullPath"
 
 if (!(Test-Path $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
@@ -118,16 +116,16 @@ $removedCount = Remove-OpenCodeRegistrations -ManifestPath $manifestFullPath -Ma
 New-ItemProperty -Path $regPath -Name $registrationName -Value $manifestFullPath -PropertyType String -Force | Out-Null
 
 if ($removedCount -gt 0) {
-    Write-Host "  ✓ Removed $removedCount previous OpenCode registration(s)" -ForegroundColor Green
+    Write-Host "  ✓ Removed $removedCount earlier OpenCode registration(s)" -ForegroundColor Green
 }
 
-Write-Host "  ✓ Add-in registered" -ForegroundColor Green
+Write-Host "  ✓ Office sideload registration updated" -ForegroundColor Green
 Write-Host ""
 
-Write-Host "Setup complete! Next steps:" -ForegroundColor Cyan
+Write-Host "Setup complete. Next steps:" -ForegroundColor Cyan
 Write-Host "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
-Write-Host "2. Start the tray app: bun run start:tray"
+Write-Host "2. Launch the tray runtime: bun run start:tray"
 Write-Host "3. Open Word, PowerPoint, Excel, or OneNote"
 Write-Host "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 Write-Host ""
-Write-Host "To unregister, run: .\unregister.ps1" -ForegroundColor Gray
+Write-Host "To remove the sideload registration later, run: .\unregister.ps1" -ForegroundColor Gray

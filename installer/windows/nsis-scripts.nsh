@@ -9,7 +9,7 @@
 !macroend
 
 !macro OpenCodeInstallCertificate
-  DetailPrint "Installing SSL certificate..."
+  DetailPrint "Trusting localhost HTTPS certificate..."
   !insertmacro OpenCodeRunPowerShell '
     $$certPath = "$INSTDIR\resources\certs\localhost.pem"; \
     if (Test-Path $$certPath) { \
@@ -24,7 +24,7 @@
 !macroend
 
 !macro OpenCodeSyncManifest
-  DetailPrint "Syncing Office add-in registration..."
+  DetailPrint "Refreshing Office sideload registration..."
   !insertmacro OpenCodeRunPowerShell '
     $$regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"; \
     $$manifestPath = "$INSTDIR\resources\manifest.xml"; \
@@ -51,7 +51,7 @@
 !macroend
 
 !macro OpenCodeRemoveCertificate
-  DetailPrint "Removing SSL certificate..."
+  DetailPrint "Removing localhost HTTPS certificate..."
   !insertmacro OpenCodeRunPowerShell '
     $$thumbprintFile = "$INSTDIR\resources\certs\.thumbprint"; \
     $$store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "CurrentUser"); \

@@ -112,7 +112,7 @@ sync_manifest_registrations() {
     local user_home="$2"
 
     if [ ! -f "$MANIFEST_PATH" ]; then
-        echo "Note: Manifest file not found at $MANIFEST_PATH"
+        echo "Note: No manifest found at $MANIFEST_PATH"
         return
     fi
 
@@ -133,21 +133,21 @@ sync_manifest_registrations() {
         chown -R "$install_user":staff "$wef_dir"
     done
 
-    echo "Add-in registered for Word, PowerPoint, Excel, and OneNote"
+    echo "Office sideload registration refreshed for Word, PowerPoint, Excel, and OneNote"
 }
 
 trust_certificate_if_present() {
     if [ ! -f "$CERT_PATH" ]; then
-        echo "Note: Certificate file not found at $CERT_PATH, skipping trust"
+        echo "Note: No certificate found at $CERT_PATH, skipping trust setup"
         return
     fi
 
-    echo "Trusting SSL certificate..."
+    echo "Trusting localhost HTTPS certificate..."
     if security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH" 2>&1; then
-        echo "SSL certificate trusted successfully"
+        echo "Local certificate trust installed"
     else
-        echo "Warning: Could not add certificate to system keychain."
-        echo "You may need to manually trust the certificate:"
+        echo "Warning: Could not add the certificate to the system keychain."
+        echo "You may need to trust it manually:"
         echo "  1. Open Keychain Access"
         echo "  2. Drag $CERT_PATH to the System keychain"
         echo "  3. Double-click the localhost cert and set 'Always Trust'"
@@ -171,8 +171,8 @@ main() {
     install_user="$(resolve_install_user)"
     user_home="$(resolve_user_home "$install_user")"
 
-    echo "Installing for user: $install_user"
-    echo "User home: $user_home"
+    echo "Installing for login user: $install_user"
+    echo "Resolved home directory: $user_home"
 
     launch_agent_path="$(install_launch_agent "$install_user" "$user_home")"
     echo "LaunchAgent installed"
@@ -180,8 +180,8 @@ main() {
     trust_certificate_if_present
     start_runtime_session "$install_user" "$launch_agent_path"
 
-    echo "Service started"
-    echo "Installation complete!"
+    echo "Runtime launch requested"
+    echo "Installation complete"
 }
 
 main "$@"

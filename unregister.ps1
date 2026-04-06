@@ -66,7 +66,7 @@ function Remove-OpenCodeRegistrations {
     return $removed
 }
 
-# Check if running from release (exe exists) or dev (manifest in root)
+# Prefer packaged resources when the desktop bundle is present; otherwise use repo-local assets.
 if (Test-Path $appPath) {
     $manifestPath = "$PSScriptRoot\resources\manifest.xml"
 } else {
@@ -76,18 +76,18 @@ if (Test-Path $appPath) {
 $manifestFullPath = if (Test-Path $manifestPath) { (Resolve-Path $manifestPath).Path } else { $null }
 $manifestId = if ($manifestFullPath) { Get-OfficeManifestId -Path $manifestFullPath } else { $null }
 
-Write-Host "Removing OpenCode Office add-in registration..." -ForegroundColor Cyan
+Write-Host "Removing OpenCode Office sideload registration..." -ForegroundColor Cyan
 
 if (Test-Path $regPath) {
     $removedCount = Remove-OpenCodeRegistrations -ManifestPath $manifestFullPath -ManifestId $manifestId
     if ($removedCount -gt 0) {
         Write-Host "Removed $removedCount OpenCode registration(s)" -ForegroundColor Green
     } else {
-        Write-Host "OpenCode add-in registration was not found" -ForegroundColor Gray
+        Write-Host "No OpenCode registration was found in the Office developer key" -ForegroundColor Gray
     }
 } else {
-    Write-Host "No sideloaded add-ins were registered" -ForegroundColor Gray
+    Write-Host "The Office developer sideload key is not present" -ForegroundColor Gray
 }
 
 Write-Host ""
-Write-Host "To re-register, run: .\register.ps1" -ForegroundColor Gray
+Write-Host "To register again later, run: .\register.ps1" -ForegroundColor Gray

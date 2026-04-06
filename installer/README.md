@@ -1,6 +1,6 @@
 # Building Installers
 
-This directory contains resources for building standalone installers for Windows and macOS using Electron Builder.
+This directory contains the packaging assets for the Windows and macOS desktop installers built with Electron Builder.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ This directory contains resources for building standalone installers for Windows
 2. **Node.js 20+** installed
 3. **Bun dependencies** installed: `bun install`
 
-> **Note:** The installers do **not** install the OpenCode CLI. Users must install it separately before using the add-in.
+> **Note:** The installers do **not** install the OpenCode CLI. It still needs to be installed separately before the add-in can serve requests.
 
 ### macOS-specific
 - Xcode Command Line Tools: `xcode-select --install`
@@ -40,19 +40,19 @@ bun run build:installer:win
 ## What the Installers Do
 
 ### Windows Installer (.exe)
-1. Installs the Electron app to `C:\Program Files\OpenCode Office Add-in\`
-2. Bundles the built frontend, certificates, and manifest
-3. Trusts the SSL certificate (adds to user's Root certificate store)
-4. Registers the add-in manifest with Office (registry key)
-5. Creates a startup entry to run on login
+1. Installs the desktop app to `C:\Program Files\OpenCode Office Add-in\`
+2. Bundles the built frontend, localhost certificate, and manifest
+3. Trusts the localhost certificate in the current user's Root store
+4. Refreshes the Office sideload manifest registration in the developer registry key
+5. Creates a startup entry so the helper app can relaunch on sign-in
 6. Starts the tray app immediately after install
 
 ### macOS Installer (.dmg)
 1. Installs to `/Applications/OpenCode Office Add-in.app/`
-2. Bundles the built frontend, certificates, and manifest
-3. Trusts the SSL certificate (adds to System keychain)
-4. Registers the add-in with Word, PowerPoint, Excel, and OneNote (wef folders)
-5. Installs a LaunchAgent to start on login
+2. Bundles the built frontend, localhost certificate, and manifest
+3. Trusts the localhost certificate in the System keychain
+4. Refreshes the sideload manifest in the Word, PowerPoint, Excel, and OneNote WEF folders
+5. Installs a LaunchAgent so the helper app can relaunch on sign-in
 6. Starts the tray app immediately after install
 
 ## Uninstalling
@@ -107,7 +107,7 @@ codesign --sign "Developer ID Application: Your Name (TEAMID)" "build/electron/O
    - **Windows**: `reg query "HKCU\Software\Microsoft\Office\16.0\WEF\Developer"`
    - **macOS**: Check `~/Library/Containers/com.microsoft.Word/Data/Documents/wef/`
 
-### SSL Certificate issues
+### Local certificate issues
 1. Visit https://localhost:52390 in your browser
 2. If you see a certificate warning, the cert isn't trusted
 3. Re-run the installer or manually trust the certificate
