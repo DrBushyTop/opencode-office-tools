@@ -1,9 +1,41 @@
 import type { Tool } from "./types";
 import { isExcelRequirementSetSupported, toolFailure } from "./excelShared";
 
+type WorksheetOverview = {
+  id: string;
+  name: string;
+  position: number;
+  visibility: string;
+  protection: string;
+  usedRangeText: string;
+  usedCellCount: number;
+  chartCount: number;
+  tableCount: number;
+  pivotCount: number;
+  autoFilterText?: string;
+  frozenPaneText?: string;
+  tableDetails?: string;
+  worksheetNames?: string;
+};
+
+function formatWorksheetLines(sheet: WorksheetOverview, activeSheetName: string) {
+  const lines = [
+    `- ${sheet.name}${sheet.name === activeSheetName ? " <- active" : ""}`,
+    `  id=${sheet.id}, position=${sheet.position}, visibility=${sheet.visibility}, ${sheet.protection}`,
+    `  usedRange=${sheet.usedRangeText}`,
+    `  charts=${sheet.chartCount}, tables=${sheet.tableCount}, pivotTables=${sheet.pivotCount}`,
+  ];
+
+  if (sheet.autoFilterText) lines.push(`  autoFilter=${sheet.autoFilterText}`);
+  if (sheet.frozenPaneText) lines.push(`  frozenPanes=${sheet.frozenPaneText}`);
+  if (sheet.tableDetails) lines.push(`  tableDetails=${sheet.tableDetails}`);
+  if (sheet.worksheetNames) lines.push(`  worksheetNames=${sheet.worksheetNames}`);
+  return lines;
+}
+
 export const getWorkbookOverview: Tool = {
   name: "get_workbook_overview",
-  description: "Get a structural overview of the Excel workbook, including worksheets, used ranges, visibility, protection, tables, PivotTables, charts, named ranges, filters, and frozen panes.",
+  description: "Summarize the current Excel workbook structure, including sheets, used ranges, charts, tables, names, filters, and frozen panes when the host supports them.",
   parameters: {
     type: "object",
     properties: {},
@@ -55,6 +87,46 @@ export const getWorkbookOverview: Tool = {
 
         await context.sync();
 
+        const worksheetSummaries: WorksheetOverview[] = sheets.items.map((sheet, index) => {
+          const usedRange = usedRanges[index];
+          const chartCount = chartCounts[index].value;
+          const tableCount = tableCounts[index].value;
+          const pivotCount = supportsPivotTables ? pivotCounts[index].value : 0;
+          const usedRangeText = usedRange.isNullObject
+            ? "(empty)"
+            : `${usedRange.address} (${usedRange.rowCount} rows x ${usedRange.columnCount} cols)`;
+
+          return {
+            id: sheet.id,
+            name: sheet.name,
+            position: sheet.position,
+            visibility: sheet.visibility || "Visible",
+            protection: protections[index].protected ? "protected" : "unprotected",
+            usedRangeText,
+            usedCellCount: usedRange.isNullObject ? 0 : usedRange.rowCount * usedRange.columnCount,
+            chartCount,
+            tableCount,
+            pivotCount,
+            autoFilterText: supportsAutoFilter
+              ? `${autoFilters[index].enabled ? "enabled" : "disabled"}, filtered=${autoFilters[index].isDataFiltered ? "yes" : "no"}`
+              : undefined,
+            frozenPaneText: supportsFreeze
+              ? (freezeRanges[index].isNullObject ? "(none)" : freezeRanges[index].address)
+              : undefined,
+            tableDetails: tableCollections[index].items.length
+              ? tableCollections[index].items.map((table) => `${table.name} (${table.style}${table.showTotals ? ", totals" : ""})`).join(", ")
+              : undefined,
+            worksheetNames: sheetNames[index].items.length
+              ? sheetNames[index].items.map((name) => name.name).join(", ")
+              : undefined,
+          };
+        });
+
+        const totalCells = worksheetSummaries.reduce((sum, sheet) => sum + sheet.usedCellCount, 0);
+        const totalCharts = worksheetSummaries.reduce((sum, sheet) => sum + sheet.chartCount, 0);
+        const totalTables = worksheetSummaries.reduce((sum, sheet) => sum + sheet.tableCount, 0);
+        const totalPivotTables = worksheetSummaries.reduce((sum, sheet) => sum + sheet.pivotCount, 0);
+
         const lines: string[] = [
           `Workbook overview`,
           `${"━".repeat(40)}`,
@@ -62,52 +134,8 @@ export const getWorkbookOverview: Tool = {
           `Active sheet: ${activeSheet.name}`,
         ];
 
-        let totalCells = 0;
-        let totalCharts = 0;
-        let totalTables = 0;
-        let totalPivotTables = 0;
-
-        for (const [index, sheet] of sheets.items.entries()) {
-          const usedRange = usedRanges[index];
-          const chartCount = chartCounts[index].value;
-          const tableCount = tableCounts[index].value;
-          const pivotCount = supportsPivotTables ? pivotCounts[index].value : 0;
-          const visibility = sheet.visibility || "Visible";
-          const protection = protections[index].protected ? "protected" : "unprotected";
-          const usedRangeText = usedRange.isNullObject
-            ? "(empty)"
-            : `${usedRange.address} (${usedRange.rowCount} rows x ${usedRange.columnCount} cols)`;
-
-          if (!usedRange.isNullObject) {
-            totalCells += usedRange.rowCount * usedRange.columnCount;
-          }
-          totalCharts += chartCount;
-          totalTables += tableCount;
-          totalPivotTables += pivotCount;
-
-          lines.push(
-            "",
-            `- ${sheet.name}${sheet.name === activeSheet.name ? " <- active" : ""}`,
-            `  id=${sheet.id}, position=${sheet.position}, visibility=${visibility}, ${protection}`,
-            `  usedRange=${usedRangeText}`,
-            `  charts=${chartCount}, tables=${tableCount}, pivotTables=${pivotCount}`,
-          );
-
-          if (supportsAutoFilter) {
-            lines.push(`  autoFilter=${autoFilters[index].enabled ? "enabled" : "disabled"}, filtered=${autoFilters[index].isDataFiltered ? "yes" : "no"}`);
-          }
-
-          if (supportsFreeze) {
-            lines.push(`  frozenPanes=${freezeRanges[index].isNullObject ? "(none)" : freezeRanges[index].address}`);
-          }
-
-          if (tableCollections[index].items.length) {
-            lines.push(`  tableDetails=${tableCollections[index].items.map((table) => `${table.name} (${table.style}${table.showTotals ? ", totals" : ""})`).join(", ")}`);
-          }
-
-          if (sheetNames[index].items.length) {
-            lines.push(`  worksheetNames=${sheetNames[index].items.map((name) => name.name).join(", ")}`);
-          }
+        for (const summary of worksheetSummaries) {
+          lines.push("", ...formatWorksheetLines(summary, activeSheet.name));
         }
 
         lines.push(

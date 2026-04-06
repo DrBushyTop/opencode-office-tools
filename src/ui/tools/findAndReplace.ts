@@ -12,11 +12,48 @@ const findAndReplaceArgsSchema = z.object({
 
 export type FindAndReplaceArgs = z.infer<typeof findAndReplaceArgsSchema>;
 
+function resolveSearchAddress(address?: string) {
+  if (!address) return { ok: true as const, value: null };
+
+  const parsed = parseDocumentRangeAddress(address);
+  if (parsed) {
+    return { ok: true as const, value: parsed };
+  }
+
+  return {
+    ok: false as const,
+    failure: toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3]."),
+  };
+}
+
+function buildSearchOptions(matchCase: boolean, matchWholeWord: boolean) {
+  return {
+    ignorePunct: false,
+    ignoreSpace: false,
+    matchCase,
+    matchWholeWord,
+  };
+}
+
+function formatReplacementSummary(find: string, replace: string, label: string, count: number) {
+  if (count === 0) {
+    return `No matches found for "${find}" in ${label}.`;
+  }
+
+  return `Replaced ${count} occurrence${count === 1 ? "" : "s"} of "${find}" with "${replace}" in ${label}.`;
+}
+
+function replaceSearchResults(results: Word.RangeCollection, replace: string) {
+  for (const result of results.items) {
+    result.insertText(replace, Word.InsertLocation.replace);
+  }
+}
+
 export const findAndReplace: Tool = {
   name: "find_and_replace",
-  description: `Find and replace text in Word.
+  description: `Replace matching text in a Word document or in a narrower target such as the selection, a bookmark, a content control, or a single table cell.
 
- Searches the entire document by default, or a generic target scope when address is provided.
+ Searches the full document when no address is supplied.
 
 Parameters:
 - find: The text to search for
@@ -69,42 +106,30 @@ Examples:
       return toolFailure("Search text cannot be empty.");
     }
 
-    const parsed = address ? parseDocumentRangeAddress(address) : null;
-    if (address && !parsed) {
-      return toolFailure("Unsupported scope address. Try selection, bookmark[Name], content_control[id=12], table[1], or table[1].cell[2,3].");
-    }
+    const resolvedAddress = resolveSearchAddress(address);
+    if (!resolvedAddress.ok) return resolvedAddress.failure;
     
     try {
       return await Word.run(async (context) => {
-        const target = parsed
-          ? await resolveDocumentRangeTarget(context, parsed)
+        const target = resolvedAddress.value
+          ? await resolveDocumentRangeTarget(context, resolvedAddress.value)
           : { kind: "body" as const, label: "document", target: context.document.body };
-        
-        // Create search options
-        const searchResults = target.target.search(find, {
-          ignorePunct: false,
-          ignoreSpace: false,
-          matchCase: matchCase,
-          matchWholeWord: matchWholeWord,
-        });
+
+        const searchResults = target.target.search(find, buildSearchOptions(matchCase, matchWholeWord));
         
         searchResults.load("items");
         await context.sync();
-        
-        const count = searchResults.items.length;
-        
-        if (count === 0) {
-          return `No matches found for "${find}" in ${target.label}.`;
+        const matches = searchResults.items;
+
+        replaceSearchResults(searchResults, replace);
+
+        if (matches.length === 0) {
+          return formatReplacementSummary(find, replace, target.label, 0);
         }
-        
-        // Replace all matches
-        for (const result of searchResults.items) {
-          result.insertText(replace, Word.InsertLocation.replace);
-        }
-        
+
         await context.sync();
-        
-        return `Replaced ${count} occurrence${count === 1 ? "" : "s"} of "${find}" with "${replace}" in ${target.label}.`;
+
+        return formatReplacementSummary(find, replace, target.label, matches.length);
       });
     } catch (error: unknown) {
       return toolFailure(error);

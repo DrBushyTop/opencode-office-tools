@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Tool } from "./types";
-import { describeRange, getWorksheet, parseToolArgs, toolFailure } from "./excelShared";
+import { buildRangeDescribeOptions, describeRange, getWorksheet, parseToolArgs, toolFailure } from "./excelShared";
 
 const getWorkbookContentArgsSchema = z.object({
   sheetName: z.string().optional(),
@@ -10,7 +10,7 @@ const getWorkbookContentArgsSchema = z.object({
 
 export const getWorkbookContent: Tool = {
   name: "get_workbook_content",
-  description: "Read values and formulas from a worksheet or range. Optional detail mode also includes display text, number formats, data validation, merged areas, and overlapping tables or PivotTables.",
+  description: "Read worksheet cells from Excel. You can target a named sheet and optional range, or inspect the active sheet's used range with optional metadata.",
   parameters: {
     type: "object",
     properties: {
@@ -33,19 +33,14 @@ export const getWorkbookContent: Tool = {
     if (!parsedArgs.success) return parsedArgs.failure;
 
     const { sheetName, range, detail } = parsedArgs.data;
+    const describeOptions = buildRangeDescribeOptions(detail);
 
     try {
       return await Excel.run(async (context) => {
         const worksheet = await getWorksheet(context, sheetName);
         if (range) {
           const targetRange = worksheet.getRange(range);
-          return await describeRange(context, targetRange, worksheet.name, {
-            detail,
-            includeNumberFormats: detail,
-            includeTables: detail,
-            includeValidation: detail,
-            includeMergedAreas: detail,
-          });
+          return await describeRange(context, targetRange, worksheet.name, describeOptions);
         }
 
         const targetRange = worksheet.getUsedRangeOrNullObject();
@@ -56,13 +51,7 @@ export const getWorkbookContent: Tool = {
           return `Worksheet: ${worksheet.name}\nRange: (empty used range)\n\n(empty range)`;
         }
 
-        return await describeRange(context, targetRange as Excel.Range, worksheet.name, {
-          detail,
-          includeNumberFormats: detail,
-          includeTables: detail,
-          includeValidation: detail,
-          includeMergedAreas: detail,
-        });
+        return await describeRange(context, targetRange as Excel.Range, worksheet.name, describeOptions);
       });
     } catch (error: unknown) {
       return toolFailure(error);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Tool } from "./types";
-import { excel2DDataSchema, getWorksheet, parseToolArgs, toolFailure } from "./excelShared";
+import { countDataColumns, excel2DDataSchema, getWorksheet, parseToolArgs, toolFailure, writeExcelData } from "./excelShared";
 
 const setWorkbookContentArgsSchema = z.object({
   sheetName: z.string().optional(),
@@ -14,9 +14,37 @@ const setWorkbookContentArgsSchema = z.object({
   tableStyle: z.string().optional(),
 });
 
+function clearTargetRange(range: Excel.Range, clearMode: "none" | "contents" | "all") {
+  if (clearMode === "contents") {
+    range.clear(Excel.ClearApplyTo.contents);
+  }
+  if (clearMode === "all") {
+    range.clear(Excel.ClearApplyTo.all);
+  }
+}
+
+async function createTableIfRequested(
+  context: Excel.RequestContext,
+  worksheet: Excel.Worksheet,
+  targetRange: Excel.Range,
+  options: { createTable: boolean; tableName?: string; hasHeaders: boolean; tableStyle?: string },
+) {
+  if (!options.createTable) {
+    await context.sync();
+    return "";
+  }
+
+  const table = worksheet.tables.add(targetRange, options.hasHeaders);
+  if (options.tableName) table.name = options.tableName;
+  if (options.tableStyle) table.style = options.tableStyle;
+  table.load("name");
+  await context.sync();
+  return ` Created table ${table.name}.`;
+}
+
 export const setWorkbookContent: Tool = {
   name: "set_workbook_content",
-  description: "Write a 2D array to a worksheet starting at a specific cell. Can write formulas, clear the destination first, and optionally turn the written range into a table.",
+  description: "Write a rectangular block of Excel data beginning at a chosen start cell. The write can clear the target first, preserve formulas, and optionally promote the block into a table.",
   parameters: {
     type: "object",
     properties: {
@@ -71,7 +99,7 @@ export const setWorkbookContent: Tool = {
     if (!parsedArgs.success) return parsedArgs.failure;
 
     const { sheetName, startCell, data, useFormulas, clearMode, createTable, tableName, hasHeaders, tableStyle } = parsedArgs.data;
-    const columnCount = data[0].length;
+    const columnCount = countDataColumns(data);
 
     try {
       return await Excel.run(async (context) => {
@@ -82,30 +110,15 @@ export const setWorkbookContent: Tool = {
         targetRange.load("address");
         await context.sync();
 
-        if (clearMode === "contents") {
-          targetRange.clear(Excel.ClearApplyTo.contents);
-        } else if (clearMode === "all") {
-          targetRange.clear(Excel.ClearApplyTo.all);
-        }
+        clearTargetRange(targetRange, clearMode);
+        writeExcelData(targetRange, data, useFormulas);
 
-        const hasFormulaStrings = useFormulas && data.some((row) => row.some((cell) => typeof cell === "string" && cell.startsWith("=")));
-        if (hasFormulaStrings) {
-          targetRange.formulas = data;
-        } else {
-          targetRange.values = data;
-        }
-
-        let tableResult = "";
-        if (createTable) {
-          const table = worksheet.tables.add(targetRange, hasHeaders);
-          if (tableName) table.name = tableName;
-          if (tableStyle) table.style = tableStyle;
-          table.load("name");
-          await context.sync();
-          tableResult = ` Created table ${table.name}.`;
-        } else {
-          await context.sync();
-        }
+        const tableResult = await createTableIfRequested(context, worksheet, targetRange, {
+          createTable,
+          tableName,
+          hasHeaders,
+          tableStyle,
+        });
 
         return `Wrote ${rowCount} rows and ${columnCount} columns to ${targetRange.address} in ${worksheet.name}.${tableResult}`;
       });

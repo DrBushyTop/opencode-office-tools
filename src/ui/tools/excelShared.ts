@@ -28,6 +28,33 @@ export const excel2DDataSchema = z.array(z.array(excelCellValueSchema)).superRef
 
 export type Excel2DData = z.infer<typeof excel2DDataSchema>;
 
+export function countDataColumns(data: Excel2DData) {
+  return data[0]?.length ?? 0;
+}
+
+export function hasFormulaTextCells(data: Excel2DData) {
+  return data.some((row) => row.some((cell) => typeof cell === "string" && cell.startsWith("=")));
+}
+
+export function writeExcelData(range: Pick<Excel.Range, "values" | "formulas">, data: Excel2DData, useFormulas: boolean) {
+  if (useFormulas && hasFormulaTextCells(data)) {
+    range.formulas = data;
+    return;
+  }
+
+  range.values = data;
+}
+
+export function buildRangeDescribeOptions(detail: boolean) {
+  return {
+    detail,
+    includeNumberFormats: detail,
+    includeTables: detail,
+    includeValidation: detail,
+    includeMergedAreas: detail,
+  };
+}
+
 export function nonNegativeIntegerSchema(message: string) {
   return z.number().refine((value) => Number.isInteger(value) && value >= 0, message);
 }

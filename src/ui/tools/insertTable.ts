@@ -11,14 +11,67 @@ const insertTableArgsSchema = z.object({
 
 export type InsertTableArgs = z.infer<typeof insertTableArgsSchema>;
 
+function countTableColumns(data: string[][]) {
+  return Math.max(...data.map((row) => row.length));
+}
+
+function resolveBuiltInTableStyle(style: InsertTableArgs["style"]) {
+  if (style === "grid") return "TableStyleLight1";
+  if (style === "striped") return "TableStyleLight3";
+  return null;
+}
+
+async function loadRowCells(context: Word.RequestContext, rows: Word.TableRow[]) {
+  for (const row of rows) {
+    row.load("cells");
+  }
+  await context.sync();
+}
+
+async function tintHeaderRow(context: Word.RequestContext, row: Word.TableRow) {
+  await loadRowCells(context, [row]);
+
+  for (const cell of row.cells.items) {
+    cell.shadingColor = "#4472C4";
+    cell.body.load("paragraphs");
+  }
+  await context.sync();
+
+  for (const cell of row.cells.items) {
+    for (const paragraph of cell.body.paragraphs.items) {
+      paragraph.load("font");
+    }
+  }
+  await context.sync();
+
+  for (const cell of row.cells.items) {
+    for (const paragraph of cell.body.paragraphs.items) {
+      paragraph.font.bold = true;
+      paragraph.font.color = "#FFFFFF";
+    }
+  }
+}
+
+async function shadeAlternateRows(context: Word.RequestContext, rows: Word.TableRow[], offset: number) {
+  const rowsToShade = rows.filter((_, index) => index % 2 === offset);
+  if (!rowsToShade.length) return;
+
+  await loadRowCells(context, rowsToShade);
+  for (const row of rowsToShade) {
+    for (const cell of row.cells.items) {
+      cell.shadingColor = "#E8E8E8";
+    }
+  }
+}
+
 export const insertTable: Tool = {
   name: "insert_table",
-  description: `Insert a table at the current cursor position in Word.
+  description: `Insert a Word table immediately after the current selection.
 
 Parameters:
-- data: 2D array of strings representing the table data. First row can be headers.
-- hasHeader: If true, the first row is styled as a header row (bold, shaded). Default is true.
-- style: Table style - "grid" (borders), "striped" (alternating rows), or "plain" (minimal). Default is "grid".
+- data: 2D array of strings for the table body.
+- hasHeader: When true, apply the header styling treatment to the first row.
+- style: Choose "grid", "striped", or "plain".
 
 Examples:
 - Simple table with headers:
@@ -59,7 +112,7 @@ Examples:
     const { data, hasHeader, style } = parsedArgs.data;
 
     const rowCount = data.length;
-    const colCount = Math.max(...data.map(row => row.length));
+    const colCount = countTableColumns(data);
 
     if (colCount === 0) {
       return toolFailure("Table must have at least one column.");
@@ -67,54 +120,21 @@ Examples:
 
     try {
       return await Word.run(async (context) => {
-        const selection = context.document.getSelection();
-        
-        // Insert table at selection
-        const table = selection.insertTable(rowCount, colCount, Word.InsertLocation.after, data);
+        const table = context.document.getSelection().insertTable(rowCount, colCount, Word.InsertLocation.after, data);
         table.load("rows");
         await context.sync();
 
-        // Apply styling via built-in table styles
-        if (style === "grid") {
-          table.style = "TableStyleLight1";
-        } else if (style === "striped") {
-          table.style = "TableStyleLight3";
+        const builtInStyle = resolveBuiltInTableStyle(style);
+        if (builtInStyle) {
+          table.style = builtInStyle;
         }
 
-        // Style header row
         if (hasHeader && table.rows.items.length > 0) {
-          const headerRow = table.rows.items[0];
-          headerRow.load("cells");
-          await context.sync();
-          
-          for (const cell of headerRow.cells.items) {
-            cell.shadingColor = "#4472C4";
-            const cellBody = cell.body;
-            cellBody.load("paragraphs");
-            await context.sync();
-            
-            for (const para of cellBody.paragraphs.items) {
-              para.load("font");
-              await context.sync();
-              para.font.bold = true;
-              para.font.color = "#FFFFFF";
-            }
-          }
+          await tintHeaderRow(context, table.rows.items[0]);
         }
 
-        // Apply striped styling
         if (style === "striped") {
-          for (let i = hasHeader ? 1 : 0; i < table.rows.items.length; i++) {
-            if (i % 2 === (hasHeader ? 1 : 0)) {
-              const row = table.rows.items[i];
-              row.load("cells");
-              await context.sync();
-              
-              for (const cell of row.cells.items) {
-                cell.shadingColor = "#E8E8E8";
-              }
-            }
-          }
+          await shadeAlternateRows(context, table.rows.items.slice(hasHeader ? 1 : 0), hasHeader ? 0 : 1);
         }
 
         await context.sync();

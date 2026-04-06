@@ -1,15 +1,32 @@
 import { z } from "zod";
 import type { Tool } from "./types";
-import { excel2DDataSchema, parseToolArgs, toolFailure } from "./excelShared";
+import { countDataColumns, excel2DDataSchema, parseToolArgs, toolFailure, writeExcelData } from "./excelShared";
 
 const setSelectedRangeArgsSchema = z.object({
   data: excel2DDataSchema,
   useFormulas: z.boolean().default(true),
 });
 
+function resolveWriteTarget(selectedRange: Excel.Range, dataRowCount: number, dataColCount: number) {
+  const canExpandSelection = selectedRange.rowCount === 1 && selectedRange.columnCount === 1;
+  if (canExpandSelection) {
+    return { ok: true as const, range: selectedRange.getResizedRange(dataRowCount - 1, dataColCount - 1) };
+  }
+
+  const hasExactMatch = dataRowCount === selectedRange.rowCount && dataColCount === selectedRange.columnCount;
+  if (hasExactMatch) {
+    return { ok: true as const, range: selectedRange };
+  }
+
+  return {
+    ok: false as const,
+    failure: toolFailure(`Data dimensions (${dataRowCount}x${dataColCount}) do not match selection dimensions (${selectedRange.rowCount}x${selectedRange.columnCount}). Either select a single cell to auto-expand, or provide data matching the selection size.`),
+  };
+}
+
 export const setSelectedRange: Tool = {
   name: "set_selected_range",
-  description: "Write values or formulas to the currently selected range in Excel. A single-cell selection expands to fit the provided rectangular 2D array.",
+  description: "Fill the active Excel selection with a rectangular 2D array. Single-cell selections automatically expand to the incoming data size.",
   parameters: {
     type: "object",
     properties: {
@@ -35,7 +52,7 @@ export const setSelectedRange: Tool = {
     if (!parsedArgs.success) return parsedArgs.failure;
 
     const { data, useFormulas } = parsedArgs.data;
-    const columnCount = data[0].length;
+    const columnCount = countDataColumns(data);
 
     try {
       return await Excel.run(async (context) => {
@@ -50,26 +67,10 @@ export const setSelectedRange: Tool = {
         const dataRowCount = data.length;
         const dataColCount = columnCount;
 
-        let targetRange: Excel.Range;
-        if (selectedRange.rowCount === 1 && selectedRange.columnCount === 1) {
-          targetRange = selectedRange.getResizedRange(dataRowCount - 1, dataColCount - 1);
-        } else {
-          if (dataRowCount !== selectedRange.rowCount || dataColCount !== selectedRange.columnCount) {
-            return toolFailure(`Data dimensions (${dataRowCount}x${dataColCount}) do not match selection dimensions (${selectedRange.rowCount}x${selectedRange.columnCount}). Either select a single cell to auto-expand, or provide data matching the selection size.`);
-          }
-          targetRange = selectedRange;
-        }
+        const target = resolveWriteTarget(selectedRange, dataRowCount, dataColCount);
+        if (!target.ok) return target.failure;
 
-        if (useFormulas) {
-          const hasFormulas = data.some((row) => row.some((cell) => typeof cell === "string" && cell.startsWith("=")));
-          if (hasFormulas) {
-            targetRange.formulas = data;
-          } else {
-            targetRange.values = data;
-          }
-        } else {
-          targetRange.values = data;
-        }
+        writeExcelData(target.range, data, useFormulas);
 
         await context.sync();
 

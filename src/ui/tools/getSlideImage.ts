@@ -1,14 +1,72 @@
 import type { Tool } from "./types";
 import { z } from "zod";
+import { describeError } from "./powerpointShared";
 
 const getSlideImageArgsSchema = z.object({
   slideIndex: z.number(),
   width: z.number().optional(),
 });
 
+function buildCaptureFailure(message: string, error = message) {
+  return { textResultForLlm: message, resultType: "failure" as const, error, toolTelemetry: {} };
+}
+
+function formatOutOfRangeMessage(slideIndex: number, slideCount: number) {
+  return `Invalid slideIndex ${slideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`;
+}
+
+function validateCaptureRequest(args: unknown) {
+  const parsedArgs = getSlideImageArgsSchema.safeParse(args);
+  if (!parsedArgs.success) {
+    return { ok: false as const, failure: buildCaptureFailure(parsedArgs.error.issues[0]?.message || "Invalid arguments.") };
+  }
+
+  const { slideIndex, width = 800 } = parsedArgs.data;
+  if (!Number.isInteger(slideIndex) || slideIndex < 0) {
+    return { ok: false as const, failure: buildCaptureFailure("slideIndex must be a non-negative integer.") };
+  }
+  if (!Number.isFinite(width) || width <= 0) {
+    return { ok: false as const, failure: buildCaptureFailure("width must be a positive number.") };
+  }
+
+  return { ok: true as const, data: { slideIndex, width } };
+}
+
+async function exportSlideImage(context: PowerPoint.RequestContext, slideIndex: number, width: number) {
+  const deck = context.presentation.slides;
+  deck.load("items");
+  await context.sync();
+
+  if (slideIndex >= deck.items.length) {
+    return buildCaptureFailure(formatOutOfRangeMessage(slideIndex, deck.items.length), "Invalid slideIndex");
+  }
+
+  const request = deck.items[slideIndex].getImageAsBase64({ width });
+  await context.sync();
+
+  return {
+    textResultForLlm: `Captured image of slide ${slideIndex + 1} of ${deck.items.length} (${width}px wide)`,
+    binaryResultsForLlm: [
+      {
+        data: request.value,
+        mimeType: "image/png",
+        type: "image",
+        description: `Slide ${slideIndex + 1} of ${deck.items.length}`,
+      },
+    ],
+    resultType: "success" as const,
+    toolTelemetry: {},
+  };
+}
+
+function isImageExportUnavailable(error: unknown) {
+  const message = describeError(error);
+  return message.includes("getImageAsBase64") || (error as { code?: string } | null)?.code === "InvalidOperation";
+}
+
 export const getSlideImage: Tool = {
   name: "get_slide_image",
-  description: "Capture an image of a slide to see its visual design, layout, colors, and styling. Returns the slide as a PNG image. Use this to understand the visual style before making design suggestions or creating new slides.",
+  description: "Render one PowerPoint slide as a PNG snapshot. Useful when you need to inspect layout, spacing, typography, or colors before editing nearby content.",
   parameters: {
     type: "object",
     properties: {
@@ -24,68 +82,19 @@ export const getSlideImage: Tool = {
     required: ["slideIndex"],
   },
   handler: async (args) => {
-    const parsedArgs = getSlideImageArgsSchema.safeParse(args);
-    if (!parsedArgs.success) {
-      const message = parsedArgs.error.issues[0]?.message || "Invalid arguments.";
-      return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
-    }
-    const { slideIndex, width = 800 } = parsedArgs.data;
-
-    if (!Number.isInteger(slideIndex) || slideIndex < 0) {
-      return { textResultForLlm: "slideIndex must be a non-negative integer.", resultType: "failure", error: "slideIndex must be a non-negative integer.", toolTelemetry: {} };
-    }
-    if (!Number.isFinite(width) || width <= 0) {
-      return { textResultForLlm: "width must be a positive number.", resultType: "failure", error: "width must be a positive number.", toolTelemetry: {} };
-    }
+    const request = validateCaptureRequest(args);
+    if (!request.ok) return request.failure;
 
     try {
-      return await PowerPoint.run(async (context) => {
-        const slides = context.presentation.slides;
-        slides.load("items");
-        await context.sync();
-
-        const slideCount = slides.items.length;
-
-        if (slideIndex < 0 || slideIndex >= slideCount) {
-          return {
-            textResultForLlm: `Invalid slideIndex ${slideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`,
-            resultType: "failure",
-            error: "Invalid slideIndex",
-            toolTelemetry: {},
-          };
-        }
-
-        const slide = slides.items[slideIndex];
-        const imageResult = slide.getImageAsBase64({ width });
-        await context.sync();
-
-        const base64Image = imageResult.value;
-
-        return {
-          textResultForLlm: `Captured image of slide ${slideIndex + 1} of ${slideCount} (${width}px wide)`,
-          binaryResultsForLlm: [
-            {
-              data: base64Image,
-              mimeType: "image/png",
-              type: "image",
-              description: `Slide ${slideIndex + 1} of ${slideCount}`,
-            },
-          ],
-          resultType: "success",
-          toolTelemetry: {},
-        };
-      });
-    } catch (e: any) {
-      // Handle case where API might not be available
-      if (e.message?.includes("getImageAsBase64") || e.code === "InvalidOperation") {
-        return {
-          textResultForLlm: "Slide image capture is not supported in this version of PowerPoint. Please ensure you're using a recent version (Windows 16.0.17628+, Mac 16.85+, or PowerPoint on the web).",
-          resultType: "failure",
-          error: "API not available",
-          toolTelemetry: {},
-        };
+      return await PowerPoint.run((context) => exportSlideImage(context, request.data.slideIndex, request.data.width));
+    } catch (error: unknown) {
+      if (isImageExportUnavailable(error)) {
+        return buildCaptureFailure(
+          "Slide image capture is not supported in this version of PowerPoint. Please ensure you're using a recent version (Windows 16.0.17628+, Mac 16.85+, or PowerPoint on the web).",
+          "API not available",
+        );
       }
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+      return buildCaptureFailure(describeError(error));
     }
   },
 };
