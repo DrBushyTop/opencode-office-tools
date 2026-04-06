@@ -2,43 +2,43 @@ import type { Tool } from "./types";
 import { z } from "zod";
 import { getZodErrorMessage, toolFailure } from "./wordShared";
 
-const setDocumentContentArgsSchema = z.object({
-  html: z.string(),
+const argsSchema = z.object({
+  html: z.string().min(1, "html must not be empty"),
 });
 
-export type SetDocumentContentArgs = z.infer<typeof setDocumentContentArgsSchema>;
-
+/**
+ * Overwrites the active document body with the supplied HTML markup.
+ * Standard inline/block HTML elements are accepted (headings, lists,
+ * tables, anchors, emphasis, etc.).
+ */
 export const setDocumentContent: Tool = {
   name: "set_document_content",
-  description: "Replace the entire document body with new HTML content. Supports standard HTML tags like <p>, <h1>-<h6>, <ul>, <ol>, <li>, <table>, <b>, <i>, <u>, <a>, etc.",
+  description: "Replace the current Word document with new HTML content.",
   parameters: {
     type: "object",
     properties: {
       html: {
         type: "string",
-        description: "The HTML content to set as the document body.",
+        description: "HTML markup that will become the new document body.",
       },
     },
     required: ["html"],
   },
-  handler: async (args) => {
-    const parsedArgs = setDocumentContentArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return toolFailure(getZodErrorMessage(parsedArgs.error));
-    }
 
-    const { html } = parsedArgs.data;
-    
+  handler: async (args) => {
+    const parsed = argsSchema.safeParse(args ?? {});
+    if (!parsed.success) return toolFailure(getZodErrorMessage(parsed.error));
+
     try {
-      return await Word.run(async (context) => {
-        const body = context.document.body;
+      return await Word.run(async (ctx) => {
+        const body = ctx.document.body;
         body.clear();
-        body.insertHtml(html, Word.InsertLocation.start);
-        await context.sync();
-        return "Document content replaced successfully.";
+        body.insertHtml(parsed.data.html, Word.InsertLocation.replace);
+        await ctx.sync();
+        return "Document body replaced.";
       });
-    } catch (error: unknown) {
-      return toolFailure(error);
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

@@ -2,138 +2,120 @@ import type { Tool } from "./types";
 import { z } from "zod";
 import { getZodErrorMessage, toolFailure } from "./wordShared";
 
-const getDocumentSectionArgsSchema = z.object({
-  headingText: z.string(),
+const argsSchema = z.object({
+  headingText: z.string().min(1, "headingText is required"),
   includeSubsections: z.boolean().optional().default(true),
 });
 
-export type GetDocumentSectionArgs = z.infer<typeof getDocumentSectionArgsSchema>;
+/** Determine the outline depth implied by a Word paragraph style. */
+function outlineDepth(style: string): number | null {
+  if (style === "Title") return 0;
+  if (style === "Subtitle") return 1;
+  const m = /Heading\s*(\d)/i.exec(style);
+  return m ? Number(m[1]) : null;
+}
 
+/**
+ * Read a specific Word document section by heading.
+ *
+ * Locates a heading whose text contains the given search term
+ * (case-insensitive) and returns the HTML for its content span.
+ * When `includeSubsections` is true the span extends to the next
+ * heading at the same or shallower depth; otherwise it stops at any
+ * heading.
+ */
 export const getDocumentSection: Tool = {
   name: "get_document_section",
-  description: `Get the content of a specific section of the Word document by heading.
-
-Use this after get_document_overview to read a specific section without loading the entire document.
-
-Parameters:
-- headingText: The text of the heading to find (partial match supported)
-- includeSubsections: If true, includes all content until the next heading of same or higher level (default: true)
-
-Returns the HTML content of that section.
-
-Examples:
-- Get "Introduction" section: headingText="Introduction"
-- Get "Chapter 2" section: headingText="Chapter 2"
-- Get just heading content without subsections: headingText="Methods", includeSubsections=false`,
+  description:
+    "Read a specific Word document section by heading. " +
+    "Supply the heading text (partial match, case-insensitive). " +
+    "Set includeSubsections to false to stop at the first child heading.",
   parameters: {
     type: "object",
     properties: {
       headingText: {
         type: "string",
-        description: "The heading text to search for (case-insensitive partial match).",
+        description: "Text to match against heading paragraphs.",
       },
       includeSubsections: {
         type: "boolean",
-        description: "If true, includes content until the next heading of same or higher level. Default is true.",
+        description:
+          "When true (default) content up to the next same-or-higher heading is returned.",
       },
     },
     required: ["headingText"],
   },
-  handler: async (args) => {
-    const parsedArgs = getDocumentSectionArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return toolFailure(getZodErrorMessage(parsedArgs.error));
-    }
 
-    const { headingText, includeSubsections } = parsedArgs.data;
+  handler: async (args) => {
+    const parsed = argsSchema.safeParse(args ?? {});
+    if (!parsed.success) return toolFailure(getZodErrorMessage(parsed.error));
+
+    const { headingText, includeSubsections } = parsed.data;
+    const needle = headingText.toLowerCase();
 
     try {
-      return await Word.run(async (context) => {
-        const body = context.document.body;
-        const paragraphs = body.paragraphs;
-        paragraphs.load("items");
-        await context.sync();
+      return await Word.run(async (ctx) => {
+        const paras = ctx.document.body.paragraphs;
+        paras.load("items");
+        await ctx.sync();
 
-        // Load paragraph details
-        for (const para of paragraphs.items) {
-          para.load(["text", "style"]);
-        }
-        await context.sync();
+        // Batch-load text & style for every paragraph
+        for (const p of paras.items) p.load(["text", "style"]);
+        await ctx.sync();
 
-        // Find the heading
-        let startIndex = -1;
-        let startLevel = 0;
-        const searchLower = headingText.toLowerCase();
+        // --- locate the target heading ---
+        let anchorIdx = -1;
+        let anchorDepth = 0;
 
-        for (let i = 0; i < paragraphs.items.length; i++) {
-          const para = paragraphs.items[i];
-          const style = para.style || "";
-          const text = (para.text || "").toLowerCase();
-
-          // Check if this is a heading that matches
-          const headingMatch = style.match(/Heading\s*(\d)/i);
-          if (headingMatch && text.includes(searchLower)) {
-            startIndex = i;
-            startLevel = parseInt(headingMatch[1], 10);
-            break;
-          }
-          // Also check Title style
-          if ((style === "Title" || style === "Subtitle") && text.includes(searchLower)) {
-            startIndex = i;
-            startLevel = style === "Title" ? 1 : 2;
+        for (let i = 0; i < paras.items.length; i++) {
+          const depth = outlineDepth(paras.items[i].style ?? "");
+          if (depth === null) continue;
+          if ((paras.items[i].text ?? "").toLowerCase().includes(needle)) {
+            anchorIdx = i;
+            anchorDepth = depth;
             break;
           }
         }
 
-        if (startIndex === -1) {
-          return `No heading found matching "${headingText}". Use get_document_overview to see available headings.`;
+        if (anchorIdx < 0) {
+          return `Heading "${headingText}" not found. Run get_document_overview to list available headings.`;
         }
 
-        // Find the end of the section
-        let endIndex = paragraphs.items.length;
-        if (includeSubsections) {
-          for (let i = startIndex + 1; i < paragraphs.items.length; i++) {
-            const para = paragraphs.items[i];
-            const style = para.style || "";
-            const headingMatch = style.match(/Heading\s*(\d)/i);
-            if (headingMatch) {
-              const level = parseInt(headingMatch[1], 10);
-              if (level <= startLevel) {
-                endIndex = i;
-                break;
-              }
-            }
-            if (style === "Title") {
-              endIndex = i;
+        // --- find where the section ends ---
+        let boundaryIdx = paras.items.length;
+
+        for (let j = anchorIdx + 1; j < paras.items.length; j++) {
+          const d = outlineDepth(paras.items[j].style ?? "");
+          if (d === null) continue;
+
+          if (includeSubsections) {
+            // stop only at same-or-shallower depth
+            if (d <= anchorDepth) {
+              boundaryIdx = j;
               break;
             }
-          }
-        } else {
-          // Just get content until next heading of any level
-          for (let i = startIndex + 1; i < paragraphs.items.length; i++) {
-            const para = paragraphs.items[i];
-            const style = para.style || "";
-            if (style.match(/Heading\s*\d/i) || style === "Title" || style === "Subtitle") {
-              endIndex = i;
-              break;
-            }
+          } else {
+            // stop at any heading
+            boundaryIdx = j;
+            break;
           }
         }
 
-        // Get the range from start to end
-        const startPara = paragraphs.items[startIndex];
-        const endPara = paragraphs.items[Math.min(endIndex, paragraphs.items.length) - 1];
-        
-        const range = startPara.getRange(Word.RangeLocation.whole);
-        range.expandTo(endPara.getRange(Word.RangeLocation.whole));
-        
-        const html = range.getHtml();
-        await context.sync();
+        // --- extract HTML for the range ---
+        const first = paras.items[anchorIdx];
+        const last = paras.items[boundaryIdx - 1];
 
-        return html.value || "(empty section)";
+        const span = first
+          .getRange(Word.RangeLocation.whole)
+          .expandTo(last.getRange(Word.RangeLocation.whole));
+
+        const htmlResult = span.getHtml();
+        await ctx.sync();
+
+        return htmlResult.value || "(section is empty)";
       });
-    } catch (error: unknown) {
-      return toolFailure(error);
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

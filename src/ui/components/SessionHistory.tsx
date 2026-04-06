@@ -3,17 +3,22 @@ import { makeStyles, Button, Text } from "@fluentui/react-components";
 import { Delete24Regular, ArrowLeft24Regular } from "@fluentui/react-icons";
 import { z } from "zod";
 import type { OfficeHost } from "../sessionStorage";
-import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/opencode-session-history";
+import {
+  deleteSession,
+  listSessions,
+  type OpencodeSessionInfo,
+} from "../lib/opencode-session-history";
 
 const SessionInfoSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   directory: z.string(),
-  time: z.object({
-    created: z.number(),
-    updated: z.number(),
-  }),
+  time: z.object({ created: z.number(), updated: z.number() }),
 }) satisfies z.ZodType<OpencodeSessionInfo>;
+
+/* ------------------------------------------------------------------ */
+/*  Props                                                             */
+/* ------------------------------------------------------------------ */
 
 interface SessionHistoryProps {
   host: OfficeHost;
@@ -23,15 +28,19 @@ interface SessionHistoryProps {
   onClose: () => void;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Styles                                                            */
+/* ------------------------------------------------------------------ */
+
 const useStyles = makeStyles({
-  container: {
+  root: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
     background: "var(--oc-bg)",
   },
-  header: {
+  toolbar: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
@@ -39,13 +48,13 @@ const useStyles = makeStyles({
     borderBottom: "1px solid var(--oc-border)",
     background: "var(--oc-bg)",
   },
-  headerTitle: {
+  toolbarTitle: {
     fontWeight: "700",
     fontSize: "13px",
     color: "var(--oc-text)",
     letterSpacing: "0.01em",
   },
-  filterRow: {
+  scopeBar: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -54,14 +63,14 @@ const useStyles = makeStyles({
     borderBottom: "1px solid var(--oc-border)",
     background: "var(--oc-bg)",
   },
-  filterLabel: {
+  scopeCaption: {
     fontSize: "11px",
     fontWeight: "700",
     color: "var(--oc-text-faint)",
     textTransform: "uppercase",
     letterSpacing: "0.08em",
   },
-  filterGroup: {
+  pillGroup: {
     display: "flex",
     alignItems: "center",
     gap: "6px",
@@ -70,14 +79,14 @@ const useStyles = makeStyles({
     border: "1px solid var(--oc-border)",
     background: "var(--oc-bg-soft)",
   },
-  filterButton: {
+  pill: {
     minWidth: "76px",
     padding: "0 12px",
     fontSize: "12px",
     borderRadius: "999px",
     height: "28px",
   },
-  backButton: {
+  navBtn: {
     minWidth: "30px",
     width: "30px",
     height: "30px",
@@ -92,19 +101,15 @@ const useStyles = makeStyles({
       border: "1px solid var(--oc-border)",
     },
   },
-  list: {
+  feed: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
     padding: "10px",
     scrollbarColor: "var(--oc-text-faint) transparent",
     scrollbarWidth: "thin",
-    "&::-webkit-scrollbar": {
-      width: "8px",
-    },
-    "&::-webkit-scrollbar-track": {
-      backgroundColor: "transparent",
-    },
+    "&::-webkit-scrollbar": { width: "8px" },
+    "&::-webkit-scrollbar-track": { backgroundColor: "transparent" },
     "&::-webkit-scrollbar-thumb": {
       backgroundColor: "var(--oc-text-faint)",
       borderRadius: "999px",
@@ -116,7 +121,7 @@ const useStyles = makeStyles({
       backgroundColor: "var(--oc-text-muted)",
     },
   },
-  emptyState: {
+  placeholder: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -127,7 +132,7 @@ const useStyles = makeStyles({
     padding: "24px",
     textAlign: "center",
   },
-  entryRow: {
+  card: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
@@ -137,7 +142,8 @@ const useStyles = makeStyles({
     marginBottom: "8px",
     background: "var(--oc-bg-soft)",
     border: "1px solid var(--oc-border)",
-    transition: "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+    transition:
+      "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
     ":hover": {
       background: "var(--oc-bg-soft-hover)",
       border: "1px solid var(--oc-border-strong)",
@@ -145,12 +151,12 @@ const useStyles = makeStyles({
       boxShadow: "0 10px 24px rgba(0,0,0,0.08)",
     },
   },
-  entryBody: {
+  cardContent: {
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
   },
-  entryTitle: {
+  cardTitle: {
     fontSize: "13px",
     fontWeight: "600",
     whiteSpace: "nowrap",
@@ -158,14 +164,14 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     color: "var(--oc-text)",
   },
-  entryDetail: {
+  cardMeta: {
     fontSize: "11px",
     color: "var(--oc-text-faint)",
     marginTop: "4px",
     display: "flex",
     gap: "8px",
   },
-  removeAction: {
+  trashBtn: {
     minWidth: "28px",
     width: "28px",
     height: "28px",
@@ -179,24 +185,74 @@ const useStyles = makeStyles({
   },
 });
 
-/** Convert an ISO date string into a compact relative label. */
-function describeRecency(isoString: string): string {
-  const then = new Date(isoString).getTime();
-  const elapsed = Date.now() - then;
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
 
-  if (elapsed < 60_000) return "Moments ago";
+const HOST_LABELS: Record<OfficeHost, string> = {
+  powerpoint: "PowerPoint",
+  word: "Word",
+  excel: "Excel",
+  onenote: "OneNote",
+};
 
-  const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 60) return `${minutes} min ago`;
-
-  const hours = Math.floor(elapsed / 3_600_000);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.floor(elapsed / 86_400_000);
+/** Produce a compact relative-time label from epoch millis. */
+function relativeTime(epochMs: number): string {
+  const delta = Date.now() - epochMs;
+  if (delta < 60_000) return "Just now";
+  const mins = Math.floor(delta / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(delta / 3_600_000);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(delta / 86_400_000);
   if (days < 7) return `${days}d ago`;
-
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(isoString));
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(epochMs);
 }
+
+/** Extract the last path segment as a short folder label. */
+function folderLabel(dir: string): string {
+  return dir.split(/[\\/]/).pop() || dir;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sub-component: single session row                                 */
+/* ------------------------------------------------------------------ */
+
+interface EntryProps {
+  session: OpencodeSessionInfo;
+  onSelect: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}
+
+const SessionEntry: React.FC<EntryProps> = ({ session, onSelect, onDelete }) => {
+  const cls = useStyles();
+  return (
+    <article className={cls.card} onClick={onSelect} role="button" tabIndex={0}>
+      <div className={cls.cardContent}>
+        <div className={cls.cardTitle}>{session.title}</div>
+        <div className={cls.cardMeta}>
+          <span>{relativeTime(session.time.updated)}</span>
+          <span aria-hidden>&middot;</span>
+          <span>{folderLabel(session.directory)}</span>
+        </div>
+      </div>
+      <Button
+        icon={<Delete24Regular />}
+        appearance="subtle"
+        className={cls.trashBtn}
+        onClick={onDelete}
+        aria-label="Remove"
+      />
+    </article>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                    */
+/* ------------------------------------------------------------------ */
 
 export const SessionHistory: React.FC<SessionHistoryProps> = ({
   host,
@@ -205,89 +261,78 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
   onSelectSession,
   onClose,
 }) => {
-  const styles = useStyles();
+  const cls = useStyles();
   const [sessions, setSessions] = React.useState<OpencodeSessionInfo[]>([]);
 
-  React.useEffect(() => {
-    listSessions(host, shared)
-      .then((items) => setSessions(z.array(SessionInfoSchema).catch([]).parse(items)))
-      .catch(() => setSessions([]));
-  }, [host, shared]);
+  const refresh = React.useCallback(
+    () =>
+      listSessions(host, shared)
+        .then((raw) => setSessions(z.array(SessionInfoSchema).catch([]).parse(raw)))
+        .catch(() => setSessions([])),
+    [host, shared],
+  );
 
-  const removeEntry = (e: React.MouseEvent, sessionId: string) => {
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    deleteSession(sessionId)
-      .then(() => listSessions(host, shared))
-      .then((items) => setSessions(z.array(SessionInfoSchema).catch([]).parse(items)))
-      .catch(() => setSessions([]));
+    deleteSession(id).then(refresh).catch(refresh);
   };
 
-  const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : host === "excel" ? "Excel" : "OneNote";
-
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
+    <section className={cls.root}>
+      {/* top bar */}
+      <nav className={cls.toolbar}>
         <Button
           icon={<ArrowLeft24Regular />}
           appearance="subtle"
-          className={styles.backButton}
+          className={cls.navBtn}
           onClick={onClose}
-          aria-label="Back"
+          aria-label="Go back"
         />
-        <Text className={styles.headerTitle}>{hostLabel} History</Text>
-      </div>
-      <div className={styles.filterRow}>
-        <Text className={styles.filterLabel}>Show</Text>
-        <div className={styles.filterGroup}>
+        <Text className={cls.toolbarTitle}>{HOST_LABELS[host]} History</Text>
+      </nav>
+
+      {/* scope toggle */}
+      <div className={cls.scopeBar}>
+        <Text className={cls.scopeCaption}>Scope</Text>
+        <div className={cls.pillGroup}>
           <Button
             appearance={shared ? "subtle" : "primary"}
-            className={styles.filterButton}
+            className={cls.pill}
             onClick={() => onSharedChange(false)}
           >
             This app
           </Button>
           <Button
             appearance={shared ? "primary" : "subtle"}
-            className={styles.filterButton}
+            className={cls.pill}
             onClick={() => onSharedChange(true)}
           >
-            All history
+            All apps
           </Button>
         </div>
       </div>
 
-      <div className={styles.list}>
+      {/* session list */}
+      <div className={cls.feed}>
         {sessions.length === 0 ? (
-          <div className={styles.emptyState}>
-            Nothing here yet.<br />
-            Your conversations will appear once you start chatting.
+          <div className={cls.placeholder}>
+            No sessions yet.
+            <br />
+            Start a conversation and it will show up here.
           </div>
         ) : (
-          sessions.map((session) => (
-            <div
-              key={session.id}
-              className={styles.entryRow}
-              onClick={() => onSelectSession(session)}
-            >
-              <div className={styles.entryBody}>
-                <div className={styles.entryTitle}>{session.title}</div>
-                <div className={styles.entryDetail}>
-                  <span>{describeRecency(new Date(session.time.updated).toISOString())}</span>
-                  <span>•</span>
-                  <span>{session.directory.split(/[\\/]/).pop() || session.directory}</span>
-                </div>
-              </div>
-              <Button
-                icon={<Delete24Regular />}
-                appearance="subtle"
-                className={styles.removeAction}
-                onClick={(e) => removeEntry(e, session.id)}
-                aria-label="Delete session"
-              />
-            </div>
+          sessions.map((s) => (
+            <SessionEntry
+              key={s.id}
+              session={s}
+              onSelect={() => onSelectSession(s)}
+              onDelete={(e) => handleDelete(e, s.id)}
+            />
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 };

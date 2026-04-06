@@ -1,88 +1,84 @@
 import type { Tool } from "./types";
-import { remoteLog } from "../lib/remoteLog";
 import { loadShapeTexts } from "./powerpointText";
-import { z } from "zod";
+import { toolFailure } from "./powerpointShared";
 
-const CHUNK_SIZE = 10;
-const getPresentationOverviewArgsSchema = z.object({}).passthrough();
+/** Cap text to a max length with an ellipsis marker. */
+function truncate(s: string, limit: number): string {
+  return s.length > limit ? s.slice(0, limit) + "\u2026" : s;
+}
 
-async function getSlidePreviewChunk(startIdx: number, endIdx: number): Promise<string[]> {
-  return await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
+/** Slides processed per PowerPoint.run() context. */
+const BATCH = 10;
+
+/** Maximum shapes inspected per slide for the preview. */
+const PREVIEW_SHAPES = 5;
+
+/**
+ * Collect short text previews for a batch of slides.
+ * Only the first few shapes are read to keep the overview lightweight.
+ */
+async function previewBatch(
+  from: number,
+  to: number,
+): Promise<string[]> {
+  return PowerPoint.run(async (ctx) => {
+    const slides = ctx.presentation.slides;
     slides.load("items");
-    await context.sync();
-    
-    const slideRefs = slides.items.slice(startIdx, endIdx + 1);
-    
-    for (const slide of slideRefs) {
-      slide.shapes.load("items");
-    }
-    await context.sync();
+    await ctx.sync();
 
-    const results: string[] = [];
-    for (let i = 0; i < slideRefs.length; i++) {
-      const slide = slideRefs[i];
-      const slideIndex = startIdx + i;
-      const texts: string[] = [];
-      const previewShapes = slide.shapes.items.slice(0, 5);
-      const shapeTexts = await loadShapeTexts(context, previewShapes);
-      
-      for (const textValue of shapeTexts) {
-        try {
-          const text = textValue.trim();
-          if (text) {
-            texts.push(text.length > 100 ? text.substring(0, 100) + "..." : text);
-          }
-        } catch (e) {
-          remoteLog("getPresentationOverview", `Failed to read text from shape on slide ${slideIndex + 1}`, e);
-        }
-      }
+    const chunk = slides.items.slice(from, to + 1);
+    for (const s of chunk) s.shapes.load("items");
+    await ctx.sync();
 
-      const preview = texts.length > 0 
-        ? texts.slice(0, 3).join(" | ") 
-        : "(empty or images only)";
-      results.push(`Slide ${slideIndex + 1}: ${preview}`);
+    const lines: string[] = [];
+    for (let i = 0; i < chunk.length; i++) {
+      const slideNo = from + i + 1;
+      const subset = chunk[i].shapes.items.slice(0, PREVIEW_SHAPES);
+      const rawTexts = await loadShapeTexts(ctx, subset);
+
+      const snippets = rawTexts
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .map((t) => truncate(t, 90));
+
+      const label =
+        snippets.length > 0 ? snippets.join(" | ") : "(no text content)";
+      lines.push(`  ${slideNo}. ${label}`);
     }
-    return results;
+    return lines;
   });
 }
 
+/**
+ * Provides a quick structural summary of the open PowerPoint deck:
+ * slide count plus a short text preview of each slide.
+ */
 export const getPresentationOverview: Tool = {
   name: "get_presentation_overview",
-  description: "Get an overview of the entire PowerPoint presentation, including total slide count and a preview of each slide's content. Use this first to understand the presentation structure before reading specific slides.",
-  parameters: {
-    type: "object",
-    properties: {},
-    required: [],
-  },
-  handler: async (args) => {
-    const parsedArgs = getPresentationOverviewArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return { textResultForLlm: parsedArgs.error.issues[0]?.message || "Invalid arguments.", resultType: "failure", error: parsedArgs.error.issues[0]?.message || "Invalid arguments.", toolTelemetry: {} };
-    }
+  description: "Get an overview of the PowerPoint deck.",
+  parameters: { type: "object", properties: {} },
+
+  handler: async () => {
     try {
-      const slideCount = await PowerPoint.run(async (context) => {
-        const slides = context.presentation.slides;
-        slides.load("items");
-        await context.sync();
-        return slides.items.length;
+      const count = await PowerPoint.run(async (ctx) => {
+        const s = ctx.presentation.slides;
+        s.load("items");
+        await ctx.sync();
+        return s.items.length;
       });
 
-      if (slideCount === 0) {
-        return "Presentation has no slides.";
+      if (count === 0) return "Deck is empty (0 slides).";
+
+      const previews: string[] = [];
+      for (let cursor = 0; cursor < count; cursor += BATCH) {
+        const hi = Math.min(cursor + BATCH - 1, count - 1);
+        previews.push(...(await previewBatch(cursor, hi)));
       }
 
-      // Process slides in chunks, each chunk uses one PowerPoint.run()
-      const slideOverviews: string[] = [];
-      for (let i = 0; i < slideCount; i += CHUNK_SIZE) {
-        const chunkEnd = Math.min(i + CHUNK_SIZE - 1, slideCount - 1);
-        const chunkResults = await getSlidePreviewChunk(i, chunkEnd);
-        slideOverviews.push(...chunkResults);
-      }
-
-      return `Presentation has ${slideCount} slide(s):\n\n${slideOverviews.join("\n")}`;
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+      return [`${count} slide(s):`, "", ...previews].join("\n");
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

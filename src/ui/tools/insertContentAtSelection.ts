@@ -8,66 +8,56 @@ import {
   writeResolvedWordTarget,
 } from "./wordShared";
 
-const insertContentAtSelectionArgsSchema = z.object({
-  html: z.string(),
+const argsSchema = z.object({
+  html: z.string().min(1, "html is required"),
   location: DocumentWriteLocationSchema.optional().default("replace"),
 });
 
-export type InsertContentAtSelectionArgs = z.infer<typeof insertContentAtSelectionArgsSchema>;
-
+/**
+ * Writes HTML into the active Word selection. The `location` parameter
+ * controls placement relative to the selection (replace, before, after,
+ * start, end).
+ */
 export const insertContentAtSelection: Tool = {
   name: "insert_content_at_selection",
-  description: `Insert HTML content at the current cursor position or selection in Word.
-
-This is a surgical edit - it only affects the selected area, not the entire document.
-
-Parameters:
-- html: The HTML content to insert. Supports tags like <p>, <h1>-<h6>, <ul>, <ol>, <li>, <table>, <b>, <i>, <u>, <a>, <br>, etc.
-- location: Where to insert relative to the selection:
-  - "replace" (default): Replace the selected text with the new content
-  - "before": Insert before the selection, keeping the selection intact
-  - "after": Insert after the selection, keeping the selection intact
-  - "start": Insert at the start of the selection
-  - "end": Insert at the end of the selection
-
-Examples:
-- Insert a paragraph: html = "<p>New paragraph text</p>"
-- Insert a heading: html = "<h2>Section Title</h2>"
-- Insert a list: html = "<ul><li>Item 1</li><li>Item 2</li></ul>"
-- Insert bold text: html = "<b>Important note</b>"`,
+  description:
+    "Insert HTML content at the current Word selection. " +
+    "Use location to control placement: replace (default), before, after, start, end.",
   parameters: {
     type: "object",
     properties: {
       html: {
         type: "string",
-        description: "The HTML content to insert at the selection.",
+        description: "HTML markup to insert.",
       },
       location: {
         type: "string",
         enum: ["replace", "before", "after", "start", "end"],
-        description: "Where to insert the content relative to the selection. Default is 'replace'.",
+        description:
+          "Placement relative to the current selection (defaults to replace).",
       },
     },
     required: ["html"],
   },
-  handler: async (args) => {
-    const parsedArgs = insertContentAtSelectionArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return toolFailure(getZodErrorMessage(parsedArgs.error));
-    }
 
-    const { html, location } = parsedArgs.data;
-    
+  handler: async (args) => {
+    const parsed = argsSchema.safeParse(args ?? {});
+    if (!parsed.success) return toolFailure(getZodErrorMessage(parsed.error));
+
+    const { html, location } = parsed.data;
+
     try {
-      return await Word.run(async (context) => {
-        const selection = await resolveDocumentRangeTarget(context, { kind: "selection" });
-        writeResolvedWordTarget(selection, "insert", "html", html, location);
-        await context.sync();
-        
-        return `Content inserted successfully (location: ${location}).`;
+      return await Word.run(async (ctx) => {
+        const target = await resolveDocumentRangeTarget(ctx, {
+          kind: "selection",
+        });
+        writeResolvedWordTarget(target, "insert", "html", html, location);
+        await ctx.sync();
+
+        return `Inserted at selection (${location}).`;
       });
-    } catch (error: unknown) {
-      return toolFailure(error);
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

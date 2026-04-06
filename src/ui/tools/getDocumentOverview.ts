@@ -1,127 +1,105 @@
 import type { Tool } from "./types";
-import { z } from "zod";
-import { getZodErrorMessage, isWordDesktopRequirementSetSupported, toolFailure } from "./wordShared";
+import { isWordDesktopRequirementSetSupported, toolFailure } from "./wordShared";
 
-const getDocumentOverviewArgsSchema = z.object({});
+/** Map a Word style name to an outline level (1-6) or null. */
+function headingLevel(style: string): number | null {
+  if (style === "Title") return 1;
+  if (style === "Subtitle") return 2;
+  const m = /Heading\s*(\d)/i.exec(style);
+  return m ? Number(m[1]) : null;
+}
 
-export type GetDocumentOverviewArgs = z.infer<typeof getDocumentOverviewArgsSchema>;
+/** Truncate text to `max` chars, appending ellipsis when needed. */
+function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + "\u2026" : text;
+}
 
+/**
+ * Produces a bird's-eye view of the active Word document:
+ * word / paragraph / section / table / list / content-control counts
+ * plus the heading outline tree.
+ */
 export const getDocumentOverview: Tool = {
   name: "get_document_overview",
-  description: `Get a structural overview of the Word document. Use this first to understand the document before reading or editing specific sections.
+  description: "Get a structural overview of the active Word document.",
+  parameters: { type: "object", properties: {} },
 
- Returns:
- - Total word count and paragraph count
- - Section count
- - Heading structure (H1, H2, H3 hierarchy with text)
- - Table count
- - Native table of contents count when supported
- - List count (bulleted and numbered)
- - Content control count
-
-This is faster than reading the entire document and helps you understand what to target for edits.`,
-  parameters: {
-    type: "object",
-    properties: {},
-  },
-  handler: async (args) => {
-    const parsedArgs = getDocumentOverviewArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return toolFailure(getZodErrorMessage(parsedArgs.error));
-    }
-
+  handler: async () => {
     try {
-      return await Word.run(async (context) => {
-        const body = context.document.body;
-        const sections = context.document.sections;
-        const canReadTocs = isWordDesktopRequirementSetSupported("1.4");
-        const tablesOfContents = canReadTocs ? context.document.tablesOfContents : null;
-        
-        // Load basic stats
+      return await Word.run(async (ctx) => {
+        const doc = ctx.document;
+        const body = doc.body;
+        const sections = doc.sections;
+        const tables = body.tables;
+        const controls = body.contentControls;
+        const paras = body.paragraphs;
+
+        const hasTocApi = isWordDesktopRequirementSetSupported("1.4");
+        const tocs = hasTocApi ? doc.tablesOfContents : null;
+
         body.load("text");
         sections.load("items");
-        if (tablesOfContents) {
-          tablesOfContents.load("items");
-        }
-        
-        // Get all paragraphs with their styles
-        const paragraphs = body.paragraphs;
-        paragraphs.load("items");
-        
-        // Get tables
-        const tables = body.tables;
         tables.load("items");
-        
-        // Get content controls
-        const contentControls = body.contentControls;
-        contentControls.load("items");
-        
-        await context.sync();
-        
-        // Load paragraph details
-        for (const para of paragraphs.items) {
-          para.load(["text", "style", "isListItem"]);
+        controls.load("items");
+        paras.load("items");
+        if (tocs) tocs.load("items");
+
+        await ctx.sync();
+
+        // second batch: paragraph metadata
+        for (const p of paras.items) p.load(["text", "style", "isListItem"]);
+        await ctx.sync();
+
+        // --- statistics ---
+        const bodyText = body.text ?? "";
+        const words = bodyText
+          .trim()
+          .split(/\s+/)
+          .filter((w) => w !== "").length;
+
+        let listItems = 0;
+        const outline: string[] = [];
+
+        for (const p of paras.items) {
+          if (p.isListItem) listItems++;
+
+          const lvl = headingLevel(p.style ?? "");
+          if (lvl === null) continue;
+
+          const indent = "  ".repeat(lvl - 1);
+          const prefix = "#".repeat(Math.min(lvl, 4));
+          outline.push(`${indent}${prefix} ${clip((p.text ?? "").trim(), 72)}`);
         }
-        await context.sync();
-        
-        // Calculate stats
-        const text = body.text || "";
-        const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
-        const paragraphCount = paragraphs.items.length;
-        const tableCount = tables.items.length;
-        const contentControlCount = contentControls.items.length;
-        
-        // Build heading structure
-        const headings: string[] = [];
-        let listCount = 0;
-        
-        for (const para of paragraphs.items) {
-          const style = para.style || "";
-          const paraText = (para.text || "").trim();
-          
-          if (para.isListItem) {
-            listCount++;
-          }
-          
-          // Check for heading styles
-          if (style.match(/Heading\s*1/i) || style === "Title") {
-            headings.push(`# ${paraText.substring(0, 80)}${paraText.length > 80 ? "..." : ""}`);
-          } else if (style.match(/Heading\s*2/i) || style === "Subtitle") {
-            headings.push(`  ## ${paraText.substring(0, 70)}${paraText.length > 70 ? "..." : ""}`);
-          } else if (style.match(/Heading\s*3/i)) {
-            headings.push(`    ### ${paraText.substring(0, 60)}${paraText.length > 60 ? "..." : ""}`);
-          } else if (style.match(/Heading\s*[4-6]/i)) {
-            headings.push(`      #### ${paraText.substring(0, 50)}${paraText.length > 50 ? "..." : ""}`);
-          }
-        }
-        
-        // Build output
-        let output = `Document Overview:\n`;
-        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        output += `Words: ${wordCount.toLocaleString()}\n`;
-        output += `Paragraphs: ${paragraphCount}\n`;
-        output += `Sections: ${sections.items.length}\n`;
-        output += `Tables: ${tableCount}\n`;
-        if (tablesOfContents) {
-          output += `Tables of contents: ${tablesOfContents.items.length}\n`;
-        }
-        output += `List items: ${listCount}\n`;
-        if (contentControlCount > 0) {
-          output += `Content controls: ${contentControlCount}\n`;
-        }
-        
-        if (headings.length > 0) {
-          output += `\nDocument Structure:\n`;
-          output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-          output += headings.join("\n");
+
+        // --- assemble output ---
+        const stats: string[] = [
+          `words: ${words.toLocaleString()}`,
+          `paragraphs: ${paras.items.length}`,
+          `sections: ${sections.items.length}`,
+          `tables: ${tables.items.length}`,
+        ];
+
+        if (tocs) stats.push(`tables of contents: ${tocs.items.length}`);
+        if (listItems > 0) stats.push(`list items: ${listItems}`);
+        if (controls.items.length > 0)
+          stats.push(`content controls: ${controls.items.length}`);
+
+        const parts: string[] = [
+          "Document overview",
+          "─".repeat(40),
+          stats.join(" | "),
+        ];
+
+        if (outline.length > 0) {
+          parts.push("", "Heading outline", "─".repeat(40), ...outline);
         } else {
-          output += `\n(No headings found - document may be unstructured)`;
+          parts.push("", "(no headings detected)");
         }
-        
-        return output;
+
+        return parts.join("\n");
       });
-    } catch (error: unknown) {
-      return toolFailure(error);
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

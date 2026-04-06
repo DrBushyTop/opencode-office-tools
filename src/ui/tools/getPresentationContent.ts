@@ -1,145 +1,127 @@
 import type { Tool } from "./types";
-import { remoteLog } from "../lib/remoteLog";
 import { loadShapeTexts } from "./powerpointText";
+import { toolFailure } from "./powerpointShared";
 import { z } from "zod";
 
-const CHUNK_SIZE = 10; // Slides per batch in a single PowerPoint.run()
-const getPresentationContentArgsSchema = z.object({
-  slideIndex: z.number().optional(),
-  startIndex: z.number().optional(),
-  endIndex: z.number().optional(),
+const argsSchema = z.object({
+  slideIndex: z.number().int().min(0).optional(),
+  startIndex: z.number().int().min(0).optional(),
+  endIndex: z.number().int().min(0).optional(),
 });
 
-async function getSlideChunkContent(startIdx: number, endIdx: number, slideCount: number): Promise<string[]> {
-  return await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    slides.load("items");
-    await context.sync();
+/** How many slides to process in one PowerPoint.run() batch. */
+const BATCH_LIMIT = 10;
 
-    // Get slides in this chunk range
-    const slideRefs = slides.items.slice(startIdx, endIdx + 1);
-    
-    // Load shapes for all slides in chunk
-    for (const slide of slideRefs) {
-      slide.shapes.load("items");
-    }
-    await context.sync();
+/** Extract text from a contiguous range of slides in a single context. */
+async function extractBatch(
+  from: number,
+  to: number,
+  total: number,
+): Promise<string[]> {
+  return PowerPoint.run(async (ctx) => {
+    const allSlides = ctx.presentation.slides;
+    allSlides.load("items");
+    await ctx.sync();
 
-    // Extract text
-    const results: string[] = [];
-    for (let i = 0; i < slideRefs.length; i++) {
-      const slide = slideRefs[i];
-      const slideIndex = startIdx + i;
-      const texts: string[] = [];
-      const shapeTexts = await loadShapeTexts(context, slide.shapes.items);
-      
-      for (const text of shapeTexts) {
-        try {
-          if (text) {
-            texts.push(text);
-          }
-        } catch (e) {
-          remoteLog("getPresentationContent", `Failed to read text from shape on slide ${slideIndex + 1}`, e);
-        }
-      }
-      results.push(`=== Slide ${slideIndex + 1} of ${slideCount} ===\n${texts.join("\n\n") || "(empty slide)"}`);
+    const batch = allSlides.items.slice(from, to + 1);
+    for (const s of batch) s.shapes.load("items");
+    await ctx.sync();
+
+    const output: string[] = [];
+    for (let idx = 0; idx < batch.length; idx++) {
+      const slideNum = from + idx + 1;
+      const shapeTexts = await loadShapeTexts(ctx, batch[idx].shapes.items);
+      const content = shapeTexts.filter(Boolean).join("\n\n");
+      output.push(`--- slide ${slideNum}/${total} ---\n${content || "(no text)"}`);
     }
-    return results;
+    return output;
   });
 }
 
-async function getSlideCount(): Promise<number> {
-  return await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    slides.load("items");
-    await context.sync();
-    return slides.items.length;
-  });
-}
-
+/**
+ * Read text content from one or more PowerPoint slides.
+ *
+ * Accepts a single slide index, a start/end range, or no arguments
+ * (reads the entire deck). Large decks are fetched in batches to
+ * stay within Office runtime limits.
+ */
 export const getPresentationContent: Tool = {
   name: "get_presentation_content",
-  description: "Get the text content of slides in the PowerPoint presentation. Can read a single slide by index, a range of slides, or all slides. For very large presentations (50+ slides), consider making parallel calls with different ranges (e.g., 0-24, 25-49, etc.).",
+  description:
+    "Read text content from one or more PowerPoint slides. " +
+    "Pass slideIndex for a single slide, startIndex+endIndex for a range, " +
+    "or omit all parameters to read every slide.",
   parameters: {
     type: "object",
     properties: {
       slideIndex: {
         type: "number",
-        description: "0-based slide index for reading a single slide. Omit to read all or use range.",
+        description: "Zero-based index of a single slide to read.",
       },
       startIndex: {
         type: "number",
-        description: "0-based start index for reading a range. Use with endIndex. For parallel reads, split into ~25 slide ranges.",
+        description: "Zero-based start of a slide range (inclusive).",
       },
       endIndex: {
         type: "number",
-        description: "0-based end index (inclusive) for reading a range. Use with startIndex.",
+        description: "Zero-based end of a slide range (inclusive).",
       },
     },
-    required: [],
   },
-  handler: async (args) => {
-    const parsedArgs = getPresentationContentArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      const message = parsedArgs.error.issues[0]?.message || "Invalid arguments.";
-      return { textResultForLlm: message, resultType: "failure", error: message, toolTelemetry: {} };
-    }
-    const { slideIndex, startIndex, endIndex } = parsedArgs.data;
 
-    for (const [name, value] of [["slideIndex", slideIndex], ["startIndex", startIndex], ["endIndex", endIndex]] as const) {
-      if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
-        return { textResultForLlm: `${name} must be a non-negative integer.`, resultType: "failure", error: `${name} must be a non-negative integer.`, toolTelemetry: {} };
-      }
+  handler: async (args) => {
+    const parsed = argsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return toolFailure(parsed.error.issues[0]?.message ?? "Bad arguments");
     }
+
+    const { slideIndex, startIndex, endIndex } = parsed.data;
 
     try {
-      const slideCount = await getSlideCount();
+      // Determine total slide count first
+      const total = await PowerPoint.run(async (ctx) => {
+        const s = ctx.presentation.slides;
+        s.load("items");
+        await ctx.sync();
+        return s.items.length;
+      });
 
-      if (slideCount === 0) {
-        return "Presentation has no slides.";
-      }
+      if (total === 0) return "The presentation contains no slides.";
 
-      let start: number;
-      let end: number;
+      // Resolve requested range
+      let lo: number;
+      let hi: number;
 
       if (slideIndex !== undefined) {
-        if (slideIndex < 0 || slideIndex >= slideCount) {
-          return { 
-            textResultForLlm: `Invalid slideIndex ${slideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`, 
-            resultType: "failure", 
-            error: "Invalid slideIndex", 
-            toolTelemetry: {} 
-          };
+        if (slideIndex >= total) {
+          return toolFailure(
+            `slideIndex ${slideIndex} is out of range (deck has ${total} slides, indices 0\u2013${total - 1})`,
+          );
         }
-        start = slideIndex;
-        end = slideIndex;
+        lo = slideIndex;
+        hi = slideIndex;
       } else if (startIndex !== undefined && endIndex !== undefined) {
-        start = Math.max(0, startIndex);
-        end = Math.min(slideCount - 1, endIndex);
-        if (start > end) {
-          return { 
-            textResultForLlm: `Invalid range: startIndex (${startIndex}) must be <= endIndex (${endIndex})`, 
-            resultType: "failure", 
-            error: "Invalid range", 
-            toolTelemetry: {} 
-          };
+        if (startIndex > endIndex) {
+          return toolFailure("startIndex must be \u2264 endIndex");
         }
+        lo = Math.max(0, startIndex);
+        hi = Math.min(total - 1, endIndex);
       } else {
-        start = 0;
-        end = slideCount - 1;
+        lo = 0;
+        hi = total - 1;
       }
 
-      // Process in chunks, each chunk uses one PowerPoint.run()
-      const results: string[] = [];
-      for (let i = start; i <= end; i += CHUNK_SIZE) {
-        const chunkEnd = Math.min(i + CHUNK_SIZE - 1, end);
-        const chunkResults = await getSlideChunkContent(i, chunkEnd, slideCount);
-        results.push(...chunkResults);
+      // Fetch in batches
+      const segments: string[] = [];
+      for (let cursor = lo; cursor <= hi; cursor += BATCH_LIMIT) {
+        const batchEnd = Math.min(cursor + BATCH_LIMIT - 1, hi);
+        const batch = await extractBatch(cursor, batchEnd, total);
+        segments.push(...batch);
       }
 
-      return results.join("\n\n");
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+      return segments.join("\n\n");
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };

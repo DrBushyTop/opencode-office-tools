@@ -27,23 +27,28 @@ interface PermissionDialogProps {
   onDecision: (decision: PermissionDecision) => void;
 }
 
-const KIND_META: Record<string, { icon: string; label: string; color: string }> = {
-  shell: { icon: "⚡", label: "Run Shell Command", color: "#d13438" },
-  write: { icon: "✏️", label: "Write File", color: "#ca5010" },
-  read: { icon: "📖", label: "Read File", color: "#0078d4" },
-  subagent: { icon: "🧠", label: "Launch Subagent", color: "#5c2dbd" },
-  mcp: { icon: "🔌", label: "MCP Server Call", color: "#8764b8" },
-  generic: { icon: "🔐", label: "Permission Request", color: "#4f6bed" },
-  danger: { icon: "🛑", label: "Repeated Tool Call", color: "#d13438" },
+/* ------------------------------------------------------------------ */
+/*  Visual metadata per permission kind                               */
+/* ------------------------------------------------------------------ */
+
+const KIND_BADGES: Record<string, { glyph: string; title: string; accent: string }> = {
+  shell: { glyph: "⚡", title: "Run Shell Command", accent: "#d13438" },
+  write: { glyph: "✏️", title: "Write File", accent: "#ca5010" },
+  read: { glyph: "📖", title: "Read File", accent: "#0078d4" },
+  subagent: { glyph: "🧠", title: "Launch Subagent", accent: "#5c2dbd" },
+  mcp: { glyph: "🔌", title: "MCP Server Call", accent: "#8764b8" },
+  generic: { glyph: "🔐", title: "Permission Request", accent: "#4f6bed" },
+  danger: { glyph: "🛑", title: "Repeated Tool Call", accent: "#d13438" },
 };
 
+/* ------------------------------------------------------------------ */
+/*  Styles                                                            */
+/* ------------------------------------------------------------------ */
+
 const useStyles = makeStyles({
-  overlay: {
+  backdrop: {
     position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    inset: "0",
     backgroundColor: "rgba(8, 8, 8, 0.56)",
     backdropFilter: "blur(10px)",
     display: "flex",
@@ -52,7 +57,7 @@ const useStyles = makeStyles({
     zIndex: 9999,
     padding: "16px",
   },
-  dialog: {
+  card: {
     background: "var(--oc-bg)",
     color: "var(--oc-text)",
     borderRadius: "16px",
@@ -61,15 +66,17 @@ const useStyles = makeStyles({
     border: "1px solid var(--oc-border)",
     boxShadow: "var(--oc-shadow)",
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
   },
-  header: {
+  titleRow: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
     padding: "16px 18px 12px",
     borderBottom: "1px solid var(--oc-border)",
   },
-  icon: {
+  badge: {
     width: "32px",
     height: "32px",
     display: "inline-flex",
@@ -79,24 +86,25 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     background: "var(--oc-bg-soft)",
     border: "1px solid var(--oc-border)",
+    flexShrink: 0,
   },
-  kindLabel: {
+  titleText: {
     fontWeight: 700,
     fontSize: "13px",
     letterSpacing: "0.01em",
   },
-  intention: {
+  prompt: {
     padding: "14px 18px 10px",
     fontSize: "13px",
     color: "var(--oc-text-muted)",
     lineHeight: "1.6",
   },
-  details: {
+  detailWrap: {
     padding: "0 18px 16px",
     maxHeight: "220px",
     overflowY: "auto",
   },
-  codeBlock: {
+  mono: {
     fontFamily: '"SFMono-Regular", "Consolas", "Menlo", monospace',
     fontSize: "12px",
     background: "var(--oc-bg-strong)",
@@ -108,7 +116,7 @@ const useStyles = makeStyles({
     wordBreak: "break-all",
     lineHeight: "1.5",
   },
-  actions: {
+  buttonBar: {
     display: "flex",
     gap: "8px",
     padding: "14px 18px 18px",
@@ -116,7 +124,7 @@ const useStyles = makeStyles({
     justifyContent: "flex-end",
     background: "var(--oc-bg)",
   },
-  denyBtn: {
+  btnDeny: {
     color: "var(--oc-danger-text)",
     borderRadius: "10px",
     background: "transparent",
@@ -126,90 +134,111 @@ const useStyles = makeStyles({
       border: "1px solid var(--oc-danger-border)",
     },
   },
-  allowBtn: {
+  btnAllow: {
     backgroundColor: "var(--oc-accent)",
     color: "var(--text-on-interactive-base, #fcfcfc)",
     borderRadius: "10px",
     border: "none",
     ":hover": { backgroundColor: "var(--oc-accent-strong)" },
   },
-  alwaysBtn: {
+  btnPersist: {
     fontWeight: 600,
     borderRadius: "10px",
     background: "transparent",
   },
 });
 
-function getDetail(request: OfficePermissionRequest): string {
-  const safeRequest = OfficePermissionRequestSchema.catch(request).parse(request);
-  return JSON.stringify({
-    permission: safeRequest.permission,
-    target: permissionTarget(safeRequest),
-    input: safeRequest.metadata.input,
-    patterns: safeRequest.patterns,
-    metadata: safeRequest.metadata,
-  }, null, 2);
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
+
+function buildDetailJson(req: OfficePermissionRequest): string {
+  const safe = OfficePermissionRequestSchema.catch(req).parse(req);
+  return JSON.stringify(
+    {
+      permission: safe.permission,
+      target: permissionTarget(safe),
+      input: safe.metadata.input,
+      patterns: safe.patterns,
+      metadata: safe.metadata,
+    },
+    null,
+    2,
+  );
 }
+
+function intentionCopy(req: OfficePermissionRequest, target: string | null): string {
+  if (req.permission === "doom_loop") {
+    return "Confirmation needed — the same tool call is about to repeat.";
+  }
+  return `Requesting access to ${target || "a tool"}.`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                         */
+/* ------------------------------------------------------------------ */
 
 export const PermissionDialog: React.FC<PermissionDialogProps> = ({
   request,
   sessionTitle,
   onDecision,
 }) => {
-  const styles = useStyles();
-  const safeRequest = OfficePermissionRequestSchema.catch(request).parse(request);
-  const target = permissionTarget(safeRequest);
-  const meta = KIND_META[permissionKind(safeRequest)] || KIND_META.generic;
-  const detail = getDetail(safeRequest);
-  const requester = sessionTitle && sessionTitle.trim() ? sessionTitle.trim() : null;
+  const cls = useStyles();
+  const safe = OfficePermissionRequestSchema.catch(request).parse(request);
+  const target = permissionTarget(safe);
+  const badge = KIND_BADGES[permissionKind(safe)] ?? KIND_BADGES.generic;
+  const detailJson = buildDetailJson(safe);
+  const caller = sessionTitle?.trim() || null;
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.dialog}>
-        <div className={styles.header}>
-          <span className={styles.icon}>{meta.icon}</span>
-          <span className={styles.kindLabel} style={{ color: meta.color }}>
-            {meta.label}
+    <div className={cls.backdrop}>
+      <div className={cls.card} role="dialog" aria-label={badge.title}>
+        {/* ---- title ---- */}
+        <header className={cls.titleRow}>
+          <span className={cls.badge} aria-hidden>{badge.glyph}</span>
+          <span className={cls.titleText} style={{ color: badge.accent }}>
+            {badge.title}
           </span>
-        </div>
+        </header>
 
-        <div className={styles.intention}>
-          {safeRequest.permission === "doom_loop"
-            ? "OpenCode wants confirmation before repeating the same tool call again."
-            : `OpenCode wants permission to use ${target || "this tool"}.`}
-          {requester ? ` Requested by ${requester}.` : ""}
-        </div>
+        {/* ---- description ---- */}
+        <p className={cls.prompt}>
+          {intentionCopy(safe, target)}
+          {caller && <>{" "}(from <strong>{caller}</strong>)</>}
+        </p>
 
-        {detail && (
-          <div className={styles.details}>
-            <div className={styles.codeBlock}>{detail}</div>
-          </div>
+        {/* ---- json detail ---- */}
+        {detailJson && (
+          <section className={cls.detailWrap}>
+            <pre className={cls.mono}>{detailJson}</pre>
+          </section>
         )}
 
-        <div className={styles.actions}>
+        {/* ---- actions ---- */}
+        <footer className={cls.buttonBar}>
           <Button
             appearance="subtle"
-            className={styles.denyBtn}
+            className={cls.btnDeny}
             onClick={() => onDecision("deny")}
           >
             Deny
           </Button>
           <Button
-            appearance="primary"
-            className={styles.allowBtn}
-            onClick={() => onDecision("allow")}
-          >
-            Allow
-          </Button>
-          <Button
             appearance="outline"
-            className={styles.alwaysBtn}
-            style={{ borderColor: meta.color, color: meta.color }}
+            className={cls.btnPersist}
+            style={{ borderColor: badge.accent, color: badge.accent }}
             onClick={() => onDecision("always")}
           >
             Always Allow
           </Button>
-        </div>
+          <Button
+            appearance="primary"
+            className={cls.btnAllow}
+            onClick={() => onDecision("allow")}
+          >
+            Allow
+          </Button>
+        </footer>
       </div>
     </div>
   );

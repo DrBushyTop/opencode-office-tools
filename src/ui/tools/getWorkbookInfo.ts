@@ -1,38 +1,50 @@
 import type { Tool } from "./types";
 
+/**
+ * Lightweight workbook introspection — returns sheet listing
+ * and which sheet the user currently has open. For richer
+ * metadata (tables, named ranges, charts) use get_workbook_overview.
+ */
 export const getWorkbookInfo: Tool = {
   name: "get_workbook_info",
-  description: "Get a lightweight workbook summary including worksheet names and the active sheet. Prefer get_workbook_overview when you need structural details like tables, filters, named ranges, or charts.",
-  parameters: {
-    type: "object",
-    properties: {},
-  },
+  description:
+    "Get a lightweight workbook summary with worksheet names and the active sheet. Prefer get_workbook_overview for structural inspection.",
+  parameters: { type: "object", properties: {} },
+
   handler: async () => {
     try {
-      return await Excel.run(async (context) => {
-        const workbook = context.workbook;
-        const worksheets = workbook.worksheets;
-        const activeWorksheet = workbook.worksheets.getActiveWorksheet();
+      return await Excel.run(async (ctx) => {
+        const sheets = ctx.workbook.worksheets;
+        const active = ctx.workbook.worksheets.getActiveWorksheet();
 
-        worksheets.load(["items/name", "items/position"]);
-        activeWorksheet.load("name");
+        sheets.load("items/name,items/position");
+        active.load("name");
+        await ctx.sync();
 
-        await context.sync();
+        const ordered = [...sheets.items].sort(
+          (a, b) => a.position - b.position,
+        );
 
-        const sheetInfo = worksheets.items
-          .sort((a, b) => a.position - b.position)
-          .map((sheet, index) => `${index + 1}. ${sheet.name}`);
+        const lines: string[] = [
+          `Sheets (${ordered.length}) — active: ${active.name}`,
+          "",
+        ];
 
-        let output = `Workbook Structure\n`;
-        output += `==================\n\n`;
-        output += `Active Sheet: ${activeWorksheet.name}\n\n`;
-        output += `All Sheets (${worksheets.items.length}):\n`;
-        output += sheetInfo.join("\n");
+        for (const s of ordered) {
+          const marker = s.name === active.name ? " *" : "";
+          lines.push(`  ${s.position + 1}. ${s.name}${marker}`);
+        }
 
-        return output;
+        return lines.join("\n");
       });
-    } catch (e: any) {
-      return { textResultForLlm: e.message, resultType: "failure", error: e.message, toolTelemetry: {} };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        resultType: "failure",
+        error: msg,
+        textResultForLlm: `Unable to read workbook info: ${msg}`,
+        toolTelemetry: {},
+      };
     }
   },
 };

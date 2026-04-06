@@ -2,175 +2,151 @@ import type { Tool } from "./types";
 import { z } from "zod";
 import { getZodErrorMessage, toolFailure } from "./wordShared";
 
-const applyStyleToSelectionArgsSchema = z.object({
-  bold: z.boolean().optional(),
-  italic: z.boolean().optional(),
-  underline: z.boolean().optional(),
-  strikethrough: z.boolean().optional(),
-  fontSize: z.number().finite().nonnegative().optional(),
-  fontName: z.string().optional(),
-  fontColor: z.string().optional(),
-  highlightColor: z.string().optional(),
-}).refine(
-  ({ bold, italic, underline, strikethrough, fontSize, fontName, fontColor, highlightColor }) => (
-    bold !== undefined || italic !== undefined || underline !== undefined || strikethrough !== undefined
-    || fontSize !== undefined || fontName !== undefined || fontColor !== undefined || highlightColor !== undefined
-  ),
-  { message: "No styles specified. Provide at least one style parameter." },
-);
+const argsSchema = z
+  .object({
+    bold: z.boolean().optional(),
+    italic: z.boolean().optional(),
+    underline: z.boolean().optional(),
+    strikethrough: z.boolean().optional(),
+    fontSize: z.number().finite().nonnegative().optional(),
+    fontName: z.string().optional(),
+    fontColor: z.string().optional(),
+    highlightColor: z.string().optional(),
+  })
+  .refine(
+    (o) => Object.values(o).some((v) => v !== undefined),
+    { message: "At least one formatting property must be supplied." },
+  );
 
-export type ApplyStyleToSelectionArgs = z.infer<typeof applyStyleToSelectionArgsSchema>;
+/**
+ * Normalise a user-provided highlight colour name to the Word API enum
+ * value. Returns undefined when the input is unrecognised so callers
+ * can skip it gracefully.
+ */
+function resolveHighlight(raw: string): string | undefined {
+  const lookup: Record<string, string> = {
+    yellow: "Yellow",
+    green: "Green",
+    cyan: "Turquoise",
+    turquoise: "Turquoise",
+    magenta: "Pink",
+    pink: "Pink",
+    blue: "Blue",
+    red: "Red",
+    darkblue: "DarkBlue",
+    darkcyan: "Teal",
+    teal: "Teal",
+    darkgreen: "Green",
+    darkmagenta: "Violet",
+    violet: "Violet",
+    darkred: "DarkRed",
+    darkyellow: "DarkYellow",
+    gray25: "Gray25",
+    lightgray: "Gray25",
+    gray50: "Gray50",
+    darkgray: "Gray50",
+    black: "Black",
+    white: "White",
+    nohighlight: "NoHighlight",
+    none: "NoHighlight",
+  };
+  return lookup[raw.toLowerCase()];
+}
 
+/** Build a short human-readable summary of what was changed. */
+function describeDelta(opts: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  const toggle = (key: string, on: string, off: string) => {
+    if (opts[key] === true) parts.push(on);
+    else if (opts[key] === false) parts.push(off);
+  };
+
+  toggle("bold", "+bold", "-bold");
+  toggle("italic", "+italic", "-italic");
+  toggle("underline", "+underline", "-underline");
+  toggle("strikethrough", "+strikethrough", "-strikethrough");
+
+  if (opts.fontSize !== undefined) parts.push(`size=${opts.fontSize}pt`);
+  if (opts.fontName !== undefined) parts.push(`font=${opts.fontName}`);
+  if (opts.fontColor !== undefined) parts.push(`color=#${String(opts.fontColor).replace("#", "")}`);
+  if (opts.highlightColor !== undefined) parts.push(`highlight=${opts.highlightColor}`);
+
+  return parts.join(", ");
+}
+
+/**
+ * Applies inline formatting to the current Word selection.
+ * Only the properties that are explicitly provided will be changed;
+ * everything else is left untouched.
+ */
 export const applyStyleToSelection: Tool = {
   name: "apply_style_to_selection",
-  description: `Apply formatting styles to the currently selected text in Word.
-
-All parameters are optional - only specified styles will be applied.
-
-Parameters:
-- bold: Set text to bold (true) or remove bold (false)
-- italic: Set text to italic (true) or remove italic (false)
-- underline: Set text to underline (true) or remove underline (false)
-- strikethrough: Set strikethrough (true) or remove it (false)
-- fontSize: Font size in points (e.g., 12, 14, 24)
-- fontName: Font family name (e.g., "Arial", "Times New Roman", "Calibri")
-- fontColor: Text color as hex string (e.g., "FF0000" for red, "0000FF" for blue)
-- highlightColor: Highlight/background color. Use Word highlight colors: "yellow", "green", "cyan", "magenta", "blue", "red", "darkBlue", "darkCyan", "darkGreen", "darkMagenta", "darkRed", "darkYellow", "gray25", "gray50", "black", or "noHighlight" to remove
-
-Examples:
-- Make text bold and red: bold=true, fontColor="FF0000"
-- Increase font size: fontSize=16
-- Highlight important text: highlightColor="yellow"
-- Apply multiple styles: bold=true, italic=true, fontSize=14, fontName="Arial"`,
+  description: "Apply formatting styles to the current Word selection.",
   parameters: {
     type: "object",
     properties: {
-      bold: {
-        type: "boolean",
-        description: "Set to true for bold, false to remove bold.",
-      },
-      italic: {
-        type: "boolean",
-        description: "Set to true for italic, false to remove italic.",
-      },
-      underline: {
-        type: "boolean",
-        description: "Set to true for underline, false to remove underline.",
-      },
-      strikethrough: {
-        type: "boolean",
-        description: "Set to true for strikethrough, false to remove it.",
-      },
-      fontSize: {
-        type: "number",
-        description: "Font size in points.",
-      },
-      fontName: {
-        type: "string",
-        description: "Font family name (e.g., 'Arial', 'Calibri').",
-      },
+      bold: { type: "boolean", description: "Toggle bold." },
+      italic: { type: "boolean", description: "Toggle italic." },
+      underline: { type: "boolean", description: "Toggle underline." },
+      strikethrough: { type: "boolean", description: "Toggle strikethrough." },
+      fontSize: { type: "number", description: "Size in points." },
+      fontName: { type: "string", description: "Font family name." },
       fontColor: {
         type: "string",
-        description: "Text color as hex string without # (e.g., 'FF0000' for red).",
+        description: "Hex colour without leading # (e.g. FF0000).",
       },
       highlightColor: {
         type: "string",
-        description: "Highlight color name (e.g., 'yellow', 'green', 'noHighlight').",
+        description:
+          "Named highlight colour (yellow, green, cyan, blue, red, etc.) or noHighlight to clear.",
       },
     },
-    required: [],
   },
-  handler: async (args) => {
-    const parsedArgs = applyStyleToSelectionArgsSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return toolFailure(getZodErrorMessage(parsedArgs.error));
-    }
 
-    const { bold, italic, underline, strikethrough, fontSize, fontName, fontColor, highlightColor } = parsedArgs.data;
+  handler: async (args) => {
+    const parsed = argsSchema.safeParse(args ?? {});
+    if (!parsed.success) return toolFailure(getZodErrorMessage(parsed.error));
+
+    const opts = parsed.data;
 
     try {
-      return await Word.run(async (context) => {
-        const selection = context.document.getSelection();
-        selection.load("text");
-        await context.sync();
+      return await Word.run(async (ctx) => {
+        const sel = ctx.document.getSelection();
+        sel.load("text");
+        await ctx.sync();
 
-        if (!selection.text || selection.text.trim().length === 0) {
-          return "No text selected. Please select some text first.";
-        }
-
-        const font = selection.font;
-
-        // Apply each specified style
-        if (bold !== undefined) {
-          font.bold = bold;
-        }
-        if (italic !== undefined) {
-          font.italic = italic;
-        }
-        if (underline !== undefined) {
-          font.underline = underline ? Word.UnderlineType.single : Word.UnderlineType.none;
-        }
-        if (strikethrough !== undefined) {
-          font.strikeThrough = strikethrough;
-        }
-        if (fontSize !== undefined) {
-          font.size = fontSize;
-        }
-        if (fontName !== undefined) {
-          font.name = fontName;
-        }
-        if (fontColor !== undefined) {
-          font.color = fontColor.startsWith("#") ? fontColor : `#${fontColor}`;
-        }
-        if (highlightColor !== undefined) {
-          // Map user-friendly names to Word highlight color strings
-          const colorMap: { [key: string]: string } = {
-            "yellow": "Yellow",
-            "green": "Green",
-            "cyan": "Turquoise",
-            "turquoise": "Turquoise",
-            "magenta": "Pink",
-            "pink": "Pink",
-            "blue": "Blue",
-            "red": "Red",
-            "darkblue": "DarkBlue",
-            "darkcyan": "Teal",
-            "darkgreen": "Green",
-            "darkmagenta": "Violet",
-            "darkred": "DarkRed",
-            "darkyellow": "DarkYellow",
-            "gray25": "Gray25",
-            "lightgray": "Gray25",
-            "gray50": "Gray50",
-            "darkgray": "Gray50",
-            "black": "Black",
-            "white": "White",
-            "nohighlight": "NoHighlight",
-            "none": "NoHighlight",
-          };
-          const color = colorMap[highlightColor.toLowerCase()];
-          if (color !== undefined) {
-            font.highlightColor = color;
-          }
+        if (!sel.text?.trim()) {
+          return "Nothing is selected — select text first.";
         }
 
-        await context.sync();
+        const f = sel.font;
 
-        // Build confirmation message
-        const applied: string[] = [];
-        if (bold !== undefined) applied.push(bold ? "bold" : "not bold");
-        if (italic !== undefined) applied.push(italic ? "italic" : "not italic");
-        if (underline !== undefined) applied.push(underline ? "underlined" : "not underlined");
-        if (strikethrough !== undefined) applied.push(strikethrough ? "strikethrough" : "no strikethrough");
-        if (fontSize !== undefined) applied.push(`${fontSize}pt`);
-        if (fontName !== undefined) applied.push(fontName);
-        if (fontColor !== undefined) applied.push(`color #${fontColor.replace("#", "")}`);
-        if (highlightColor !== undefined) applied.push(`${highlightColor} highlight`);
+        if (opts.bold !== undefined) f.bold = opts.bold;
+        if (opts.italic !== undefined) f.italic = opts.italic;
+        if (opts.strikethrough !== undefined) f.strikeThrough = opts.strikethrough;
+        if (opts.underline !== undefined) {
+          f.underline = opts.underline
+            ? Word.UnderlineType.single
+            : Word.UnderlineType.none;
+        }
+        if (opts.fontSize !== undefined) f.size = opts.fontSize;
+        if (opts.fontName !== undefined) f.name = opts.fontName;
+        if (opts.fontColor !== undefined) {
+          f.color = opts.fontColor.startsWith("#")
+            ? opts.fontColor
+            : `#${opts.fontColor}`;
+        }
+        if (opts.highlightColor !== undefined) {
+          const resolved = resolveHighlight(opts.highlightColor);
+          if (resolved) f.highlightColor = resolved;
+        }
 
-        return `Applied formatting: ${applied.join(", ")}.`;
+        await ctx.sync();
+        return `Styled selection: ${describeDelta(opts as Record<string, unknown>)}`;
       });
-    } catch (error: unknown) {
-      return toolFailure(error);
+    } catch (err: unknown) {
+      return toolFailure(err);
     }
   },
 };
