@@ -5,8 +5,7 @@ const toIco = require('to-ico');
 const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
-const sourceLogo = path.join(rootDir, 'logo.svg');
-const ribbonLogo = path.join(rootDir, 'logo-ribbon.svg');
+const sourceLogo = path.join(rootDir, 'logo.png');
 const webIconDir = path.join(rootDir, 'src', 'ui', 'public');
 const windowsInstallerDir = path.join(rootDir, 'installer', 'windows');
 const macInstallerDir = path.join(rootDir, 'installer', 'macos');
@@ -39,9 +38,11 @@ function ensureDirectory(targetDir) {
 }
 
 async function renderSourceCatalog() {
+  // Trim transparent padding first, then resize to square at each target size.
+  const trimmed = await sharp(sourceLogo).trim().toBuffer();
   const rendered = new Map();
   for (const size of pngSizes) {
-    const buffer = await sharp(sourceLogo)
+    const buffer = await sharp(trimmed)
       .resize(size, size, {
         fit: 'contain',
         background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -63,7 +64,7 @@ function bufferForSize(rendered, size) {
 
 async function writeBrowserIcons(rendered) {
   ensureDirectory(webIconDir);
-  console.log('Generating icons from logo.svg...');
+  console.log('Generating icons from logo.png...');
 
   for (const size of pngSizes) {
     const targetFile = path.join(webIconDir, `icon-${size}.png`);
@@ -72,30 +73,6 @@ async function writeBrowserIcons(rendered) {
   }
 
   console.log(`\nPNG icons saved to: ${webIconDir}`);
-}
-
-// Ribbon icons use a separate SVG with transparent background and two-tone
-// Monoline styling so they remain legible on both light and dark Office ribbons.
-const ribbonSizes = [16, 32, 64, 80];
-
-async function writeRibbonIcons() {
-  if (!fs.existsSync(ribbonLogo)) {
-    console.log('\n⚠ logo-ribbon.svg not found — skipping ribbon icon generation');
-    return;
-  }
-  console.log('\nGenerating ribbon icons from logo-ribbon.svg...');
-  for (const size of ribbonSizes) {
-    const buffer = await sharp(ribbonLogo)
-      .resize(size, size, {
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .png()
-      .toBuffer();
-    const targetFile = path.join(webIconDir, `icon-${size}.png`);
-    fs.writeFileSync(targetFile, buffer);
-    console.log(`  ✓ icon-${size}.png (ribbon)`);
-  }
 }
 
 async function writeWindowsAssets(rendered) {
@@ -119,11 +96,11 @@ function writeMacInstallerPng(rendered) {
   console.log(`  ✓ icon.png copied to: ${destination}`);
 }
 
-async function writeTrayAssets() {
+async function writeTrayAssets(trimmed) {
   console.log('\nGenerating tray assets...');
   try {
     for (const asset of trayAssetPlan) {
-      let pipeline = sharp(sourceLogo).resize(asset.size, asset.size, {
+      let pipeline = sharp(trimmed).resize(asset.size, asset.size, {
         fit: 'contain',
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       });
@@ -164,12 +141,13 @@ async function writeMacIcns(rendered) {
 }
 
 async function main() {
+  // Trim transparent padding from source once, reuse for all outputs.
+  const trimmed = await sharp(sourceLogo).trim().toBuffer();
   const renderedCatalog = await renderSourceCatalog();
   await writeBrowserIcons(renderedCatalog);
-  await writeRibbonIcons();
   await writeWindowsAssets(renderedCatalog);
   writeMacInstallerPng(renderedCatalog);
-  await writeTrayAssets();
+  await writeTrayAssets(trimmed);
   await writeMacIcns(renderedCatalog);
 }
 
