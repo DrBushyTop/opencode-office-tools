@@ -77,9 +77,9 @@ The getting started guide walks you through running the add-in locally using the
 
 ```
 ├── src/
-│   ├── server.js          # Dev HTTPS server with Vite middleware and Office bridge
-│   ├── server-prod.js     # Production HTTPS server for built frontend assets
-│   ├── server/            # OpenCode runtime, API routes, and Office bridge adapters
+│   ├── server.js          # Dev wrapper that mounts Vite on the shared HTTPS runtime
+│   ├── server-prod.js     # Production wrapper that serves dist/ on the shared HTTPS runtime
+│   ├── server/            # Shared HTTP runtime, OpenCode runtime, API routes, and Office bridge adapters
 │   ├── shared/            # Shared Office metadata and generated tool registry
 │   ├── tray/              # Electron tray app entrypoint
 │   └── ui/                # React task pane frontend and Office tools
@@ -101,7 +101,7 @@ The getting started guide walks you through running the add-in locally using the
 | Command | Description |
 |---------|-------------|
 | `bun run dev` | Start development server with hot reload |
-| `bun run start` | Run production server standalone |
+| `bun run start` | Run the built frontend on the shared production server |
 | `bun run start:tray` | Build the app and launch the local Electron tray runtime |
 | `bun run build` | Build frontend for production |
 | `bun run test` | Regenerate Office tool metadata and run the Vitest suite |

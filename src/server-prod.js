@@ -1,50 +1,32 @@
-/**
- * Production server for Office Add-in
- * This serves the pre-built static files (no Vite dev server)
- */
-const express = require('express');
-const https = require('https');
-const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const { z } = require('zod');
-const { createApiRouter, createBridgeRouter } = require('./server/api');
-const { OpencodeRuntime } = require('./server/opencodeRuntime');
-const { OfficeToolBridge } = require('./server/officeToolBridge');
-const { writeBridgeToken, removeBridgeToken } = require('./server/bridgeTokenPath');
+const express = require('express');
+const { createHttpRuntime, registerShutdown } = require('./server/httpRuntime');
 const { logInfo, logError } = require('./server/devLogger');
 
-// Determine if we're running from pkg bundle
 const isPkg = typeof process.pkg !== 'undefined';
 
-const productionServerConfigSchema = z.object({
-  PORT: z.union([z.string(), z.number()]),
-  BRIDGE_PORT: z.union([z.string(), z.number()]),
-  BASE_PATH: z.string().min(1),
-  cert: z.instanceof(Buffer),
-  key: z.instanceof(Buffer),
-});
-
-// Get the base directory (works both in dev and when packaged)
 function getBasePath() {
-  // Check if running from Electron tray app
-  const configuredBasePath = z.string().min(1).safeParse(process.env.OPENCODE_OFFICE_BASE_PATH);
-  if (configuredBasePath.success) {
-    return configuredBasePath.data;
+  if (typeof process.env.OPENCODE_OFFICE_BASE_PATH === 'string' && process.env.OPENCODE_OFFICE_BASE_PATH.trim()) {
+    return process.env.OPENCODE_OFFICE_BASE_PATH;
   }
   if (isPkg) {
-    // When packaged, __dirname points to snapshot filesystem
-    // The actual files are next to the executable
     return path.dirname(process.execPath);
   }
   return path.resolve(__dirname, '..');
 }
 
-const BASE_PATH = getBasePath();
+function parsePort(value, fallback) {
+  const port = Number.parseInt(String(value ?? fallback), 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`Invalid port: ${value}`);
+  }
+  return port;
+}
 
-async function createServer() {
-  const certPath = path.join(BASE_PATH, 'certs', 'localhost.pem');
-  const keyPath = path.join(BASE_PATH, 'certs', 'localhost-key.pem');
+function readCertificates(basePath) {
+  const certPath = path.join(basePath, 'certs', 'localhost.pem');
+  const keyPath = path.join(basePath, 'certs', 'localhost-key.pem');
 
   if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
     console.error('SSL certificates not found!');
@@ -54,21 +36,14 @@ async function createServer() {
     process.exit(1);
   }
 
-  const { PORT, BRIDGE_PORT, cert, key } = productionServerConfigSchema.parse({
-    PORT: process.env.PORT || 52390,
-    BRIDGE_PORT: process.env.BRIDGE_PORT || 52391,
-    BASE_PATH,
+  return {
     cert: fs.readFileSync(certPath),
     key: fs.readFileSync(keyPath),
-  });
-  const app = express();
-  const bridgeApp = express();
-  const runtime = new OpencodeRuntime();
-  const bridge = new OfficeToolBridge();
-  writeBridgeToken(BRIDGE_PORT, bridge.bridgeToken);
-  const apiRouter = createApiRouter(runtime, bridge);
-  app.use('/api', apiRouter);
-  bridgeApp.use('/api', createBridgeRouter(bridge));
+  };
+}
+
+function attachBuiltFrontend(app, basePath) {
+  const distPath = path.join(basePath, 'dist');
 
   app.use((req, res, next) => {
     const startedAt = Date.now();
@@ -81,56 +56,46 @@ async function createServer() {
     next();
   });
 
-  // ========== Static File Serving ==========
-  const distPath = path.join(BASE_PATH, 'dist');
   app.use(express.static(distPath));
-  
-  // Fallback to index.html for SPA routing
   app.get('*path', (req, res) => {
     logInfo('static', 'Serving SPA fallback', { url: req.originalUrl, distPath });
     res.sendFile(path.join(distPath, 'index.html'));
   });
-
-  // ========== HTTPS Server ==========
-  const httpsConfig = { cert, key };
-
-  const httpsServer = https.createServer(httpsConfig, app);
-  const bridgeServer = http.createServer(bridgeApp);
-
-  httpsServer.listen(PORT, () => {
-    console.log(`OpenCode Office Add-in Server running on https://localhost:${PORT}`);
-    logInfo('server', 'HTTPS server started', { port: PORT, basePath: BASE_PATH });
-  });
-  bridgeServer.listen(BRIDGE_PORT, '127.0.0.1', () => {
-    console.log(`Office bridge available at http://127.0.0.1:${BRIDGE_PORT}/api`);
-    logInfo('server', 'Bridge server started', { port: BRIDGE_PORT });
-  });
-
-  const close = () => {
-    runtime.close();
-    httpsServer.close();
-    bridgeServer.close();
-    removeBridgeToken(BRIDGE_PORT);
-  };
-
-  process.once('SIGINT', () => {
-    logInfo('server', 'Received SIGINT');
-    close();
-    process.exit(0);
-  });
-  process.once('SIGTERM', () => {
-    logInfo('server', 'Received SIGTERM');
-    close();
-    process.exit(0);
-  });
-
-  return { httpsServer, close };
 }
 
-// Export for use by tray app
+async function createServer() {
+  const basePath = getBasePath();
+  const port = parsePort(process.env.PORT, 52390);
+  const bridgePort = parsePort(process.env.BRIDGE_PORT, 52391);
+  const runtime = createHttpRuntime({
+    port,
+    bridgePort,
+    ...readCertificates(basePath),
+  });
+
+  try {
+    attachBuiltFrontend(runtime.app, basePath);
+    registerShutdown(runtime.close);
+    await runtime.listen({
+      onHttpsListening: () => {
+        console.log(`OpenCode Office Add-in Server running on https://localhost:${port}`);
+        logInfo('server', 'HTTPS server started', { port, basePath });
+      },
+      onBridgeListening: () => {
+        console.log(`Office bridge available at http://127.0.0.1:${bridgePort}/api`);
+        logInfo('server', 'Bridge server started', { port: bridgePort });
+      },
+    });
+
+    return { httpsServer: runtime.httpsServer, close: runtime.close };
+  } catch (error) {
+    await runtime.close();
+    throw error;
+  }
+}
+
 module.exports = { createServer };
 
-// Run directly if not required as a module
 if (require.main === module) {
   createServer().catch((error) => {
     console.error(error);
