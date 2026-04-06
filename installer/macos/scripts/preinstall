@@ -1,33 +1,58 @@
 #!/bin/bash
-# Pre-installation script for macOS
-# Stops any running instance before upgrade
 
-LAUNCHAGENT="com.opencode.office-addin"
+set -e
+
+LAUNCHAGENT_ID="com.opencode.office-addin"
 APP_NAME="OpenCode Office Add-in"
 
-# Get the installing user
-if [ -n "$USER" ] && [ "$USER" != "root" ]; then
-    INSTALL_USER="$USER"
-elif [ -n "$SUDO_USER" ]; then
-    INSTALL_USER="$SUDO_USER"
-else
-    INSTALL_USER=$(stat -f "%Su" /dev/console)
-fi
+resolve_install_user() {
+    if [ -n "${USER:-}" ] && [ "${USER}" != "root" ]; then
+        printf '%s\n' "$USER"
+        return
+    fi
 
-USER_HOME=$(dscl . -read /Users/$INSTALL_USER NFSHomeDirectory | awk '{print $2}')
-LAUNCHAGENT_PATH="$USER_HOME/Library/LaunchAgents/$LAUNCHAGENT.plist"
+    if [ -n "${SUDO_USER:-}" ]; then
+        printf '%s\n' "$SUDO_USER"
+        return
+    fi
 
-# Stop existing service if running
-if [ -f "$LAUNCHAGENT_PATH" ]; then
-    echo "Stopping existing service..."
-    sudo -u $INSTALL_USER launchctl unload "$LAUNCHAGENT_PATH" 2>/dev/null || true
-fi
+    stat -f "%Su" /dev/console
+}
 
-# Kill any running Electron app
-pkill -f "$APP_NAME" 2>/dev/null || true
+resolve_user_home() {
+    dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
+}
 
-# Also kill any old standalone server process (from previous versions)
-pkill -f "copilot-office-server" 2>/dev/null || true
+stop_launch_agent() {
+    local install_user="$1"
+    local launch_agent_path="$2"
 
-echo "Pre-install cleanup complete"
+    if [ -f "$launch_agent_path" ]; then
+        echo "Stopping existing service..."
+        sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
+    fi
+}
+
+stop_known_processes() {
+    pkill -f "$APP_NAME" 2>/dev/null || true
+    pkill -f "copilot-office-server" 2>/dev/null || true
+    pkill -f "opencode-office-server" 2>/dev/null || true
+}
+
+main() {
+    local install_user
+    local user_home
+    local launch_agent_path
+
+    install_user="$(resolve_install_user)"
+    user_home="$(resolve_user_home "$install_user")"
+    launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
+
+    stop_launch_agent "$install_user" "$launch_agent_path"
+    stop_known_processes
+
+    echo "Pre-install cleanup complete"
+}
+
+main "$@"
 exit 0

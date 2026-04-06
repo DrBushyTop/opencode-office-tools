@@ -1,12 +1,11 @@
 #!/bin/bash
-# Uninstall script for macOS
-# Run: sudo ./uninstall.sh
+
+set -e
 
 APP_NAME="OpenCode Office Add-in"
-APP_DIR="/Applications/$APP_NAME.app"
-LAUNCHAGENT="com.opencode.office-addin"
-MANIFEST_PATH="$APP_DIR/Contents/Resources/manifest.xml"
-MANIFEST_FILENAME="manifest.xml"
+APP_DIR="/Applications/${APP_NAME}.app"
+LAUNCHAGENT_ID="com.opencode.office-addin"
+MANIFEST_PATH="${APP_DIR}/Contents/Resources/manifest.xml"
 
 manifest_id() {
     local manifest_path="$1"
@@ -50,52 +49,76 @@ remove_matching_manifests() {
     done
 }
 
-echo "Uninstalling OpenCode Office Add-in..."
+resolve_install_user() {
+    if [ -n "${SUDO_USER:-}" ]; then
+        printf '%s\n' "$SUDO_USER"
+        return
+    fi
 
-# Get the current user
-if [ -n "$SUDO_USER" ]; then
-    INSTALL_USER="$SUDO_USER"
-else
-    INSTALL_USER=$(stat -f "%Su" /dev/console)
-fi
+    stat -f "%Su" /dev/console
+}
 
-USER_HOME=$(dscl . -read /Users/$INSTALL_USER NFSHomeDirectory | awk '{print $2}')
-TARGET_MANIFEST_ID="$(manifest_id "$MANIFEST_PATH")"
+resolve_user_home() {
+    dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
+}
 
-# Stop the service
-echo "Stopping service..."
-LAUNCHAGENT_PATH="$USER_HOME/Library/LaunchAgents/$LAUNCHAGENT.plist"
-if [ -f "$LAUNCHAGENT_PATH" ]; then
-    sudo -u $INSTALL_USER launchctl unload "$LAUNCHAGENT_PATH" 2>/dev/null || true
-    rm -f "$LAUNCHAGENT_PATH"
-fi
+stop_background_items() {
+    local install_user="$1"
+    local user_home="$2"
+    local launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
 
-# Kill any running Electron app
-pkill -f "$APP_NAME" 2>/dev/null || true
+    echo "Stopping service..."
+    if [ -f "$launch_agent_path" ]; then
+        sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
+        rm -f "$launch_agent_path"
+    fi
 
-# Also kill any old standalone server process (from previous versions)
-pkill -f "opencode-office-server" 2>/dev/null || true
+    pkill -f "$APP_NAME" 2>/dev/null || true
+    pkill -f "opencode-office-server" 2>/dev/null || true
+    pkill -f "copilot-office-server" 2>/dev/null || true
+}
 
-# Remove add-in registrations
-echo "Removing add-in registrations..."
-WORD_WEF="$USER_HOME/Library/Containers/com.microsoft.Word/Data/Documents/wef"
-PPT_WEF="$USER_HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
-EXCEL_WEF="$USER_HOME/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
-ONENOTE_WEF="$USER_HOME/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
+remove_manifest_registrations() {
+    local user_home="$1"
+    local target_manifest_id="$2"
+    local host_dirs=(
+        "$user_home/Library/Containers/com.microsoft.Word/Data/Documents/wef"
+        "$user_home/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
+        "$user_home/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
+        "$user_home/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
+    )
 
-for WEF_DIR in "$WORD_WEF" "$PPT_WEF" "$EXCEL_WEF" "$ONENOTE_WEF"; do
-    remove_matching_manifests "$WEF_DIR" "$TARGET_MANIFEST_ID"
-done
+    echo "Removing add-in registrations..."
+    local wef_dir
+    for wef_dir in "${host_dirs[@]}"; do
+        remove_matching_manifests "$wef_dir" "$target_manifest_id"
+    done
+}
 
-# Remove application directory
-echo "Removing application..."
-rm -rf "$APP_DIR"
+main() {
+    local install_user
+    local user_home
+    local target_manifest_id
 
-echo ""
-echo "✓ OpenCode Office Add-in has been uninstalled."
-echo ""
-echo "Note: The SSL certificate remains in your keychain."
-echo "To remove it manually:"
-echo "  1. Open Keychain Access"
-echo "  2. Search for 'localhost'"
-echo "  3. Delete the certificate"
+    echo "Uninstalling OpenCode Office Add-in..."
+    install_user="$(resolve_install_user)"
+    user_home="$(resolve_user_home "$install_user")"
+    target_manifest_id="$(manifest_id "$MANIFEST_PATH")"
+
+    stop_background_items "$install_user" "$user_home"
+    remove_manifest_registrations "$user_home" "$target_manifest_id"
+
+    echo "Removing application..."
+    rm -rf "$APP_DIR"
+
+    echo ""
+    echo "✓ OpenCode Office Add-in has been uninstalled."
+    echo ""
+    echo "Note: The SSL certificate remains in your keychain."
+    echo "To remove it manually:"
+    echo "  1. Open Keychain Access"
+    echo "  2. Search for 'localhost'"
+    echo "  3. Delete the certificate"
+}
+
+main "$@"

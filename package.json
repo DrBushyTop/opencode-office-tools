@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server-prod.js",
-    "start:tray": "bun install --silent && bun run build && electron .",
+    "build:tray-runtime": "bun install --silent && bun run build",
     "build": "bun run generate:office-tools && vite build",
     "build:icons": "node scripts/generate-icons.js",
+    "prepare:desktop-release": "bun run clean:extraneous && bun run build",
+    "start:tray": "bun run build:tray-runtime && electron .",
     "generate:office-tools": "node scripts/generate-office-tools.js",
-    "build:installer": "bun run clean:extraneous && bun run build && electron-builder",
-    "build:installer:win": "bun run clean:extraneous && bun run build && electron-builder --win",
-    "build:installer:mac": "bun run clean:extraneous && bun run build && electron-builder --mac",
+    "build:installer": "bun run prepare:desktop-release && electron-builder",
+    "build:installer:win": "bun run prepare:desktop-release && electron-builder --win",
+    "build:installer:mac": "bun run prepare:desktop-release && electron-builder --mac",
     "clean:extraneous": "node scripts/clean-extraneous.js",
-    "package:tray": "node scripts/package-tray.js",
+    "package:tray:archive": "node scripts/package-tray.js",
+    "package:tray": "bun run package:tray:archive",
     "test": "bun run generate:office-tools && vitest run"
   },
   "pkg": {
@@ -31,11 +34,11 @@
     },
     "asarUnpack": [],
     "files": [
-      ".opencode/**/*",
-      "src/shared/**/*",
-      "src/tray/**/*",
       "src/server/**/*",
       "src/server-prod.js",
+      "src/shared/**/*",
+      "src/tray/**/*",
+      ".opencode/**/*",
       "node_modules/**/*",
       "!src/**/*.test.*",
       "!node_modules/office-addin-*/**",
@@ -44,24 +47,24 @@
     ],
     "extraResources": [
       {
-        "from": "dist",
-        "to": "dist"
-      },
-      {
-        "from": "certs",
-        "to": "certs"
+        "from": ".opencode",
+        "to": ".opencode"
       },
       {
         "from": "assets",
         "to": "assets"
       },
       {
-        "from": "manifest.xml",
-        "to": "manifest.xml"
+        "from": "certs",
+        "to": "certs"
       },
       {
-        "from": ".opencode",
-        "to": ".opencode"
+        "from": "dist",
+        "to": "dist"
+      },
+      {
+        "from": "manifest.xml",
+        "to": "manifest.xml"
       }
     ],
     "win": {
