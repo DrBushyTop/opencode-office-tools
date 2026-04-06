@@ -8,8 +8,8 @@
   <Version>1.0.0.2</Version>
   <ProviderName>Your Company</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="OpenCode"/>
-  <Description DefaultValue="OpenCode for Word, Excel, PowerPoint, and OneNote."/>
+  <DisplayName DefaultValue="OpenCode Office"/>
+  <Description DefaultValue="OpenCode Office for Word, Excel, PowerPoint, and OneNote."/>
   <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260407a"/>
   <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260407a"/>
   <SupportUrl DefaultValue="https://www.contoso.com/help"/>
@@ -188,13 +188,13 @@
         <bt:Url id="Surface.TaskpaneUrl" DefaultValue="https://localhost:52390/index.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="Bootstrap.Title" DefaultValue="Get started with OpenCode!"/>
-        <bt:String id="Surface.GroupLabel" DefaultValue="OpenCode"/>
-        <bt:String id="Surface.ButtonLabel" DefaultValue="OpenCode"/>
+        <bt:String id="Bootstrap.Title" DefaultValue="Get started with OpenCode Office!"/>
+        <bt:String id="Surface.GroupLabel" DefaultValue="OpenCode Office"/>
+        <bt:String id="Surface.ButtonLabel" DefaultValue="OpenCode Office"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="Bootstrap.Description" DefaultValue="OpenCode loaded successfully. Go to the HOME tab and click the OpenCode button to get started."/>
-        <bt:String id="Surface.ButtonTooltip" DefaultValue="Open the OpenCode task pane"/>
+        <bt:String id="Bootstrap.Description" DefaultValue="OpenCode Office loaded successfully. Go to the HOME tab and click the OpenCode Office button to get started."/>
+        <bt:String id="Surface.ButtonTooltip" DefaultValue="Open the OpenCode Office task pane"/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

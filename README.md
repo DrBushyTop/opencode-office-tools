@@ -1,6 +1,8 @@
 # OpenCode Office Add-in
 
-A Microsoft Office add-in that brings OpenCode into Word, Excel, and PowerPoint.
+A Microsoft Office add-in that brings OpenCode into Word, Excel, PowerPoint, and OneNote.
+
+> **Note:** This project is not affiliated with, endorsed by, or associated with [anomalyco/opencode](https://github.com/anomalyco/opencode/tree/dev) in any way. It is an independent project built on the opencode SDK.
 
 The add-in starts or attaches to an OpenCode runtime locally, injects the bundled Office tool set from `.opencode/`, and routes tool execution back into the active Office task pane.
 
@@ -12,7 +14,7 @@ The add-in starts or attaches to an OpenCode runtime locally, injects the bundle
 
 The add-in bundles its own OpenCode tool configuration, so users do not need to create a separate `.opencode` setup to access the Office tools.
 
-The getting started guide walks you through running the add-in locally using the tray app. Standalone installers are in development and will be available once code signing is complete.
+The getting started guide walks you through running the add-in locally using the tray app. For packaged desktop installers, see [installer/README.md](installer/README.md).
 
 ## Flow Overview
 
@@ -20,7 +22,8 @@ The getting started guide walks you through running the add-in locally using the
 +-------------------+
 | Office Add-in UI  |
 | Word / Excel /    |
-| PowerPoint        |
+| PowerPoint /      |
+| OneNote           |
 +---------+---------+
           |
           | user prompt / action
@@ -53,8 +56,8 @@ The getting started guide walks you through running the add-in locally using the
 +------------+                   +--------------+
 | Read state |                   | Make edits   |
 | document,  |                   | update Word, |
-| slides,    |                   | Excel, PPT   |
-| workbook   |                   | content      |
+| slides,    |                   | Excel, PPT,  |
+| workbook   |                   | OneNote      |
 +-----+------+                   +------+-------+
       |                                   |
       +----------------+------------------+
@@ -68,33 +71,22 @@ The getting started guide walks you through running the add-in locally using the
                 +-------------+
 ```
 
-## Office Videos
-
-### PowerPoint
-
-https://github.com/user-attachments/assets/4c2731e4-e157-4968-842f-e496a6e8ed8b
-
-### Excel
-
-
-https://github.com/user-attachments/assets/42478d69-fd26-415e-8ef7-4efe8450d695
-
-### Word
-
-https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
-
 ## Project Structure
 
 ```
 ├── src/
-│   ├── server.js          # Dev server (Vite + Express)
-│   ├── server-prod.js     # Production server (static files)
-│   ├── server/            # OpenCode runtime and Office bridge adapters
-│   └── ui/                # React frontend
+│   ├── server.js          # Dev HTTPS server with Vite middleware and Office bridge
+│   ├── server-prod.js     # Production HTTPS server for built frontend assets
+│   ├── server/            # OpenCode runtime, API routes, and Office bridge adapters
+│   ├── shared/            # Shared Office metadata and generated tool registry
+│   ├── tray/              # Electron tray app entrypoint
+│   └── ui/                # React task pane frontend and Office tools
 ├── .opencode/             # Bundled OpenCode tools and config used by the add-in
+├── assets/                # Tray icons and packaged app assets
 ├── dist/                  # Built frontend assets
 ├── certs/                 # SSL certificates for localhost
-├── manifest.xml           # Office add-in manifest
+├── scripts/               # Build and packaging helper scripts
+├── manifest.xml           # Office add-in manifest for Word, Excel, PowerPoint, and OneNote
 ├── installer/             # Installer resources (Electron Builder)
 │   ├── macos/             # macOS post-install scripts
 │   └── windows/           # Windows NSIS scripts
@@ -108,9 +100,9 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 |---------|-------------|
 | `bun run dev` | Start development server with hot reload |
 | `bun run start` | Run production server standalone |
-| `bun run start:tray` | Run Electron tray app locally |
+| `bun run start:tray` | Build the app and launch the local Electron tray runtime |
 | `bun run build` | Build frontend for production |
-| `bun run test` | Run focused Vitest coverage for history, permissions, and tool exposure |
+| `bun run test` | Regenerate Office tool metadata and run the Vitest suite |
 | `bun run build:installer` | Build installer for current platform |
 | `bun run build:installer:mac` | Build macOS .dmg installer |
 | `bun run build:installer:win` | Build Windows .exe installer |
@@ -125,7 +117,7 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 ## Troubleshooting
 
 ### Add-in not appearing
-1. Ensure the server is running: visit https://localhost:52390
+1. Ensure the local service is running: visit https://localhost:52390
 2. Look for the OpenCode icon in the system tray (Windows) or menu bar (macOS)
 3. Restart the Office application
 4. Clear Office cache and try again
@@ -139,5 +131,6 @@ https://github.com/user-attachments/assets/41408f8d-a9b8-45b6-a826-f50931c7c249
 2. Or manually trust `certs/localhost.pem`
 
 ### Service not starting after install
-- **Windows**: Check Task Scheduler or startup entries for "OpenCodeOfficeAddin"
-- **macOS**: Run `launchctl list | grep opencode` and check `/tmp/opencode-office-addin.log`
+- **Windows**: Check `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` for `OpenCodeOfficeAddin`
+- **macOS**: Run `launchctl list | grep com.opencode.office-addin`
+- Launch the installed app manually once and use the tray/menu bar action to open the debug log if needed
