@@ -114,20 +114,6 @@ describe("server api hardening", () => {
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("Invalid Office bridge token") });
   });
 
-  it("rejects cross-origin fetch proxy requests", async () => {
-    const { baseUrl } = await startApiServer({ secure: true });
-    const response = await fetch(`${baseUrl}/api/fetch?url=${encodeURIComponent("https://example.com")}`, {
-      headers: {
-        origin: "https://evil.example",
-        referer: "https://evil.example/attack",
-        "sec-fetch-site": "cross-site",
-      },
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("local add-in UI") });
-  });
-
   it("sanitizes uploaded filenames before writing them", async () => {
     const { baseUrl } = await startApiServer({ secure: true });
     const response = await fetch(`${baseUrl}/api/upload-image`, {

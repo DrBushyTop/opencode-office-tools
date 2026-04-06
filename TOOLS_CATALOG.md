@@ -23,7 +23,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `find_and_replace` | Search and replace text with options for case sensitivity, whole word matching, and optional generic target scoping including `table[1].cell[2,3]`. |
 | `insert_table` | Insert a formatted table at the cursor with header styling and grid/striped options. |
 | `apply_style_to_selection` | Apply formatting to selected text (bold, italic, underline, font size, colors, highlighting). |
-| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## PowerPoint Tools
 
@@ -54,7 +53,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `manage_slide_table` | Create, update, or delete editable native PowerPoint tables. |
 | `set_slide_notes` | Add or update speaker notes by round-tripping a slide through Open XML and replacing it in the deck; this may change slide identity. |
 | `set_slide_transition` | Add, update, or clear a slide transition by round-tripping a slide through Open XML; this may change slide identity. |
-| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## Excel Tools
 
@@ -73,7 +71,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `manage_range` | Perform generic range operations like clear, insert, delete, copy, fill, sort, and filter; provide `columnIndex` when applying filter criteria. |
 | `manage_worksheet` | Create, rename, delete, move, change visibility, freeze/unfreeze, activate, protect, or unprotect worksheets. |
 | `manage_table` | Create or update Excel tables, including style, totals, resizing, row appends/inserts, filter reset, conversion back to ranges, and deletion. |
-| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ## OneNote Tools
 
@@ -87,7 +84,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `set_page_title` | Rename the active OneNote page. |
 | `append_page_content` | Append limited supported HTML to the active OneNote page, reusing the last outline when possible. |
 | `navigate_to_page` | Navigate OneNote to a target page by page id or client URL; provide exactly one target so active-page-only reads and edits can work. |
-| `fetch_web_page` | Fetch content from a URL and convert the page to markdown through the local proxy. |
 
 ---
 

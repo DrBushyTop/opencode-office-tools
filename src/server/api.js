@@ -20,13 +20,6 @@ const uploadImageBodySchema = z.object({
   name: z.any().optional(),
 });
 
-const fetchQuerySchema = z.object({
-  url: z.preprocess(
-    (value) => (value === undefined || value === null ? undefined : String(value)),
-    z.string().min(1),
-  ),
-});
-
 const logBodySchema = z.object({
   level: z.string().optional(),
   tag: z.any().optional(),
@@ -205,45 +198,6 @@ function createApiRouter(runtime, bridge) {
       res.json({ path: filepath, name: filename, mime: `image/${extension === 'svg' ? 'svg+xml' : extension}` });
     } catch (error) {
       console.error('Upload error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  apiRouter.get('/fetch', requireTrustedUiRequest, async (req, res) => {
-    const parsedQuery = fetchQuerySchema.safeParse(req.query);
-    if (!parsedQuery.success) {
-      return res.status(400).json({ error: 'Missing url parameter' });
-    }
-
-    const { url } = parsedQuery.data;
-
-    try {
-      const https = require('https');
-      const http = require('http');
-      const parsedUrl = new URL(url);
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        return res.status(400).json({ error: 'Only http and https URLs are supported' });
-      }
-      const client = parsedUrl.protocol === 'https:' ? https : http;
-
-      const options = {
-        hostname: parsedUrl.hostname,
-        path: parsedUrl.pathname + parsedUrl.search,
-        headers: {
-          'User-Agent': 'WordAddinDemo/1.0 (https://github.com; contact@example.com)',
-        },
-      };
-
-      client.get(options, (response) => {
-        let data = '';
-        response.on('data', (chunk) => (data += chunk));
-        response.on('end', () => {
-          res.type('text/plain').send(data);
-        });
-      }).on('error', (error) => {
-        res.status(500).json({ error: error.message });
-      });
-    } catch (error) {
       res.status(500).json({ error: error.message });
     }
   });
