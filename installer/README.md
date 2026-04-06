@@ -4,8 +4,11 @@ This directory contains resources for building standalone installers for Windows
 
 ## Prerequisites
 
-1. **Node.js 20+** installed
-2. **Bun dependencies** installed: `bun install`
+1. **OpenCode CLI** installed on the system (see [GETTING_STARTED.md](../GETTING_STARTED.md#installing-opencode))
+2. **Node.js 20+** installed
+3. **Bun dependencies** installed: `bun install`
+
+> **Note:** The installers do **not** install the OpenCode CLI. Users must install it separately before using the add-in.
 
 ### macOS-specific
 - Xcode Command Line Tools: `xcode-select --install`

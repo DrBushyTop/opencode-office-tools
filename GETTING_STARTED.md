@@ -12,9 +12,39 @@ Install the following software:
 
 | Software | Download |
 |----------|----------|
+| **OpenCode CLI** | See [installation options](#installing-opencode) below |
 | **Node.js 20+** | [nodejs.org](https://nodejs.org/) |
 | **Git** | [git-scm.com](https://git-scm.com/downloads) |
 | **Microsoft Office** | Word, PowerPoint, or Excel (Microsoft 365 or Office 2019+) |
+
+### Installing OpenCode
+
+The add-in requires the **`opencode` CLI** to be installed on your system. When the add-in starts, it spawns a local OpenCode server process using the `opencode` binary. If the binary is not found, the add-in will fail to start a session.
+
+Install OpenCode using any of these methods:
+
+```bash
+# Quick install
+curl -fsSL https://opencode.ai/install | bash
+
+# Package managers
+npm i -g opencode-ai@latest        # or bun/pnpm/yarn
+brew install anomalyco/tap/opencode # macOS and Linux
+scoop install opencode              # Windows
+choco install opencode              # Windows
+```
+
+For the full list of installation options, see the [OpenCode documentation](https://opencode.ai/docs).
+
+The add-in searches for the `opencode` binary in these locations (in addition to your system `PATH`):
+- `~/.opencode/bin`
+- `~/.local/bin`
+- `~/.bun/bin`
+- `/opt/homebrew/bin` (macOS)
+- `/usr/local/bin`
+- `~/AppData/Local/Programs/opencode/bin` (Windows)
+
+> **Tip:** If you already have an OpenCode session running, the add-in can attach to it instead of spawning a new one. Set `OPENCODE_OFFICE_RUNTIME_URL` or `OPENCODE_RUNTIME_URL` to your runtime's URL (see [Setup](#3-start-the-tray-application) below).
 
 ## Setup
 

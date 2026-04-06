@@ -6,6 +6,8 @@ A Microsoft Office add-in that brings OpenCode into Word, Excel, PowerPoint, and
 
 The add-in starts or attaches to an OpenCode runtime locally, injects the bundled Office tool set from `.opencode/`, and routes tool execution back into the active Office task pane.
 
+> **Requires [OpenCode CLI](https://opencode.ai/docs) installed on your system.** The add-in spawns a local `opencode serve` process under the hood. Install it with `brew install anomalyco/tap/opencode`, `npm i -g opencode-ai@latest`, or any method listed in the [getting started guide](GETTING_STARTED.md#installing-opencode).
+
 ## Getting Started
 
 **👉 See [GETTING_STARTED.md](GETTING_STARTED.md) for setup instructions.**
