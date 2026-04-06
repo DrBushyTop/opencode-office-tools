@@ -14,6 +14,7 @@ import { Compose20Regular, History20Regular, Settings20Regular } from "@fluentui
 import { z } from "zod";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo } from "../lib/opencode-client";
+import type { ThemePreference } from "../lib/ui-theme";
 
 const ModelTypeSchema = z.string();
 const ModelInfoSchema = z.object({
@@ -33,6 +34,11 @@ export interface HeaderThemeOption {
   isDefault?: boolean;
 }
 
+export interface HeaderThemeModeOption {
+  id: ThemePreference;
+  label: string;
+}
+
 export interface HeaderConnectionStatus {
   state: "connecting" | "connected" | "disconnected";
   label: string;
@@ -41,8 +47,12 @@ export interface HeaderConnectionStatus {
 interface HeaderBarProps {
   onNewChat: () => void;
   onShowHistory: () => void;
+  historyOpen: boolean;
   selectedModel: ModelType;
+  onModelChange: (model: ModelType) => void;
   models: ModelInfo[];
+  selectedVariant?: string;
+  onVariantChange: (variant: string | undefined) => void;
   debugEnabled: boolean;
   onDebugChange: (value: boolean) => void;
   showThinking: boolean;
@@ -56,6 +66,9 @@ interface HeaderBarProps {
   themes: HeaderThemeOption[];
   selectedThemeId: string;
   onThemeChange: (themeId: string) => void;
+  themeModes: HeaderThemeModeOption[];
+  selectedThemeMode: ThemePreference;
+  onThemeModeChange: (mode: ThemePreference) => void;
   connectionStatus?: HeaderConnectionStatus;
   subtitle?: string;
   contextLabel?: string;
@@ -63,40 +76,177 @@ interface HeaderBarProps {
 }
 
 const useStyles = makeStyles({
-  header: {
+  shell: {
     display: "flex",
-    alignItems: "center",
-    height: "40px",
-    padding: "0 10px",
-    gap: "8px",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "14px 14px 10px",
     borderBottom: "1px solid var(--oc-border)",
-    background: "var(--oc-bg)",
+    background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-soft) 76%, transparent), transparent)",
     flexShrink: 0,
   },
-  left: {
+  primaryCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    padding: "14px",
+    borderRadius: "18px",
+    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg)",
+    boxShadow: "var(--oc-shadow)",
+  },
+  topRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  identityCluster: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    minWidth: 0,
+    flex: "1 1 280px",
+  },
+  brandRow: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    flex: "1 1 0",
     minWidth: 0,
-    overflow: "hidden",
+    flexWrap: "wrap",
   },
-  right: {
-    display: "flex",
+  brandPill: {
+    display: "inline-flex",
     alignItems: "center",
-    gap: "4px",
-    flexShrink: 0,
+    padding: "4px 10px",
+    borderRadius: "999px",
+    background: "color-mix(in srgb, var(--oc-accent) 14%, transparent)",
+    color: "var(--oc-accent)",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 34%, transparent)",
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
   },
   subtitle: {
-    fontSize: "11px",
-    lineHeight: "14px",
-    color: "var(--oc-text-faint)",
-    whiteSpace: "nowrap",
+    fontSize: "13px",
+    lineHeight: "18px",
+    color: "var(--oc-text-muted)",
+    minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  contextLabel: {
+    fontSize: "12px",
+    color: "var(--oc-text-faint)",
+    lineHeight: "16px",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  actionCluster: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    flex: "0 1 auto",
+  },
+  statusPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "4px 10px",
+    borderRadius: "999px",
+    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg-soft)",
+    color: "var(--oc-text-muted)",
+    fontSize: "11px",
+    fontWeight: "600",
+  },
+  statusDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "999px",
+    background: "currentColor",
+  },
+  statusConnecting: {
+    color: "var(--oc-warning, #d4a72c)",
+  },
+  statusConnected: {
+    color: "var(--oc-success, #4db56a)",
+  },
+  statusDisconnected: {
+    color: "var(--oc-danger, #d95c5c)",
+  },
+  usage: {
+    fontSize: "11px",
+    color: "var(--oc-text-muted)",
+    padding: "4px 10px",
+    borderRadius: "999px",
+    border: "1px solid var(--oc-border)",
+    background: "var(--oc-bg-soft)",
+    whiteSpace: "nowrap",
+  },
+  icon: {
+    minWidth: "32px",
+    width: "32px",
+    height: "32px",
+    padding: "0",
+    borderRadius: "10px",
+    color: "var(--oc-text-muted)",
+    background: "transparent",
+    border: "1px solid transparent",
+    ":hover": {
+      background: "var(--oc-bg-soft-hover)",
+      color: "var(--oc-text)",
+      border: "1px solid var(--oc-border)",
+    },
+  },
+  iconActive: {
+    background: "var(--oc-bg-soft)",
+    color: "var(--oc-text)",
+    border: "1px solid var(--oc-border)",
+  },
+  primary: {
+    backgroundColor: "var(--oc-accent)",
+    color: "white",
+    borderRadius: "10px",
+    padding: "0",
+    width: "32px",
+    height: "32px",
+    minWidth: "32px",
+    border: "none",
+    ":hover": {
+      backgroundColor: "var(--oc-accent-strong)",
+    },
+  },
+  controlRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 132px",
+    gap: "10px",
+    alignItems: "end",
+    "@media (max-width: 720px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  controlBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
     minWidth: 0,
   },
-  dropdown: {
+  controlLabel: {
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
+  },
+  control: {
     minWidth: 0,
     width: "100%",
     height: "34px",
@@ -110,85 +260,8 @@ const useStyles = makeStyles({
       background: "var(--oc-bg-soft-hover)",
     },
   },
-  statusPill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "5px",
-    color: "var(--oc-text-muted)",
-    fontSize: "11px",
-    lineHeight: "14px",
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-  statusDot: {
-    width: "6px",
-    height: "6px",
-    borderRadius: "999px",
-    background: "currentColor",
-    boxShadow: "0 0 0 2px color-mix(in srgb, currentColor 18%, transparent)",
-    color: "inherit",
-  },
-  statusConnecting: {
-    color: "var(--oc-warning, #d4a72c)",
-  },
-  statusConnected: {
-    color: "var(--oc-success, #4db56a)",
-  },
-  statusDisconnected: {
-    color: "var(--oc-danger, #d95c5c)",
-  },
-  usage: {
-    fontSize: "10px",
-    color: "var(--oc-text-muted)",
-    padding: "2px 8px",
-    borderRadius: "999px",
-    border: "1px solid var(--oc-border)",
-    background: "var(--oc-bg-soft)",
-    whiteSpace: "nowrap",
-    lineHeight: "16px",
-  },
-  icon: {
-    minWidth: "28px",
-    width: "28px",
-    height: "28px",
-    padding: "0",
-    borderRadius: "8px",
-    color: "var(--oc-text-muted)",
-    background: "transparent",
-    border: "none",
-    ":hover": {
-      background: "var(--oc-bg-soft-hover)",
-      color: "var(--oc-text)",
-    },
-  },
-  primary: {
-    backgroundColor: "var(--oc-accent)",
-    color: "white",
-    borderRadius: "8px",
-    padding: "0",
-    width: "28px",
-    height: "28px",
-    minWidth: "28px",
-    border: "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    ":hover": {
-      backgroundColor: "var(--oc-accent-strong)",
-    },
-  },
-  contextChip: {
-    fontSize: "11px",
-    lineHeight: "14px",
-    color: "var(--oc-text-muted)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    minWidth: 0,
-    flexShrink: 1,
-  },
   menu: {
-    width: "320px",
+    width: "340px",
     display: "flex",
     flexDirection: "column",
     gap: "14px",
@@ -205,7 +278,6 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "4px",
-    paddingBottom: "2px",
   },
   menuTitle: {
     fontSize: "13px",
@@ -216,6 +288,13 @@ const useStyles = makeStyles({
     fontSize: "11px",
     color: "var(--oc-text-faint)",
     lineHeight: "1.5",
+  },
+  sectionLabel: {
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
   },
   item: {
     display: "flex",
@@ -251,19 +330,11 @@ const useStyles = makeStyles({
     color: "var(--oc-text-faint)",
     lineHeight: "1.5",
   },
-  sectionLabel: {
-    fontSize: "11px",
-    fontWeight: "700",
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "var(--oc-text-faint)",
-  },
   variantBar: {
     display: "flex",
     alignItems: "center",
     gap: "4px",
-    flexWrap: "nowrap",
-    overflow: "hidden",
+    flexWrap: "wrap",
   },
   variantChip: {
     display: "inline-flex",
@@ -294,16 +365,20 @@ const useStyles = makeStyles({
   },
 });
 
-function label(models: ModelInfo[], model: ModelType) {
-  if (!model) return "Same as primary model";
+function labelForModel(models: ModelInfo[], model: ModelType) {
+  if (!model) return "Choose a model";
   return models.find((item) => item.key === model)?.label || model;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   onNewChat,
   onShowHistory,
+  historyOpen,
   selectedModel,
+  onModelChange,
   models,
+  selectedVariant,
+  onVariantChange,
   debugEnabled,
   onDebugChange,
   showThinking,
@@ -317,26 +392,54 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   themes,
   selectedThemeId,
   onThemeChange,
+  themeModes,
+  selectedThemeMode,
+  onThemeModeChange,
   connectionStatus,
   subtitle,
   contextLabel,
   usageSummary,
 }) => {
   const styles = useStyles();
+  const safeModels = React.useMemo(() => z.array(ModelInfoSchema).catch([]).parse(models), [models]);
+  const [modelValue, setModelValue] = React.useState("");
+  const [modelOpen, setModelOpen] = React.useState(false);
   const [qaValue, setQaValue] = React.useState("");
   const [qaOpen, setQaOpen] = React.useState(false);
-  const qaLabel = label(models, qaSubagentModel);
-  const selectedTheme = React.useMemo(
-    () => themes.find((theme) => theme.id === selectedThemeId) ?? themes.find((theme) => theme.isDefault) ?? themes[0],
-    [selectedThemeId, themes],
+
+  const selectedModelLabel = React.useMemo(
+    () => labelForModel(safeModels, selectedModel),
+    [safeModels, selectedModel],
   );
-  const safeModels = React.useMemo(() => z.array(ModelInfoSchema).catch([]).parse(models), [models]);
-  const qaItems = React.useMemo(() => filterModels(safeModels, qaOpen ? qaValue : ""), [safeModels, qaOpen, qaValue]);
+  const qaLabel = React.useMemo(
+    () => (qaSubagentModel ? labelForModel(safeModels, qaSubagentModel) : "Same as primary model"),
+    [qaSubagentModel, safeModels],
+  );
+  const modelItems = React.useMemo(
+    () => filterModels(safeModels, modelOpen ? modelValue : ""),
+    [modelOpen, modelValue, safeModels],
+  );
+  const qaItems = React.useMemo(
+    () => filterModels(safeModels, qaOpen ? qaValue : ""),
+    [qaOpen, qaValue, safeModels],
+  );
+  const modelVariants = React.useMemo(() => {
+    const current = safeModels.find((model) => model.key === selectedModel);
+    return current?.variants ?? [];
+  }, [safeModels, selectedModel]);
   const qaModelVariants = React.useMemo(() => {
     const key = qaSubagentModel || selectedModel;
     const current = safeModels.find((model) => model.key === key);
     return current?.variants ?? [];
-  }, [safeModels, qaSubagentModel, selectedModel]);
+  }, [qaSubagentModel, safeModels, selectedModel]);
+  const selectedTheme = React.useMemo(
+    () => themes.find((theme) => theme.id === selectedThemeId) ?? themes.find((theme) => theme.isDefault) ?? themes[0],
+    [selectedThemeId, themes],
+  );
+  const selectedThemeModeOption = React.useMemo(
+    () => themeModes.find((mode) => mode.id === selectedThemeMode) ?? themeModes[0],
+    [selectedThemeMode, themeModes],
+  );
   const statusClassName = React.useMemo(() => {
     switch (connectionStatus?.state) {
       case "connecting":
@@ -351,155 +454,239 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   }, [connectionStatus?.state, styles.statusConnected, styles.statusConnecting, styles.statusDisconnected]);
 
   React.useEffect(() => {
+    if (!modelOpen) setModelValue(selectedModelLabel);
+  }, [modelOpen, selectedModelLabel]);
+
+  React.useEffect(() => {
     if (!qaOpen) setQaValue(qaLabel);
   }, [qaLabel, qaOpen]);
 
   return (
-    <div className={styles.header}>
-      <div className={styles.left}>
-        {connectionStatus && (
-          <div className={`${styles.statusPill} ${statusClassName ?? ""}`.trim()}>
-            <span className={styles.statusDot} />
-          </div>
-        )}
-        {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
-        {contextLabel && <span className={styles.contextChip}>{contextLabel}</span>}
-      </div>
-      <div className={styles.right}>
-        {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
-        <Popover positioning="below-end" inline>
-          <PopoverTrigger disableButtonEnhancement>
-            <Button icon={<Settings20Regular />} appearance="subtle" aria-label="Options" className={styles.icon} size="small" />
-          </PopoverTrigger>
-          <PopoverSurface className={styles.menu}>
-          <div className={styles.menuHeader}>
-            <div className={styles.menuTitle}>Chat settings</div>
-            <div className={styles.menuHint}>Tune local UI behavior, choose a theme, and set the QA subagent model.</div>
-          </div>
-          <div className={styles.sectionLabel}>Appearance</div>
-          <div className={styles.item}>
-            <div className={styles.row}>
-              <div className={styles.label}>Theme</div>
-              {selectedTheme && <div className={styles.valueText}>{selectedTheme.label}</div>}
+    <div className={styles.shell}>
+      <div className={styles.primaryCard}>
+        <div className={styles.topRow}>
+          <div className={styles.identityCluster}>
+            <div className={styles.brandRow}>
+              <span className={styles.brandPill}>OpenCode</span>
+              {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
             </div>
+            {contextLabel && <span className={styles.contextLabel}>{contextLabel}</span>}
+          </div>
+          <div className={styles.actionCluster}>
+            {connectionStatus && (
+              <div className={`${styles.statusPill} ${statusClassName ?? ""}`.trim()}>
+                <span className={styles.statusDot} />
+                <span>{connectionStatus.label}</span>
+              </div>
+            )}
+            {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
+            <Popover positioning="below-end" inline>
+              <PopoverTrigger disableButtonEnhancement>
+                <Button icon={<Settings20Regular />} appearance="subtle" aria-label="Options" className={styles.icon} size="small" />
+              </PopoverTrigger>
+              <PopoverSurface className={styles.menu}>
+                <div className={styles.menuHeader}>
+                  <div className={styles.menuTitle}>Workspace settings</div>
+                  <div className={styles.menuHint}>Adjust theme behavior, transcript detail, and QA defaults without leaving the current session.</div>
+                </div>
+                <div className={styles.sectionLabel}>Appearance</div>
+                <div className={styles.item}>
+                  <div className={styles.row}>
+                    <div className={styles.label}>Theme palette</div>
+                    {selectedTheme && <div className={styles.valueText}>{selectedTheme.label}</div>}
+                  </div>
+                  <Combobox
+                    className={styles.control}
+                    appearance="filled-darker"
+                    aria-label="Theme palette"
+                    value={selectedTheme?.label ?? ""}
+                    onOptionSelect={(_, data) => {
+                      const nextThemeId = data.optionValue;
+                      if (nextThemeId && nextThemeId !== selectedThemeId) onThemeChange(nextThemeId);
+                    }}
+                  >
+                    {themes.map((theme) => (
+                      <Option key={theme.id} value={theme.id} text={theme.label}>
+                        {theme.label}
+                        {theme.isDefault ? " (Default)" : ""}
+                      </Option>
+                    ))}
+                  </Combobox>
+                </div>
+                <div className={styles.item}>
+                  <div className={styles.row}>
+                    <div className={styles.label}>Color mode</div>
+                    <div className={styles.valueText}>{selectedThemeModeOption?.label}</div>
+                  </div>
+                  <Combobox
+                    className={styles.control}
+                    appearance="filled-darker"
+                    aria-label="Theme mode"
+                    value={selectedThemeModeOption?.label ?? ""}
+                    onOptionSelect={(_, data) => {
+                      const nextMode = data.optionValue as ThemePreference | undefined;
+                      if (nextMode && nextMode !== selectedThemeMode) onThemeModeChange(nextMode);
+                    }}
+                  >
+                    {themeModes.map((mode) => (
+                      <Option key={mode.id} value={mode.id} text={mode.label}>
+                        {mode.label}
+                      </Option>
+                    ))}
+                  </Combobox>
+                </div>
+                <div className={styles.sectionLabel}>Display</div>
+                <div className={styles.item}>
+                  <div className={styles.row}>
+                    <div className={styles.label}>Show thinking</div>
+                    <Switch aria-label="Show Thinking" checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
+                  </div>
+                </div>
+                <div className={styles.item}>
+                  <div className={styles.row}>
+                    <div className={styles.label}>Show raw tool responses in expand</div>
+                    <Switch aria-label="Show Raw Tool Responses in Expand" checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
+                  </div>
+                </div>
+                <div className={styles.item}>
+                  <div className={styles.row}>
+                    <div className={styles.label}>Show debug events</div>
+                    <Switch aria-label="Show Debug Events" checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
+                  </div>
+                </div>
+                <div className={styles.sectionLabel}>QA Model</div>
+                <div className={styles.item}>
+                  <div className={styles.label}>Subagent model</div>
+                  <Combobox
+                    className={styles.control}
+                    appearance="filled-darker"
+                    freeform
+                    placeholder="Same as primary model"
+                    aria-label="QA Subagent Model"
+                    value={qaValue}
+                    onChange={(event) => setQaValue((event.target as HTMLInputElement).value)}
+                    onOpenChange={(_, data) => {
+                      setQaOpen(data.open);
+                      setQaValue(data.open ? "" : qaLabel);
+                    }}
+                    onOptionSelect={(_, data) => {
+                      const nextModel = ModelTypeSchema.catch("").parse(data.optionValue);
+                      onQaSubagentModelChange(nextModel);
+                      setQaOpen(false);
+                      setQaValue(data.optionText || qaLabel);
+                    }}
+                  >
+                    <Option value="" text="Same as primary model">
+                      Same as primary model
+                    </Option>
+                    {qaItems.map((model) => (
+                      <Option key={model.key} value={model.key} text={model.label}>
+                        {model.label}
+                      </Option>
+                    ))}
+                  </Combobox>
+                  <div className={styles.help}>The QA subagent follows the active chat model unless you pin a different one here.</div>
+                </div>
+                {qaModelVariants.length > 0 && (
+                  <div className={styles.item}>
+                    <div className={styles.label}>QA reasoning effort</div>
+                    <div className={styles.variantBar}>
+                      <button
+                        type="button"
+                        className={`${styles.variantChip} ${qaSubagentVariant === undefined ? styles.variantChipActive : ""}`.trim()}
+                        onClick={() => onQaSubagentVariantChange(undefined)}
+                      >
+                        default
+                      </button>
+                      {qaModelVariants.map((variant) => (
+                        <button
+                          type="button"
+                          key={variant}
+                          className={`${styles.variantChip} ${qaSubagentVariant === variant ? styles.variantChipActive : ""}`.trim()}
+                          onClick={() => onQaSubagentVariantChange(variant)}
+                        >
+                          {variant}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.help}>Controls the reasoning effort level for visual QA runs.</div>
+                  </div>
+                )}
+              </PopoverSurface>
+            </Popover>
+            <Tooltip content={historyOpen ? "Hide history" : "Show history"} relationship="label">
+              <Button
+                icon={<History20Regular />}
+                appearance="subtle"
+                onClick={onShowHistory}
+                aria-label="History"
+                className={`${styles.icon} ${historyOpen ? styles.iconActive : ""}`.trim()}
+                size="small"
+              />
+            </Tooltip>
+            <Tooltip content="New chat" relationship="label">
+              <Button
+                icon={<Compose20Regular />}
+                onClick={onNewChat}
+                aria-label="New chat"
+                className={styles.primary}
+                size="small"
+              />
+            </Tooltip>
+          </div>
+        </div>
+
+        <div className={styles.controlRow}>
+          <div className={styles.controlBlock}>
+            <div className={styles.controlLabel}>Primary model</div>
             <Combobox
-              className={styles.dropdown}
-              appearance="filled-darker"
-              placeholder="Select theme"
-              aria-label="Theme"
-              value={selectedTheme?.label ?? ""}
-              onOptionSelect={(_, data) => {
-                const nextThemeId = data.optionValue;
-                if (nextThemeId && nextThemeId !== selectedThemeId) onThemeChange(nextThemeId);
-              }}
-            >
-              {themes.map((theme) => (
-                <Option key={theme.id} value={theme.id} text={theme.label}>
-                  {theme.label}
-                  {theme.isDefault ? " (Default)" : ""}
-                </Option>
-              ))}
-            </Combobox>
-          </div>
-          <div className={styles.sectionLabel}>Display</div>
-          <div className={styles.item}>
-            <div className={styles.row}>
-              <div className={styles.label}>Show Thinking</div>
-              <Switch aria-label="Show Thinking" checked={showThinking} onChange={(_, data) => onShowThinkingChange(data.checked)} />
-            </div>
-          </div>
-          <div className={styles.item}>
-            <div className={styles.row}>
-              <div className={styles.label}>Show Raw Tool Responses in Expand</div>
-              <Switch aria-label="Show Raw Tool Responses in Expand" checked={showToolResponses} onChange={(_, data) => onShowToolResponsesChange(data.checked)} />
-            </div>
-          </div>
-          <div className={styles.item}>
-            <div className={styles.row}>
-              <div className={styles.label}>Show Debug Events</div>
-              <Switch aria-label="Show Debug Events" checked={debugEnabled} onChange={(_, data) => onDebugChange(data.checked)} />
-            </div>
-          </div>
-          <div className={styles.sectionLabel}>Models</div>
-          <div className={styles.item}>
-            <div className={styles.label}>QA Subagent Model</div>
-            <Combobox
-              className={styles.dropdown}
+              className={styles.control}
               appearance="filled-darker"
               freeform
-              placeholder="Same as primary model"
-              aria-label="QA Subagent Model"
-              value={qaValue}
-              onChange={(event) => setQaValue((event.target as HTMLInputElement).value)}
+              placeholder="Search models"
+              aria-label="Primary model"
+              value={modelValue}
+              onChange={(event) => setModelValue((event.target as HTMLInputElement).value)}
               onOpenChange={(_, data) => {
-                setQaOpen(data.open);
-                setQaValue(data.open ? "" : qaLabel);
+                setModelOpen(data.open);
+                setModelValue(data.open ? "" : selectedModelLabel);
               }}
               onOptionSelect={(_, data) => {
-                const nextModel = ModelTypeSchema.catch("").parse(data.optionValue);
-                onQaSubagentModelChange(nextModel);
-                setQaOpen(false);
-                setQaValue(data.optionText || qaLabel);
+                const nextModel = data.optionValue;
+                if (nextModel && nextModel !== selectedModel) {
+                  onModelChange(nextModel);
+                }
+                setModelOpen(false);
+                setModelValue(data.optionText || selectedModelLabel);
               }}
             >
-              <Option value="" text="Same as primary model">
-                Same as primary model
-              </Option>
-              {qaItems.map((model) => (
+              {modelItems.map((model) => (
                 <Option key={model.key} value={model.key} text={model.label}>
                   {model.label}
                 </Option>
               ))}
             </Combobox>
-            <div className={styles.help}>Uses the selected model list from OpenCode. Leaving this on the default follows the active chat model.</div>
           </div>
-          {qaModelVariants.length > 0 && (
-          <div className={styles.item}>
-            <div className={styles.label}>QA Subagent Thinking Effort</div>
-            <div className={styles.variantBar}>
-              <button
-                type="button"
-                className={`${styles.variantChip} ${qaSubagentVariant === undefined ? styles.variantChipActive : ""}`.trim()}
-                onClick={() => onQaSubagentVariantChange(undefined)}
-              >
-                default
-              </button>
-              {qaModelVariants.map((variant) => (
-                <button
-                  type="button"
-                  key={variant}
-                  className={`${styles.variantChip} ${qaSubagentVariant === variant ? styles.variantChipActive : ""}`.trim()}
-                  onClick={() => onQaSubagentVariantChange(variant)}
-                >
+          <div className={styles.controlBlock}>
+            <div className={styles.controlLabel}>Effort</div>
+            <Combobox
+              className={styles.control}
+              appearance="filled-darker"
+              placeholder="default"
+              aria-label="Model effort"
+              value={selectedVariant ?? "default"}
+              disabled={modelVariants.length === 0}
+              onOptionSelect={(_, data) => onVariantChange(data.optionValue || undefined)}
+            >
+              <Option value="" text="default">default</Option>
+              {modelVariants.map((variant) => (
+                <Option key={variant} value={variant} text={variant}>
                   {variant}
-                </button>
+                </Option>
               ))}
-            </div>
-            <div className={styles.help}>Controls the reasoning effort level for the QA subagent.</div>
+            </Combobox>
           </div>
-          )}
-          <div className={styles.menuHint}>UI options are kept locally in the add-in. The QA subagent model is stored in OpenCode config so it persists across sessions.</div>
-          </PopoverSurface>
-        </Popover>
-        <Tooltip content="History" relationship="label">
-          <Button
-            icon={<History20Regular />}
-            appearance="subtle"
-            onClick={onShowHistory}
-            aria-label="History"
-            className={styles.icon}
-            size="small"
-          />
-        </Tooltip>
-        <Tooltip content="New chat" relationship="label">
-          <Button
-            icon={<Compose20Regular />}
-            onClick={onNewChat}
-            aria-label="New chat"
-            className={styles.primary}
-            size="small"
-          />
-        </Tooltip>
+        </div>
       </div>
     </div>
   );

@@ -9,8 +9,7 @@
     <title>OpenCode Agent</title>
     <script>
         (function() {
-            var bootstrapLogs = [];
-            var overlayTimer = null;
+            var bootEntries = [];
 
             function stringifyDetail(detail) {
                 if (detail == null) return '';
@@ -23,26 +22,22 @@
                 }
             }
 
-            function updateBootstrapDetails() {
-                var details = document.getElementById('bootstrap-debug-details');
-                if (!details) return;
-                details.textContent = bootstrapLogs.slice(-8).map(function(entry) {
+            function renderBootLog() {
+                var text = bootEntries.slice(-10).map(function(entry) {
                     return entry.timestamp + ' ' + entry.level.toUpperCase() + ' [' + entry.tag + '] ' + entry.message + (entry.detail ? ' | ' + entry.detail : '');
                 }).join('\n');
+                Array.prototype.forEach.call(document.querySelectorAll('[data-boot-log]'), function(panel) {
+                    panel.textContent = text;
+                });
             }
 
-            function showBootstrapError(title, message) {
-                var panel = document.getElementById('bootstrap-error');
-                if (!panel) return;
-                var titleEl = document.getElementById('bootstrap-error-title');
-                var messageEl = document.getElementById('bootstrap-error-message');
-                if (titleEl) titleEl.textContent = title;
-                if (messageEl) messageEl.textContent = message;
-                panel.style.display = 'flex';
-                updateBootstrapDetails();
+            function toggleState(id, visible) {
+                var node = document.getElementById(id);
+                if (!node) return;
+                node.style.display = visible ? 'flex' : 'none';
             }
 
-            function postLog(entry) {
+            function sendBootLog(entry) {
                 try {
                     fetch('/api/log', {
                         method: 'POST',
@@ -58,122 +53,164 @@
                 } catch (error) {}
             }
 
-            window.__opencodeBootstrapLog = function(level, tag, message, detail) {
-                var entry = {
+            window.__opencodeTaskpaneBoot = function(entry) {
+                var normalized = {
                     timestamp: new Date().toISOString(),
-                    level: level,
-                    tag: tag,
-                    message: message,
-                    detail: stringifyDetail(detail),
+                    level: entry.level,
+                    tag: entry.tag,
+                    message: entry.message,
+                    detail: stringifyDetail(entry.detail),
                 };
-                bootstrapLogs.push(entry);
-                window.__opencodeBootstrapLogs = bootstrapLogs;
-                postLog(entry);
-                updateBootstrapDetails();
+                bootEntries.push(normalized);
+                sendBootLog(normalized);
+                renderBootLog();
+
+                if (entry.level === 'error') {
+                    toggleState('boot-failure', true);
+                }
+                if (entry.tag === 'ui.bootstrap' && /rendering react task pane/i.test(entry.message)) {
+                    toggleState('boot-shell', false);
+                }
             };
 
-            window.__opencodeShowBootstrapError = showBootstrapError;
-            window.__opencodeBootstrapLog('info', 'ui.bootstrap', 'Inline bootstrap logger ready', { href: window.location.href });
+            window.__officeJsLoaded = false;
+            window.__opencodeTaskpaneBoot({ level: 'info', tag: 'ui.bootstrap', message: 'Inline boot monitor ready', detail: { href: window.location.href } });
 
             window.addEventListener('error', function(event) {
-                window.__opencodeBootstrapLog('error', 'ui.window', event.message || 'Unhandled window error', {
-                    filename: event.filename,
-                    lineno: event.lineno,
-                    colno: event.colno,
-                    error: event.error && (event.error.stack || event.error.message || String(event.error)),
+                window.__opencodeTaskpaneBoot({
+                    level: 'error',
+                    tag: 'ui.window',
+                    message: event.message || 'Unhandled window error',
+                    detail: {
+                        filename: event.filename,
+                        lineno: event.lineno,
+                        colno: event.colno,
+                        error: event.error && (event.error.stack || event.error.message || String(event.error)),
+                    },
                 });
-                showBootstrapError('Add-in failed during startup', 'A script error happened before the task pane could render.');
             });
 
             window.addEventListener('unhandledrejection', function(event) {
-                window.__opencodeBootstrapLog('error', 'ui.promise', 'Unhandled promise rejection', event.reason);
-                showBootstrapError('Add-in failed during startup', 'A promise rejection happened before the task pane could finish loading.');
+                window.__opencodeTaskpaneBoot({ level: 'error', tag: 'ui.promise', message: 'Unhandled promise rejection', detail: event.reason });
             });
 
-            ['log', 'warn', 'error'].forEach(function(method) {
-                var original = console[method] && console[method].bind(console);
-                if (!original) return;
-                console[method] = function() {
-                    var args = Array.prototype.slice.call(arguments);
-                    original.apply(console, args);
-                    window.__opencodeBootstrapLog(method === 'log' ? 'info' : method, 'ui.console', 'console.' + method, args);
-                };
-            });
-
-            window.__officeJsLoaded = false;
             setTimeout(function() {
                 if (!window.__officeJsLoaded) {
-                    window.__opencodeBootstrapLog('error', 'ui.bootstrap', 'Office.js did not load within timeout');
-                    var el = document.getElementById('office-js-error');
-                    if (el) el.style.display = 'flex';
+                    toggleState('office-js-error', true);
+                    window.__opencodeTaskpaneBoot({ level: 'error', tag: 'ui.bootstrap', message: 'Office.js did not load within timeout' });
                 }
             }, 10000);
 
-            overlayTimer = setTimeout(function() {
+            setTimeout(function() {
                 var root = document.getElementById('root');
                 if (root && root.childElementCount === 0) {
-                    window.__opencodeBootstrapLog('warn', 'ui.bootstrap', 'Root remained empty after startup timeout');
-                    showBootstrapError('Add-in is still blank', 'The page loaded, but the app never rendered into the task pane.');
+                    window.__opencodeTaskpaneBoot({ level: 'warn', tag: 'ui.bootstrap', message: 'Root remained empty after startup timeout' });
                 }
             }, 4000);
         })();
     </script>
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
-        onload="window.__officeJsLoaded=true;window.__opencodeBootstrapLog&&window.__opencodeBootstrapLog('info','ui.bootstrap','Office.js loaded')"
-        onerror="window.__opencodeBootstrapLog&&window.__opencodeBootstrapLog('error','ui.bootstrap','Failed to load Office.js');var el=document.getElementById('office-js-error');if(el)el.style.display='flex'"></script>
+        onload="window.__officeJsLoaded=true;window.__opencodeTaskpaneBoot&&window.__opencodeTaskpaneBoot({level:'info',tag:'ui.bootstrap',message:'Office.js loaded'})"
+        onerror="window.__opencodeTaskpaneBoot&&window.__opencodeTaskpaneBoot({level:'error',tag:'ui.bootstrap',message:'Failed to load Office.js'});document.getElementById('office-js-error').style.display='flex'"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #f6f2eb;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #boot-shell,
+        #office-js-error,
+        #boot-failure {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 9998;
+        }
+        #boot-shell {
+            display: flex;
+            background: linear-gradient(180deg, #f6f2eb 0%, #f2ece2 100%);
+            color: #221b14;
+        }
         #office-js-error {
-            display: none;
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            align-items: center; justify-content: center;
-            background: #fff; color: #333; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            padding: 24px; text-align: center; z-index: 9999;
+            background: rgba(255,255,255,0.96);
+            color: #333;
+            z-index: 9999;
         }
-        #bootstrap-error {
-            display: none;
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            align-items: center; justify-content: center;
-            background: #fcfaf6; color: #332b1f; font-family: Georgia, serif;
-            padding: 24px; text-align: left; z-index: 9998;
+        #boot-failure {
+            background: rgba(246,242,235,0.96);
+            color: #332b1f;
         }
-        #office-js-error .content { max-width: 400px; }
-        #bootstrap-error .content { max-width: 680px; width: 100%; }
-        #office-js-error h2 { margin: 0 0 12px; font-size: 18px; color: #d13438; }
-        #bootstrap-error h2 { margin: 0 0 12px; font-size: 22px; color: #8a2f1e; }
-        #office-js-error p { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
-        #bootstrap-error p { margin: 0 0 8px; font-size: 15px; line-height: 1.6; }
-        #office-js-error code { background: #f3f3f3; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
-        #bootstrap-error code { background: #efe6d8; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
-        #bootstrap-debug-details {
-            margin-top: 16px;
+        .boot-card {
+            width: min(100%, 720px);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 22px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(88, 72, 54, 0.10);
+            box-shadow: 0 24px 60px rgba(40, 29, 17, 0.08);
+            backdrop-filter: blur(8px);
+        }
+        .boot-kicker {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #8a6a45;
+        }
+        .boot-title {
+            margin: 0;
+            font-size: 28px;
+            line-height: 1.2;
+            color: #231b14;
+        }
+        .boot-body {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #5a4c3f;
+        }
+        [data-boot-log] {
             white-space: pre-wrap;
             word-break: break-word;
             max-height: 240px;
             overflow: auto;
             padding: 12px;
-            border-radius: 8px;
-            background: #f3ecdf;
-            border: 1px solid #ddcfbb;
+            border-radius: 12px;
+            background: #f3ebdf;
+            border: 1px solid #dfcfbb;
             font-family: 'SFMono-Regular', Consolas, monospace;
             font-size: 12px;
         }
     </style>
 </head>
 <body>
-    <div id="office-js-error">
-        <div class="content">
-            <h2>⚠️ Unable to load Office.js</h2>
-            <p>The add-in could not reach <code>appsforoffice.microsoft.com</code>.</p>
-            <p>If you are connected to a VPN, try disconnecting and reloading the add-in.</p>
+    <div id="boot-shell">
+        <div class="boot-card">
+            <div class="boot-kicker">OpenCode</div>
+            <h1 class="boot-title">Preparing your workspace</h1>
+            <div class="boot-body">Loading Office.js, waiting for the host application, and bringing up the OpenCode task pane.</div>
+            <div data-boot-log></div>
         </div>
     </div>
-    <div id="bootstrap-error">
-        <div class="content">
-            <h2 id="bootstrap-error-title">Add-in failed during startup</h2>
-            <p id="bootstrap-error-message">The task pane stayed blank before React could render.</p>
-            <p>Open the tray menu and inspect the debug log, or visit <code>/api/debug/logs</code>.</p>
-            <div id="bootstrap-debug-details"></div>
+    <div id="office-js-error">
+        <div class="boot-card">
+            <div class="boot-kicker">Startup error</div>
+            <h2 class="boot-title" style="font-size:24px; color:#c43b31;">Unable to load Office.js</h2>
+            <div class="boot-body">The add-in could not reach <code>appsforoffice.microsoft.com</code>. If you are connected to a VPN, try disconnecting and reloading the add-in.</div>
+        </div>
+    </div>
+    <div id="boot-failure">
+        <div class="boot-card">
+            <div class="boot-kicker">Startup error</div>
+            <h2 class="boot-title" style="font-size:24px; color:#8a2f1e;">The task pane hit an early error</h2>
+            <div class="boot-body">Open the tray menu and inspect the debug log, or visit <code>/api/debug/logs</code> on the local server.</div>
+            <div data-boot-log></div>
         </div>
     </div>
     <div id="root"></div>

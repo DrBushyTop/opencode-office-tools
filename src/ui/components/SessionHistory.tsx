@@ -1,9 +1,10 @@
 import * as React from "react";
 import { makeStyles, Button, Text } from "@fluentui/react-components";
-import { Delete24Regular, ArrowLeft24Regular } from "@fluentui/react-icons";
+import { Delete24Regular, Dismiss24Regular } from "@fluentui/react-icons";
 import { z } from "zod";
 import type { OfficeHost } from "../sessionStorage";
 import { deleteSession, listSessions, type OpencodeSessionInfo } from "../lib/opencode-session-history";
+import { getOfficeHostLabel } from "../lib/officeHost";
 
 const SessionInfoSchema = z.object({
   id: z.string().min(1),
@@ -30,27 +31,61 @@ const useStyles = makeStyles({
     flex: 1,
     minHeight: 0,
     background: "var(--oc-bg)",
+    borderLeft: "1px solid var(--oc-border)",
   },
   header: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: "10px",
-    padding: "14px 14px 12px",
+    padding: "16px 16px 12px",
     borderBottom: "1px solid var(--oc-border)",
-    background: "var(--oc-bg)",
+    background: "linear-gradient(180deg, color-mix(in srgb, var(--oc-bg-soft) 72%, transparent), transparent)",
+  },
+  headerCopy: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    minWidth: 0,
+  },
+  headerEyebrow: {
+    fontSize: "11px",
+    fontWeight: "700",
+    color: "var(--oc-text-faint)",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
   },
   headerTitle: {
     fontWeight: "700",
-    fontSize: "13px",
+    fontSize: "15px",
     color: "var(--oc-text)",
-    letterSpacing: "0.01em",
+  },
+  headerHint: {
+    fontSize: "12px",
+    color: "var(--oc-text-faint)",
+    lineHeight: "1.5",
+  },
+  closeButton: {
+    minWidth: "30px",
+    width: "30px",
+    height: "30px",
+    padding: "4px",
+    borderRadius: "8px",
+    color: "var(--oc-text-muted)",
+    background: "transparent",
+    border: "1px solid transparent",
+    ":hover": {
+      background: "var(--oc-bg-soft)",
+      color: "var(--oc-text)",
+      border: "1px solid var(--oc-border)",
+    },
   },
   filterRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "10px",
-    padding: "12px 14px",
+    padding: "12px 16px",
     borderBottom: "1px solid var(--oc-border)",
     background: "var(--oc-bg)",
   },
@@ -77,26 +112,11 @@ const useStyles = makeStyles({
     borderRadius: "999px",
     height: "28px",
   },
-  backButton: {
-    minWidth: "30px",
-    width: "30px",
-    height: "30px",
-    padding: "4px",
-    borderRadius: "8px",
-    color: "var(--oc-text-muted)",
-    background: "transparent",
-    border: "1px solid transparent",
-    ":hover": {
-      background: "var(--oc-bg-soft)",
-      color: "var(--oc-text)",
-      border: "1px solid var(--oc-border)",
-    },
-  },
   list: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "10px",
+    padding: "12px",
     scrollbarColor: "var(--oc-text-faint) transparent",
     scrollbarWidth: "thin",
     "&::-webkit-scrollbar": {
@@ -112,9 +132,6 @@ const useStyles = makeStyles({
       backgroundClip: "content-box",
       opacity: 0.45,
     },
-    "&::-webkit-scrollbar-thumb:hover": {
-      backgroundColor: "var(--oc-text-muted)",
-    },
   },
   emptyState: {
     display: "flex",
@@ -129,10 +146,10 @@ const useStyles = makeStyles({
   },
   sessionItem: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: "10px",
     padding: "12px",
-    borderRadius: "12px",
+    borderRadius: "14px",
     cursor: "pointer",
     marginBottom: "8px",
     background: "var(--oc-bg-soft)",
@@ -149,6 +166,9 @@ const useStyles = makeStyles({
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
   },
   sessionTitle: {
     fontSize: "13px",
@@ -161,9 +181,9 @@ const useStyles = makeStyles({
   sessionMeta: {
     fontSize: "11px",
     color: "var(--oc-text-faint)",
-    marginTop: "4px",
     display: "flex",
     gap: "8px",
+    flexWrap: "wrap",
   },
   deleteButton: {
     minWidth: "28px",
@@ -191,7 +211,6 @@ function formatDate(dateString: string): string {
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -219,22 +238,27 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
       .catch(() => setSessions([]));
   };
 
-  const hostLabel = host === "powerpoint" ? "PowerPoint" : host === "word" ? "Word" : host === "excel" ? "Excel" : "OneNote";
+  const hostLabel = getOfficeHostLabel(host);
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
+        <div className={styles.headerCopy}>
+          <Text className={styles.headerEyebrow}>{hostLabel}</Text>
+          <Text className={styles.headerTitle}>Saved chats</Text>
+          <Text className={styles.headerHint}>Jump back into a previous session without leaving the current workspace.</Text>
+        </div>
         <Button
-          icon={<ArrowLeft24Regular />}
+          icon={<Dismiss24Regular />}
           appearance="subtle"
-          className={styles.backButton}
+          className={styles.closeButton}
           onClick={onClose}
-          aria-label="Back"
+          aria-label="Close history"
         />
-        <Text className={styles.headerTitle}>{hostLabel} History</Text>
       </div>
+
       <div className={styles.filterRow}>
-        <Text className={styles.filterLabel}>Show</Text>
+        <Text className={styles.filterLabel}>Scope</Text>
         <div className={styles.filterGroup}>
           <Button
             appearance={shared ? "subtle" : "primary"}
@@ -257,7 +281,7 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
         {sessions.length === 0 ? (
           <div className={styles.emptyState}>
             No saved conversations yet.<br />
-            Start chatting to create one!
+            Start chatting to create one.
           </div>
         ) : (
           sessions.map((session) => (

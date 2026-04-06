@@ -17,7 +17,7 @@ import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessi
 import { trafficStats, type UiEvent } from "./lib/opencode-events";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
 import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
-import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions, useThemeMode } from "./lib/ui-theme";
+import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions, type ThemePreference, useThemeMode } from "./lib/ui-theme";
 import { getOfficeHostLabel, normalizeOfficeHost } from "./lib/officeHost";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
@@ -58,6 +58,7 @@ const UploadImageResponseSchema = z.object({
 });
 const PersistedBooleanSchema = z.boolean();
 const PersistedModelSchema = z.string();
+const ThemePreferenceSchema = z.enum(["system", "light", "dark"]);
 
 const useStyles = makeStyles({
   container: {
@@ -77,9 +78,34 @@ const useStyles = makeStyles({
     background: "var(--background-stronger)",
     overflow: "hidden",
   },
+  workspace: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    flex: 1,
+    minHeight: 0,
+  },
+  workspaceWithHistory: {
+    gridTemplateColumns: "minmax(0, 1fr) 340px",
+    "@media (max-width: 960px)": {
+      gridTemplateColumns: "minmax(0, 1fr)",
+      gridTemplateRows: "minmax(0, 1fr) minmax(260px, 42vh)",
+    },
+  },
+  mainPane: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  historyPane: {
+    minWidth: 0,
+    minHeight: 0,
+    background: "var(--oc-bg)",
+  },
   error: {
     margin: "0 auto 12px",
-    width: "min(100%, 760px)",
+    width: "min(100%, 820px)",
     padding: "12px 14px",
     borderRadius: "12px",
     background: "var(--oc-danger-bg)",
@@ -357,6 +383,7 @@ export const App: React.FC = () => {
   const [showToolResponses, setShowToolResponses] = useLocalStorage<boolean>("opencode-show-tool-responses", false);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
   const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
+  const [selectedThemeMode, setSelectedThemeMode] = useLocalStorage<ThemePreference>("opencode-ui-theme-mode", "system", ThemePreferenceSchema);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
   const [qaSubagentVariant, setQaSubagentVariant] = useState<string | undefined>(undefined);
   const [selectedVariant, setSelectedVariant] = useLocalStorage<string>("opencode-selected-variant", "");
@@ -366,7 +393,8 @@ export const App: React.FC = () => {
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
-  const themeMode = useThemeMode("system");
+  const safeSelectedThemeMode = ThemePreferenceSchema.catch("system").parse(selectedThemeMode);
+  const themeMode = useThemeMode(safeSelectedThemeMode);
   const safeSelectedModel = PersistedModelSchema.catch("").parse(selectedModel);
   const safeDebugEnabled = PersistedBooleanSchema.catch(false).parse(debugEnabled);
   const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
@@ -987,29 +1015,16 @@ export const App: React.FC = () => {
     }
   };
 
-  if (showHistory) {
-    return (
-      <FluentProvider theme={fluentTheme}>
-        <div className={styles.container} style={surfaceVars}>
-          <div className={styles.shell}>
-            <SessionHistory
-              host={officeHost}
-              shared={safeSharedHistory}
-              onSharedChange={setSharedHistory}
-              onSelectSession={handleRestoreSession}
-              onClose={() => setShowHistory(false)}
-            />
-          </div>
-        </div>
-      </FluentProvider>
-    );
-  }
-
   const headerSubtitle = buildHeaderSubtitle({
     host: officeHost,
     enabledToolCount,
   });
   const headerContext = officeHost === "powerpoint" ? buildPowerPointContextLabel(pptContext) : undefined;
+  const themeModeOptions = [
+    { id: "system" as const, label: "System" },
+    { id: "light" as const, label: "Light" },
+    { id: "dark" as const, label: "Dark" },
+  ];
 
   return (
     <FluentProvider theme={fluentTheme}>
@@ -1020,9 +1035,13 @@ export const App: React.FC = () => {
               setCurrentSessionId("");
               void startNewSession(safeSelectedModel);
             }}
-            onShowHistory={() => setShowHistory(true)}
+            onShowHistory={() => setShowHistory((prev) => !prev)}
+            historyOpen={showHistory}
             selectedModel={safeSelectedModel}
+            onModelChange={handleModelChange}
             models={availableModels}
+            selectedVariant={safeSelectedVariant}
+            onVariantChange={handleVariantChange}
             debugEnabled={safeDebugEnabled}
             onDebugChange={setDebugEnabled}
             showThinking={safeShowThinking}
@@ -1036,40 +1055,55 @@ export const App: React.FC = () => {
             themes={themeOptions}
             selectedThemeId={safeSelectedThemeId}
             onThemeChange={setSelectedThemeId}
+            themeModes={themeModeOptions}
+            selectedThemeMode={safeSelectedThemeMode}
+            onThemeModeChange={setSelectedThemeMode}
             connectionStatus={connectionStatus}
             subtitle={headerSubtitle}
             contextLabel={headerContext}
             usageSummary={usageSummary || undefined}
           />
 
-          <MessageList
-            messages={messages}
-            liveMessages={liveMessages}
-            isTyping={isTyping}
-            isConnecting={connectionStatus.state === "connecting"}
-            currentActivity={currentActivity}
-            debugEvents={safeDebugEnabled ? debugEvents : undefined}
-            hostLabel={hostLabel}
-            showThinking={safeShowThinking}
-            showToolResponses={safeShowToolResponses}
-          />
+          <div className={`${styles.workspace} ${showHistory ? styles.workspaceWithHistory : ""}`.trim()}>
+            <div className={styles.mainPane}>
+              <MessageList
+                messages={messages}
+                liveMessages={liveMessages}
+                isTyping={isTyping}
+                isConnecting={connectionStatus.state === "connecting"}
+                currentActivity={currentActivity}
+                debugEvents={safeDebugEnabled ? debugEvents : undefined}
+                hostLabel={hostLabel}
+                showThinking={safeShowThinking}
+                showToolResponses={safeShowToolResponses}
+              />
 
-          {error && <div className={styles.error}>{error}</div>}
+              {error && <div className={styles.error}>{error}</div>}
 
-          <ChatInput
-            value={inputValue}
-            onChange={setInputValue}
-            onSend={handleSend}
-            onStop={handleStop}
-            isRunning={isTyping}
-            images={images}
-            onImagesChange={setImages}
-            selectedModel={safeSelectedModel}
-            onModelChange={handleModelChange}
-            models={availableModels}
-            selectedVariant={safeSelectedVariant}
-            onVariantChange={handleVariantChange}
-          />
+              <ChatInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={handleSend}
+                onStop={handleStop}
+                isRunning={isTyping}
+                images={images}
+                onImagesChange={setImages}
+              />
+            </div>
+
+            {showHistory && (
+              <div className={styles.historyPane}>
+                <SessionHistory
+                  host={officeHost}
+                  shared={safeSharedHistory}
+                  onSharedChange={setSharedHistory}
+                  onSelectSession={handleRestoreSession}
+                  onClose={() => setShowHistory(false)}
+                />
+              </div>
+            )}
+          </div>
+
           {permission && (
             <PermissionDialog
               request={permission}

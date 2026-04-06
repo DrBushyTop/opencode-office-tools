@@ -60,6 +60,12 @@ const SessionMessageItemSchema = z.object({
 export type Message = z.infer<typeof MessageSchema>;
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
+type MessageSection = {
+  key: string;
+  sender: Message["sender"];
+  items: Message[];
+};
+
 function summarizeTaskTool(args: Record<string, unknown>) {
   const parsed = TaskToolArgsSchema.safeParse(args);
   const subagentType = parsed.success && parsed.data.subagent_type ? parsed.data.subagent_type : "subagent";
@@ -114,6 +120,34 @@ function toolCountText(count: number, running: boolean) {
   if (count === 0) return running ? "Waiting for first tool call" : "No tool calls used";
   const label = `${count} tool call${count === 1 ? "" : "s"}`;
   return running ? `${label} so far` : label;
+}
+
+function buildMessageSections(messages: Message[]): MessageSection[] {
+  return messages.reduce<MessageSection[]>((sections, message) => {
+    const previous = sections[sections.length - 1];
+    if (!previous || previous.sender !== message.sender) {
+      sections.push({ key: `${message.sender}-${message.id}`, sender: message.sender, items: [message] });
+      return sections;
+    }
+
+    previous.items.push(message);
+    return sections;
+  }, []);
+}
+
+function sectionTitle(sender: Message["sender"]) {
+  switch (sender) {
+    case "user":
+      return "You";
+    case "assistant":
+      return "OpenCode";
+    case "tool":
+      return "Tool activity";
+    case "thinking":
+      return "Reasoning";
+    default:
+      return "Session";
+  }
 }
 
 function useTaskInfo(sessionId: string, active: boolean) {
@@ -237,7 +271,7 @@ const useStyles = makeStyles({
   },
   content: {
     width: "100%",
-    maxWidth: "760px",
+    maxWidth: "820px",
     margin: "0 auto",
     padding: "0 14px 24px",
     boxSizing: "border-box",
@@ -261,7 +295,7 @@ const useStyles = makeStyles({
     gap: "10px",
   },
   emptyTitle: {
-    fontSize: "26px",
+    fontSize: "24px",
     lineHeight: "1.2",
     color: "var(--text-strong)",
     fontWeight: "500",
@@ -269,6 +303,35 @@ const useStyles = makeStyles({
   emptyMeta: {
     fontSize: "13px",
     color: "var(--text-base)",
+    maxWidth: "520px",
+    lineHeight: "1.6",
+  },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  },
+  sectionTitle: {
+    fontSize: "11px",
+    fontWeight: "700",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "var(--oc-text-faint)",
+  },
+  sectionLine: {
+    flex: 1,
+    height: "1px",
+    background: "color-mix(in srgb, var(--oc-border) 72%, transparent)",
+  },
+  sectionBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
   },
   assistantIcon: {
     display: "none",
@@ -1017,14 +1080,15 @@ export const MessageList: React.FC<MessageListProps> = ({
     () => coalesceTranscriptMessages(visibleHistory, visibleLive),
     [visibleHistory, visibleLive],
   );
+  const messageSections = React.useMemo(() => buildMessageSections(visibleMessages), [visibleMessages]);
 
   return (
     <div ref={chatRef} className={styles.chatContainer}>
       <div className={mergeClasses(styles.content, visibleMessages.length === 0 ? styles.contentEmpty : undefined)}>
         {visibleMessages.length === 0 && !isConnecting && (
           <div className={styles.emptyState}>
-            <div className={styles.emptyTitle}>What can I do for you?</div>
-            <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}` : "Connected to your document"}</div>
+            <div className={styles.emptyTitle}>Ready when you are.</div>
+            <div className={styles.emptyMeta}>{hostLabel ? `Connected to ${hostLabel}. Ask for edits, analysis, slide work, or spreadsheet cleanup.` : "Connected to your document. Ask for edits, analysis, or automation help."}</div>
           </div>
         )}
 
@@ -1034,58 +1098,68 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {visibleMessages.map((message) => {
-          const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
-          const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
-
-          return (
-            <div
-              key={message.id}
-              className={
-                message.sender === "user"
-                  ? styles.messageUser
-                  : message.sender === "tool"
-                    ? undefined
-                    : message.sender === "thinking"
-                      ? styles.messageThinking
-                      : styles.messageAssistant
-              }
-            >
-              {message.sender === "tool" ? (
-                <ToolMessage
-                  message={message}
-                  expanded={expandedTools.has(message.id)}
-                  toggle={() => toggleTool(message.id)}
-                  showToolResponses={showToolResponses}
-                />
-              ) : message.sender === "assistant" ? (
-                <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
-              ) : message.sender === "thinking" ? (
-                <>
-                  <div className={styles.thinkingHeader}>
-                    <span className={styles.thinkingLabel}>Thinking</span>
-                    <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
-                  </div>
-                  {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
-                </>
-              ) : (
-                <div className={styles.userBody}>
-                  {message.images && message.images.length > 0 && (
-                    <div className={styles.attachmentContainer}>
-                      {message.images.map((img, idx) => (
-                        <div key={idx}>
-                          <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
-                          <div className={styles.attachmentBadge}>📎 {img.name}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className={styles.userText}>{message.text}</div>
-                </div>
-              )}
+        {messageSections.map((section) => (
+          <div key={section.key} className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionTitle}>{sectionTitle(section.sender)}</span>
+              <div className={styles.sectionLine} />
             </div>
-          );
-        })}
+            <div className={styles.sectionBody}>
+              {section.items.map((message) => {
+                const summary = message.sender === "thinking" ? thinkingHeading(message.text) : "";
+                const thinkingContent = message.sender === "thinking" ? stripThinkingHeading(message.text) : message.text;
+
+                return (
+                  <div
+                    key={message.id}
+                    className={
+                      message.sender === "user"
+                        ? styles.messageUser
+                        : message.sender === "tool"
+                          ? undefined
+                          : message.sender === "thinking"
+                            ? styles.messageThinking
+                            : styles.messageAssistant
+                    }
+                  >
+                    {message.sender === "tool" ? (
+                      <ToolMessage
+                        message={message}
+                        expanded={expandedTools.has(message.id)}
+                        toggle={() => toggleTool(message.id)}
+                        showToolResponses={showToolResponses}
+                      />
+                    ) : message.sender === "assistant" ? (
+                      <div className={styles.assistantBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{message.text}</Markdown></div>
+                    ) : message.sender === "thinking" ? (
+                      <>
+                        <div className={styles.thinkingHeader}>
+                          <span className={styles.thinkingLabel}>Thinking</span>
+                          <span className={styles.thinkingTitle}>{summary || currentActivity || "Reasoning"}</span>
+                        </div>
+                        {thinkingContent ? <div className={styles.thinkingBody}><Markdown remarkPlugins={[remarkGfm]} disallowedElements={["img"]}>{thinkingContent}</Markdown></div> : null}
+                      </>
+                    ) : (
+                      <div className={styles.userBody}>
+                        {message.images && message.images.length > 0 && (
+                          <div className={styles.attachmentContainer}>
+                            {message.images.map((img, idx) => (
+                              <div key={idx}>
+                                <img src={img.dataUrl} alt={img.name} className={styles.attachmentThumbnail} />
+                                <div className={styles.attachmentBadge}>📎 {img.name}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className={styles.userText}>{message.text}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
 
         {isTyping && (
           <div className={styles.liveStatusDock}>
