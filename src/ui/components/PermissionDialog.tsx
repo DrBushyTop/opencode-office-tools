@@ -224,19 +224,19 @@ export const PermissionDialog: React.FC<PermissionDialogProps> = ({
             Deny
           </Button>
           <Button
+            appearance="primary"
+            className={cls.btnAllow}
+            onClick={() => onDecision("allow")}
+          >
+            Allow
+          </Button>
+          <Button
             appearance="outline"
             className={cls.btnPersist}
             style={{ borderColor: badge.accent, color: badge.accent }}
             onClick={() => onDecision("always")}
           >
             Always Allow
-          </Button>
-          <Button
-            appearance="primary"
-            className={cls.btnAllow}
-            onClick={() => onDecision("allow")}
-          >
-            Allow
           </Button>
         </footer>
       </div>
