@@ -10,8 +10,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OpenCode"/>
   <Description DefaultValue="OpenCode for Word, Excel, PowerPoint, and OneNote."/>
-  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260331a"/>
-  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260331a"/>
+  <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260407a"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260407a"/>
   <SupportUrl DefaultValue="https://www.contoso.com/help"/>
   <AppDomains>
     <AppDomain>https://localhost:52390</AppDomain>
@@ -178,9 +178,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://localhost:52390/icon-16.png?v=20260331a"/>
-        <bt:Image id="Icon.32" DefaultValue="https://localhost:52390/icon-32.png?v=20260331a"/>
-        <bt:Image id="Icon.80" DefaultValue="https://localhost:52390/icon-80.png?v=20260331a"/>
+        <bt:Image id="Icon.16" DefaultValue="https://localhost:52390/icon-16.png?v=20260407a"/>
+        <bt:Image id="Icon.32" DefaultValue="https://localhost:52390/icon-32.png?v=20260407a"/>
+        <bt:Image id="Icon.80" DefaultValue="https://localhost:52390/icon-80.png?v=20260407a"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Bootstrap.LearnMore" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>

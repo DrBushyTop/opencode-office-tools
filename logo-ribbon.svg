@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+<!-- Ribbon-optimized icon: transparent bg, two-tone Monoline style -->
+<!-- Visible on both light and dark Office ribbon backgrounds -->
+
+<!-- Inner window fill (medium gray) -->
+<path d="M320 224V352H192V224H320Z" fill="#9E9E9E"/>
+
+<!-- Outer frame (dark gray fill + darker stroke for definition) -->
+<path fill-rule="evenodd" clip-rule="evenodd"
+      d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"
+      fill="#505050" stroke="#333333" stroke-width="6"/>
+</svg>

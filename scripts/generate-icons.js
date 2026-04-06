@@ -6,6 +6,7 @@ const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
 const sourceLogo = path.join(rootDir, 'logo.svg');
+const ribbonLogo = path.join(rootDir, 'logo-ribbon.svg');
 const webIconDir = path.join(rootDir, 'src', 'ui', 'public');
 const windowsInstallerDir = path.join(rootDir, 'installer', 'windows');
 const macInstallerDir = path.join(rootDir, 'installer', 'macos');
@@ -71,6 +72,30 @@ async function writeBrowserIcons(rendered) {
   }
 
   console.log(`\nPNG icons saved to: ${webIconDir}`);
+}
+
+// Ribbon icons use a separate SVG with transparent background and two-tone
+// Monoline styling so they remain legible on both light and dark Office ribbons.
+const ribbonSizes = [16, 32, 64, 80];
+
+async function writeRibbonIcons() {
+  if (!fs.existsSync(ribbonLogo)) {
+    console.log('\n⚠ logo-ribbon.svg not found — skipping ribbon icon generation');
+    return;
+  }
+  console.log('\nGenerating ribbon icons from logo-ribbon.svg...');
+  for (const size of ribbonSizes) {
+    const buffer = await sharp(ribbonLogo)
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+    const targetFile = path.join(webIconDir, `icon-${size}.png`);
+    fs.writeFileSync(targetFile, buffer);
+    console.log(`  ✓ icon-${size}.png (ribbon)`);
+  }
 }
 
 async function writeWindowsAssets(rendered) {
@@ -141,6 +166,7 @@ async function writeMacIcns(rendered) {
 async function main() {
   const renderedCatalog = await renderSourceCatalog();
   await writeBrowserIcons(renderedCatalog);
+  await writeRibbonIcons();
   await writeWindowsAssets(renderedCatalog);
   writeMacInstallerPng(renderedCatalog);
   await writeTrayAssets();
