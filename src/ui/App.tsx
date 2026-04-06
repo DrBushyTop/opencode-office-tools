@@ -11,7 +11,7 @@ import { HeaderBar, ModelType } from "./components/HeaderBar";
 import { SessionHistory } from "./components/SessionHistory";
 import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
 import { useLocalStorage } from "./useLocalStorage";
-import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
+import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo, TodoItem } from "./lib/opencode-client";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats, type UiEvent } from "./lib/opencode-events";
@@ -364,6 +364,7 @@ export const App: React.FC = () => {
   const [permission, setPermission] = useState<OfficePermissionRequest | null>(null);
   const [permissionSessionTitle, setPermissionSessionTitle] = useState<string | null>(null);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
   const [themePreference, setThemePreference] = useLocalStorage<ThemePreference>("opencode-theme-mode", "system");
@@ -612,6 +613,9 @@ export const App: React.FC = () => {
       onEvent: (event) => {
         eventHandlerRef.current(event);
       },
+      onTodoUpdated: (items) => {
+        setTodos(items);
+      },
     }, { signal: controller.signal });
     const next = {
       sessionId,
@@ -802,9 +806,11 @@ export const App: React.FC = () => {
     setCurrentSessionId("");
     sessionCreatedAt.current = restored?.createdAt || new Date().toISOString();
     setMessages(restored?.messages || []);
+    setTodos([]);
 
     if (restored) {
       setCurrentSessionId(restored.id);
+      client.getTodos(restored.id).then((items) => setTodos(items)).catch(() => {});
       return;
     }
 
@@ -1073,6 +1079,9 @@ export const App: React.FC = () => {
             models={availableModels}
             selectedVariant={safeSelectedVariant}
             onVariantChange={handleVariantChange}
+            liveMessages={liveMessages}
+            currentActivity={currentActivity}
+            todos={todos}
           />
           {permission && (
             <PermissionDialog

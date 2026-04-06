@@ -377,6 +377,14 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.get('/opencode/session/:id/todo', async (req, res) => {
+    try {
+      res.json(await runtime.request(`/session/${req.params.id}/todo`));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.get('/opencode/permissions', async (req, res) => {
     try {
       res.json(await runtime.request('/permission'));

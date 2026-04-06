@@ -1,11 +1,13 @@
 import * as React from "react";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Textarea, Button, Combobox, Option, Tooltip, makeStyles } from "@fluentui/react-components";
-import { Send24Regular, Dismiss24Regular, Stop24Regular } from "@fluentui/react-icons";
+import { Send24Regular, Dismiss24Regular, Stop24Regular, ChevronDown20Regular, ChevronUp20Regular } from "@fluentui/react-icons";
 import { z } from "zod";
 import { filterModels } from "../lib/model-search";
-import type { ModelInfo } from "../lib/opencode-client";
+import type { ModelInfo, TodoItem } from "../lib/opencode-client";
 import { modelInfoSchema } from "../lib/opencode-schemas";
+import { trafficStats } from "../lib/opencode-events";
+import { liveStatusText, type Message } from "./MessageList";
 
 const ImageAttachmentSchema = z.object({
   id: z.string().min(1),
@@ -29,7 +31,179 @@ interface ChatInputProps {
   models: ModelInfo[];
   selectedVariant?: string;
   onVariantChange: (variant: string | undefined) => void;
+  liveMessages?: Message[];
+  currentActivity?: string;
+  todos?: TodoItem[];
 }
+
+const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
+
+function humanizeBytes(raw: number): string {
+  let value = Math.max(0, raw);
+  let idx = 0;
+  while (value >= 1024 && idx < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    idx++;
+  }
+  return idx === 0
+    ? `${Math.round(value)} ${BYTE_UNITS[idx]}`
+    : `${value.toFixed(1)} ${BYTE_UNITS[idx]}`;
+}
+
+const RunTimer: React.FC = () => {
+  const [seconds, setSeconds] = useState(0);
+  const origin = useRef(Date.now());
+
+  useEffect(() => {
+    origin.current = Date.now();
+    setSeconds(0);
+    const handle = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - origin.current) / 1000));
+    }, 1000);
+    return () => clearInterval(handle);
+  }, []);
+
+  if (seconds < 3) return null;
+  return (
+    <span style={{ fontSize: "11px", color: "var(--text-weak, #999)" }}>
+      {seconds}s
+    </span>
+  );
+};
+
+const BandwidthMeter: React.FC = () => {
+  const [rx, setRx] = useState(0);
+  const [tx, setTx] = useState(0);
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setRx(trafficStats.bytesIn);
+      setTx(trafficStats.bytesOut);
+    }, 500);
+    return () => clearInterval(tick);
+  }, []);
+
+  if (rx === 0 && tx === 0) return null;
+  return (
+    <span style={{ fontSize: "11px", color: "var(--text-weak, #999)" }}>
+      {"\u2193"}{humanizeBytes(rx)} {"\u2191"}{humanizeBytes(tx)}
+    </span>
+  );
+};
+
+const statusIcons: Record<string, string> = {
+  completed: "\u2713",
+  in_progress: "\u25CF",
+  pending: "\u25CB",
+  cancelled: "\u2715",
+};
+
+const TodoDock: React.FC<{ todos: TodoItem[] }> = ({ todos }) => {
+  const [expanded, setExpanded] = useState(false);
+  const done = todos.filter((t) => t.status === "completed").length;
+  const active = todos.find((t) => t.status === "in_progress");
+
+  return (
+    <div style={{
+      borderRadius: "10px 10px 0 0",
+      border: "1px solid var(--oc-border)",
+      borderBottom: "none",
+      background: "var(--oc-bg-soft)",
+      marginBottom: "-1px",
+      position: "relative",
+      zIndex: 1,
+      overflow: "hidden",
+    }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          width: "100%",
+          padding: "6px 10px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "var(--text-strong)",
+          fontSize: "13px",
+          lineHeight: "1",
+          fontFamily: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: "12px", lineHeight: "1", color: "var(--text-weak)", fontWeight: 600 }}>
+          {done}/{todos.length}
+        </span>
+        {active && (
+          <span style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "var(--text-base, var(--text-strong))",
+          }}>
+            {active.content}
+          </span>
+        )}
+        {!active && (
+          <span style={{ flex: 1, color: "var(--text-weak)" }}>Tasks</span>
+        )}
+        {expanded
+          ? <ChevronDown20Regular style={{ fontSize: "14px", color: "var(--text-weak)", flexShrink: 0 }} />
+          : <ChevronUp20Regular style={{ fontSize: "14px", color: "var(--text-weak)", flexShrink: 0 }} />}
+      </button>
+      {expanded && (
+        <div style={{
+          padding: "0 10px 8px",
+          maxHeight: "140px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+        }}>
+          {todos.map((todo, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "6px",
+                fontSize: "13px",
+                lineHeight: "1.4",
+                color: todo.status === "completed" || todo.status === "cancelled"
+                  ? "var(--text-weak)"
+                  : "var(--text-strong)",
+                opacity: todo.status === "pending" ? 0.8 : 1,
+              }}
+            >
+              <span style={{
+                flexShrink: 0,
+                width: "14px",
+                textAlign: "center",
+                color: todo.status === "in_progress" ? "var(--oc-accent)" : "var(--text-weak)",
+                fontSize: "12px",
+                lineHeight: "1.4",
+              }}>
+                {statusIcons[todo.status] || statusIcons.pending}
+              </span>
+              <span style={{
+                textDecoration: todo.status === "completed" || todo.status === "cancelled"
+                  ? "line-through" : "none",
+                minWidth: 0,
+                wordBreak: "break-word",
+              }}>
+                {todo.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const useStyles = makeStyles({
   dock: {
@@ -39,6 +213,62 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "stretch",
     boxSizing: "border-box",
+  },
+  statusBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 12px",
+    borderRadius: "10px 10px 0 0",
+    border: "1px solid color-mix(in srgb, var(--oc-accent) 22%, var(--oc-border) 78%)",
+    borderBottom: "none",
+    background: "color-mix(in srgb, var(--oc-bg-strong) 85%, transparent)",
+    backdropFilter: "blur(8px)",
+    marginBottom: "-1px",
+    position: "relative",
+    zIndex: 1,
+    fontSize: "11px",
+    lineHeight: "1",
+  },
+  statusDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%",
+    background: "var(--oc-accent)",
+    flexShrink: 0,
+    animationName: {
+      "0%": { opacity: 1 },
+      "50%": { opacity: 0.4 },
+      "100%": { opacity: 1 },
+    },
+    animationDuration: "1.2s",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
+  },
+  statusLabel: {
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    textTransform: "uppercase",
+    color: "var(--oc-accent)",
+    flexShrink: 0,
+    lineHeight: "1",
+  },
+  statusActivity: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-strong)",
+    fontWeight: 500,
+    fontSize: "12px",
+    lineHeight: "1",
+  },
+  statusMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    flexShrink: 0,
   },
   tray: {
     display: "flex",
@@ -52,6 +282,10 @@ const useStyles = makeStyles({
     marginBottom: "-1px",
     position: "relative",
     zIndex: 1,
+  },
+  trayHasStatus: {
+    borderTopLeftRadius: "0",
+    borderTopRightRadius: "0",
   },
   trayField: {
     flex: "1 1 0",
@@ -86,7 +320,7 @@ const useStyles = makeStyles({
     position: "relative",
     zIndex: 2,
   },
-  shellHasTray: {
+  shellHasAbove: {
     borderTopLeftRadius: "0",
     borderTopRightRadius: "0",
   },
@@ -204,6 +438,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   models,
   selectedVariant,
   onVariantChange,
+  liveMessages = [],
+  currentActivity = "",
+  todos = [],
 }) => {
   const styles = useStyles();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -224,8 +461,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     return current?.variants ?? [];
   }, [safeModels, selectedModel]);
 
+  const activity = React.useMemo(
+    () => liveStatusText(liveMessages, currentActivity),
+    [liveMessages, currentActivity],
+  );
+
   useEffect(() => {
-    // Restore focus after the input is cleared on send
     if (value === "") {
       inputRef.current?.focus();
     }
@@ -248,7 +489,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const clipboardItems = e.clipboardData?.items;
     if (!clipboardItems || !onImagesChange) return;
 
-    // Collect image files from the clipboard
     const files = Array.from(clipboardItems)
       .filter((entry) => entry.type.startsWith("image/"))
       .map((entry) => entry.getAsFile())
@@ -291,11 +531,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   const hasTray = safeModels.length > 0;
+  const hasStatus = isRunning;
+  const hasTodos = todos.length > 0;
+  const hasAbove = hasTray || hasStatus || hasTodos;
 
   return (
     <div className={styles.dock}>
+      {hasTodos && <TodoDock todos={todos} />}
+
+      {hasStatus && (
+        <div
+          className={styles.statusBar}
+          style={hasTodos ? { borderTopLeftRadius: 0, borderTopRightRadius: 0 } : undefined}
+        >
+          <span className={styles.statusDot} />
+          <span className={styles.statusLabel}>Running</span>
+          <span className={styles.statusActivity}>{activity}</span>
+          <span className={styles.statusMeta}>
+            <RunTimer />
+            <BandwidthMeter />
+          </span>
+        </div>
+      )}
+
       {hasTray && (
-        <div className={styles.tray}>
+        <div
+          className={`${styles.tray} ${hasStatus || hasTodos ? styles.trayHasStatus : ""}`.trim()}
+        >
           <div className={styles.trayField}>
             <Combobox
               className={styles.control}
@@ -347,7 +609,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       )}
-      <div className={`${styles.shell} ${hasTray ? styles.shellHasTray : ""}`.trim()}>
+      <div className={`${styles.shell} ${hasAbove ? styles.shellHasAbove : ""}`.trim()}>
         {safeImages.length > 0 && (
           <div className={styles.attachmentStrip}>
             {safeImages.map((image) => (

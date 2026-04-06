@@ -30,8 +30,21 @@ const promptInputSchema = z.object({
 
 type PromptInput = z.infer<typeof promptInputSchema>;
 
+export type TodoItem = {
+  content: string;
+  status: string;
+  priority: string;
+};
+
+const todoItemSchema = z.object({
+  content: z.string(),
+  status: z.string(),
+  priority: z.string(),
+});
+
 type SessionEventHandlers = {
   onEvent: (event: UiEvent) => void;
+  onTodoUpdated?: (todos: TodoItem[]) => void;
 };
 
 const statusSchema = z.object({
@@ -88,6 +101,10 @@ export class OpencodeClient {
 
   async getSessionChildren(sessionId: string) {
     return readJson(`/api/opencode/session/${sessionId}/children`, z.array(sessionInfoSchema));
+  }
+
+  async getTodos(sessionId: string): Promise<TodoItem[]> {
+    return readJson(`/api/opencode/session/${sessionId}/todo`, z.array(todoItemSchema));
   }
 
   async abortSession(sessionId: string) {
@@ -181,6 +198,12 @@ export class OpencodeClient {
       void (async () => {
         try {
           const event = JSON.parse(message.data);
+
+          if (event.type === "todo.updated" && handlers.onTodoUpdated) {
+            const todos = Array.isArray(event.properties?.todos) ? event.properties.todos : [];
+            handlers.onTodoUpdated(todos);
+          }
+
           for (const normalized of normalizeOpencodeEvent(event, parts, roles)) {
             if (normalized.type !== "assistant.message") {
               handlers.onEvent(normalized);

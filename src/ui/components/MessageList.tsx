@@ -4,7 +4,6 @@ import { makeStyles, mergeClasses } from "@fluentui/react-components";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { z } from "zod";
-import { trafficStats } from "../lib/opencode-events";
 import { coalesceTranscriptMessages } from "../lib/opencode-session-history";
 import { getOfficeToolUi } from "../../shared/office-tool-registry";
 
@@ -587,151 +586,7 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "4px",
   },
-  streamingIndicator: {
-    color: "var(--text-weak)",
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-  },
-  liveStatusDock: {
-    position: "sticky",
-    bottom: "12px",
-    zIndex: 1,
-  },
-  liveStatusCard: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    padding: "12px 14px",
-    borderRadius: "14px",
-    background: "color-mix(in srgb, var(--oc-bg-strong) 78%, transparent)",
-    border: "1px solid color-mix(in srgb, var(--oc-accent) 22%, var(--oc-border) 78%)",
-    boxShadow: "0 12px 28px rgba(0, 0, 0, 0.18)",
-    backdropFilter: "blur(12px)",
-  },
-  liveStatusHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-  },
-  liveStatusDot: {
-    width: "8px",
-    height: "8px",
-    borderRadius: "50%",
-    background: "var(--oc-accent)",
-    animationName: {
-      "0%": { transform: "scale(1)", opacity: 0.95 },
-      "50%": { transform: "scale(1.4)", opacity: 0.35 },
-      "100%": { transform: "scale(1)", opacity: 0.95 },
-    },
-    animationDuration: "1.2s",
-    animationTimingFunction: "ease-in-out",
-    animationIterationCount: "infinite",
-  },
-  liveStatusLabel: {
-    fontSize: "11px",
-    fontWeight: 700,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "var(--oc-accent)",
-  },
-  liveStatusTitle: {
-    fontSize: "14px",
-    fontWeight: 500,
-    color: "var(--text-strong)",
-    overflowWrap: "anywhere",
-  },
-  liveStatusMeta: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-  },
 });
-
-// Pulsing dot indicator rendered during active streaming
-const PulsingIndicator: React.FC = () => {
-  return (
-    <>
-      <style>
-        {`
-          @keyframes indicator-fade {
-            0%, 100% { opacity: 0.3; }
-            50% { opacity: 1; }
-          }
-          .indicator-pip {
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background-color: var(--text-weak, #666);
-            animation: indicator-fade 1.4s ease-in-out infinite;
-          }
-          @keyframes bar-sweep {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(400%); }
-          }
-          .sweep-track {
-            height: 2px;
-            width: 100%;
-            border-radius: 1px;
-            background: var(--oc-bg-soft, #e0e0e0);
-            overflow: hidden;
-            margin-top: 6px;
-          }
-          .sweep-fill {
-            height: 100%;
-            width: 25%;
-            border-radius: 1px;
-            background: var(--oc-accent, #0078d4);
-            animation: bar-sweep 1.5s ease-in-out infinite;
-          }
-        `}
-      </style>
-      <span style={{ display: 'inline-flex', gap: '3px', marginLeft: '2px' }}>
-        <span className="indicator-pip" style={{ animationDelay: '0s' }} />
-        <span className="indicator-pip" style={{ animationDelay: '0.2s' }} />
-        <span className="indicator-pip" style={{ animationDelay: '0.4s' }} />
-      </span>
-    </>
-  );
-};
-
-// Wall-clock timer shown once the response has been running a few seconds
-const RunTimer: React.FC = () => {
-  const [seconds, setSeconds] = useState(0);
-  const originRef = useRef(Date.now());
-
-  useEffect(() => {
-    originRef.current = Date.now();
-    setSeconds(0);
-    const handle = setInterval(() => {
-      setSeconds(Math.floor((Date.now() - originRef.current) / 1000));
-    }, 1000);
-    return () => clearInterval(handle);
-  }, []);
-
-  if (seconds < 3) return null;
-  return (
-    <span style={{ fontSize: '11px', color: 'var(--text-weak, #999)', marginLeft: '6px' }}>
-      {seconds}s
-    </span>
-  );
-};
-
-const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
-
-function humanizeBytes(raw: number): string {
-  let value = Math.max(0, raw);
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  return unitIndex === 0
-    ? `${Math.round(value)} ${BYTE_UNITS[unitIndex]}`
-    : `${value.toFixed(1)} ${BYTE_UNITS[unitIndex]}`;
-}
 
 function cleanThinking(value: string) {
   return value
@@ -777,7 +632,7 @@ function stripThinkingHeading(text: string) {
   return markdown.slice(match.length).trim();
 }
 
-function liveStatusText(messages: Message[], activity?: string) {
+export function liveStatusText(messages: Message[], activity?: string) {
   if (activity?.trim()) return activity.trim();
   const item = [...messages].reverse().find((message) => message.sender !== "user");
   if (!item) return "Generating response";
@@ -786,45 +641,6 @@ function liveStatusText(messages: Message[], activity?: string) {
   if (item.sender === "assistant") return item.text.trim() ? "Drafting response" : "Generating response";
   return "Working";
 }
-
-// Bandwidth usage display — polls the shared trafficStats counters
-const BandwidthMeter: React.FC = () => {
-  const [rx, setRx] = useState(0);
-  const [tx, setTx] = useState(0);
-  const lastRxRef = useRef(0);
-  const [highlight, setHighlight] = useState(false);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setRx(trafficStats.bytesIn);
-      setTx(trafficStats.bytesOut);
-      if (trafficStats.bytesIn !== lastRxRef.current) {
-        lastRxRef.current = trafficStats.bytesIn;
-        setHighlight(true);
-        setTimeout(() => setHighlight(false), 200);
-      }
-    }, 250);
-    return () => clearInterval(tick);
-  }, []);
-
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: 'var(--text-weak, #999)',
-      marginLeft: '8px',
-      transition: 'color 0.2s',
-    }}>
-      <span style={{ color: highlight ? 'var(--oc-accent, #0078d4)' : undefined, transition: 'color 0.2s' }}>
-        ↓{humanizeBytes(rx)}
-      </span>
-      <span>↑{humanizeBytes(tx)}</span>
-    </span>
-  );
-};
 
 function useNow(active: boolean) {
   const [now, setNow] = useState(() => Date.now());
@@ -1097,48 +913,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           );
         })}
 
-        {isTyping && (
-          <div className={styles.liveStatusDock}>
-            <div className={styles.liveStatusCard}>
-              <div className={styles.liveStatusHeader}>
-                <span className={styles.liveStatusDot} />
-                <span className={styles.liveStatusLabel}>OpenCode is running</span>
-                <span className={styles.liveStatusTitle}>{liveStatus}</span>
-              </div>
-              <div className={styles.liveStatusMeta}>
-                <span className={styles.streamingIndicator}>
-                  Streaming
-                  <PulsingIndicator />
-                  <RunTimer />
-                </span>
-                <BandwidthMeter />
-              </div>
-              <div className="sweep-track"><div className="sweep-fill" /></div>
-              {safeDebugEvents && safeDebugEvents.length > 0 && (
-                <div style={{
-                  marginTop: '2px',
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  fontSize: '10px',
-                  fontFamily: 'monospace',
-                  lineHeight: '1.6',
-                  color: 'var(--text-weak, #999)',
-                  backgroundColor: 'var(--oc-bg-soft, #f5f5f5)',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
-                  border: '1px solid var(--oc-border, #e5e5e5)',
-                }}>
-                  {safeDebugEvents.map((ev, i) => (
-                    <div key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <span style={{ color: 'var(--oc-accent, #0078d4)' }}>{ev.type}</span>
-                      {ev.preview && <span style={{ opacity: 0.7 }}> {ev.preview}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Live status dock moved to ChatInput area */}
 
         <div />
       </div>
