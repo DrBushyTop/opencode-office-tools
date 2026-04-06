@@ -76,7 +76,7 @@ function validateAutosizeShapeIds(autosizeShapeIds: string[]) {
 
 export const editSlideXml: Tool = {
   name: "edit_slide_xml",
-  description: "General-purpose single-slide XML editor. Exports one slide as a ZIP package, exposes ppt/slides/slide1.xml for DOM-based mutation, and reimports the edited slide in one round-trip. Use for batch text edits, advanced formatting, structural shape work, and any single-slide edit that benefits from full OOXML fidelity. Prefer this over execute_office_js for text editing and formatting work.",
+  description: "General-purpose single-slide XML editor. Provides slideXml as a live XMLDocument (already parsed, not a string). Mutate it in place with DOM APIs — changes are serialized automatically. Use for batch text edits, advanced formatting, structural shape work, and any single-slide edit that benefits from full OOXML fidelity. Prefer this over execute_office_js for text editing and formatting work.",
   parameters: {
     type: "object",
     properties: {
@@ -86,7 +86,7 @@ export const editSlideXml: Tool = {
       },
       code: {
         type: "string",
-        description: "Async JavaScript function body that receives a JSZip-style single-slide package in `zip` (supporting both `zip.file(path)` and `zip.files[path]` reads), the raw slide XML string in `xml`, the parsed slide XML DOM in both `doc` and `slideXml` for ppt/slides/slide1.xml, `slidePath`, `DOMParser`, `XMLSerializer`, `escapeXml`, `namespaces`, `console`, `parseXml`, `serializeXml`, and `setResult(value)`. Returning an XML string replaces ppt/slides/slide1.xml directly.",
+        description: "Async JavaScript function body. Key variables in scope: slideXml and doc (same object) are a live XMLDocument — already parsed, not a string. Mutate in place with standard DOM APIs and changes are saved automatically. Do not re-parse slideXml with DOMParser. Also available: xml (let-bound string snapshot), zip (JSZip-style package), slidePath (always ppt/slides/slide1.xml), namespaces ({ a, p, r }), escapeXml(str), parseXml(str), serializeXml(doc), console, setResult(value), DOMParser, XMLSerializer.",
       },
       autosize_shape_ids: {
         type: "array",

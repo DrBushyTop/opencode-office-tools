@@ -89,8 +89,10 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 ## XML Editing
 
 - `edit_slide_xml` works on a single exported slide package, so the main slide XML part is always `ppt/slides/slide1.xml` regardless of the slide's position in the live deck.
-- Prefer `DOMParser` + `XMLSerializer` mutation patterns over string concatenation when writing XML-edit code.
+- `slideXml` (and its alias `doc`) is already a live `XMLDocument` — mutate it directly with DOM APIs (`getElementsByTagNameNS`, `createElement`, `appendChild`, `setAttribute`, etc.). Do not re-parse it with `DOMParser`. Changes to the DOM are serialized automatically.
+- `xml` is a `let`-bound string snapshot of the slide XML available for reference. `parseXml(str)` and `serializeXml(doc)` are available when you need to work with XML strings for other parts.
 - Use the provided `escapeXml(...)` helper when embedding raw text into generated XML strings.
+- `console.log()` is available for debugging.
 - Use `autosize_shape_ids` when you need specific text shapes reset to `AutoSizeShapeToFitText` after the slide is reimported.
 - Critical Office.js shape repair pattern: if a shape created through `addGeometricShape(...)` plus `fill.setSolidColor(...)` shows no fill, inspect its OOXML. Some shapes can end up with `a:prstGeom prst="lineInv"`, which renders as an inverse diagonal line and does not support fills.
 - Fix that case with `edit_slide_xml`: change `a:prstGeom/@prst` to `rect` or `roundRect`, and remove the shape's `p:style` element so any `a:solidFill` on the shape is not overridden by `fillRef`.
