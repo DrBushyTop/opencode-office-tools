@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const load = () => {
-  // @ts-expect-error TDD: helper module is intentionally not implemented yet.
   return import("./ui-theme");
 };
 
 describe("ui theme helper", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (globalThis as { window?: unknown }).window;
+  });
+
   it("exposes a catalog of theme options with oc-2 as the default", async () => {
     const mod = await load();
 
@@ -100,5 +104,20 @@ describe("ui theme helper", () => {
     const mod = await load();
 
     expect(mod.resolveThemeTokens("missing-theme")).toEqual(mod.resolveThemeTokens("oc-2"));
+  });
+
+  it("resolves system theme preference against the current color scheme", async () => {
+    (globalThis as { window?: unknown }).window = {
+      matchMedia: vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    };
+    const mod = await load();
+
+    expect(mod.readSystemThemeMode()).toBe("dark");
+    expect(mod.resolveThemeModePreference("system", "dark")).toBe("dark");
+    expect(mod.resolveThemeModePreference("light", "dark")).toBe("light");
   });
 });

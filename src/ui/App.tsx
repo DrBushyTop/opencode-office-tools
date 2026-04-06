@@ -10,7 +10,6 @@ import { Message, MessageList, DebugEvent } from "./components/MessageList";
 import { HeaderBar, ModelType } from "./components/HeaderBar";
 import { SessionHistory } from "./components/SessionHistory";
 import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
-import { useIsDarkMode } from "./useIsDarkMode";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo } from "./lib/opencode-client";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
@@ -18,7 +17,8 @@ import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessi
 import { trafficStats, type UiEvent } from "./lib/opencode-events";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
 import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
-import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions } from "./lib/ui-theme";
+import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions, useThemeMode } from "./lib/ui-theme";
+import { getOfficeHostLabel, normalizeOfficeHost } from "./lib/officeHost";
 import { getOfficeToolExecutor, getToolNamesForHost } from "./tools";
 import { setPowerPointContextSnapshot, type PowerPointContextSnapshot } from "./tools/powerpointContext";
 import { canAutoApprove, type OfficePermissionRequest } from "../shared/office-permissions";
@@ -26,7 +26,6 @@ import { formatOfficeToolActivity } from "../shared/office-tool-registry";
 import {
   SavedSession,
   OfficeHost,
-  getHostFromOfficeHost,
 } from "./sessionStorage";
 import React from "react";
 import { z } from "zod";
@@ -88,10 +87,6 @@ const useStyles = makeStyles({
     color: "var(--oc-danger-text)",
   },
 });
-
-function getHostLabel(host: OfficeHost) {
-  return host === "powerpoint" ? "PowerPoint" : host === "excel" ? "Excel" : host === "onenote" ? "OneNote" : "Word";
-}
 
 function isDarkHex(value: string) {
   const normalized = value.replace("#", "");
@@ -371,7 +366,7 @@ export const App: React.FC = () => {
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
-  const isDarkMode = useIsDarkMode();
+  const themeMode = useThemeMode("system");
   const safeSelectedModel = PersistedModelSchema.catch("").parse(selectedModel);
   const safeDebugEnabled = PersistedBooleanSchema.catch(false).parse(debugEnabled);
   const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
@@ -379,7 +374,7 @@ export const App: React.FC = () => {
   const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
   const safeSelectedThemeId = themeOptions.some((theme) => theme.id === selectedThemeId) ? selectedThemeId : defaultThemeId;
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
-  const hostLabel = getHostLabel(officeHost);
+  const hostLabel = getOfficeHostLabel(officeHost);
   const safeSelectedVariant = useMemo(() => {
     const raw = PersistedModelSchema.catch("").parse(selectedVariant) || undefined;
     if (!raw) return undefined;
@@ -392,7 +387,6 @@ export const App: React.FC = () => {
     () => Object.values(getEnabledTools(officeHost)).filter(Boolean).length,
     [officeHost],
   );
-  const themeMode = isDarkMode ? "dark" : "light";
   const resolvedTheme = useMemo(() => resolveThemeTokens(safeSelectedThemeId), [safeSelectedThemeId]);
   const fluentTheme = isDarkHex(resolvedTheme[themeMode].background) ? webDarkTheme : webLightTheme;
   const surfaceVars = useMemo(
@@ -664,7 +658,7 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const host = getHostFromOfficeHost(Office.context.host);
+    const host = normalizeOfficeHost(Office.context.host);
     setOfficeHost(host);
     const bridge = createOfficeToolBridge(host, getOfficeToolExecutor(Office.context.host));
     return () => {
@@ -800,7 +794,7 @@ export const App: React.FC = () => {
     streamTextRef.current.clear();
 
     const host = Office.context.host;
-    const office = getHostFromOfficeHost(host);
+    const office = normalizeOfficeHost(host);
     setOfficeHost(office);
 
     setCurrentSessionId("");
@@ -834,9 +828,9 @@ export const App: React.FC = () => {
   const ensureSession = async () => {
     if (currentSessionId) return currentSessionId;
 
-    const office = getHostFromOfficeHost(Office.context.host);
+    const office = normalizeOfficeHost(Office.context.host);
     const session = await client.createSession({
-      title: `${office === "powerpoint" ? "PowerPoint" : office === "excel" ? "Excel" : office === "onenote" ? "OneNote" : "Word"}: New chat`,
+      title: `${getOfficeHostLabel(office)}: New chat`,
     });
     setCurrentSessionId(session.id);
     return session.id;

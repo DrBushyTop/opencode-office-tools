@@ -42,18 +42,3 @@ export const savedSessionSchema = z.object({
 });
 
 export type SavedSession = z.infer<typeof savedSessionSchema>;
-
-export function getHostFromOfficeHost(host: typeof Office.HostType[keyof typeof Office.HostType]): OfficeHost {
-  switch (host) {
-    case Office.HostType.PowerPoint:
-      return "powerpoint";
-    case Office.HostType.Word:
-      return "word";
-    case Office.HostType.Excel:
-      return "excel";
-    case Office.HostType.OneNote:
-      return "onenote";
-    default:
-      return "word";
-  }
-}

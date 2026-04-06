@@ -1,4 +1,7 @@
-type ThemeMode = "light" | "dark";
+import { useSyncExternalStore } from "react";
+
+export type ThemeMode = "light" | "dark";
+export type ThemePreference = ThemeMode | "system";
 
 type ThemeTokens = {
   background: string;
@@ -244,6 +247,43 @@ export const themeOptions = themes.map((theme) => ({
   label: theme.label,
   isDefault: theme.id === defaultThemeId,
 }));
+
+function readColorSchemeQuery() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)");
+}
+
+export function readSystemThemeMode(): ThemeMode {
+  return readColorSchemeQuery()?.matches ? "dark" : "light";
+}
+
+export function subscribeToSystemThemeMode(onStoreChange: () => void) {
+  const mediaQuery = readColorSchemeQuery();
+  if (!mediaQuery) {
+    return () => undefined;
+  }
+
+  const handleChange = () => {
+    onStoreChange();
+  };
+
+  mediaQuery.addEventListener("change", handleChange);
+  return () => {
+    mediaQuery.removeEventListener("change", handleChange);
+  };
+}
+
+export function resolveThemeModePreference(preference: ThemePreference, systemMode: ThemeMode): ThemeMode {
+  return preference === "system" ? systemMode : preference;
+}
+
+export function useThemeMode(preference: ThemePreference): ThemeMode {
+  const systemMode = useSyncExternalStore<ThemeMode>(subscribeToSystemThemeMode, readSystemThemeMode, () => "light");
+  return resolveThemeModePreference(preference, systemMode);
+}
 
 function pickTheme(themeId: string) {
   return themes.find((theme) => theme.id === themeId) || themes[0]!;

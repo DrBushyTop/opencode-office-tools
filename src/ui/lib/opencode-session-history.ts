@@ -1,6 +1,7 @@
 import type { Message } from "../components/MessageList";
 import type { ModelType } from "../components/HeaderBar";
 import { savedSessionSchema, type OfficeHost, type SavedSession } from "../sessionStorage";
+import { getOfficeHostLabel } from "./officeHost";
 import { getLatestSessionUsage } from "./opencode-usage";
 import { opencodeMessagePartSchema, opencodeMessageSchema, opencodeSessionInfoSchema, type OpencodeMessagePart } from "./opencode-schemas";
 import { z } from "zod";
@@ -12,10 +13,7 @@ const opencodeSessionListSchema = z.array(opencodeSessionInfoSchema);
 const opencodeSessionSchema = opencodeSessionInfoSchema.pick({ id: true, title: true, time: true });
 
 function hostLabel(host: OfficeHost) {
-  if (host === "powerpoint") return "PowerPoint";
-  if (host === "excel") return "Excel";
-  if (host === "onenote") return "OneNote";
-  return "Word";
+  return getOfficeHostLabel(host);
 }
 
 export function makeSessionTitle(host: OfficeHost, text: string) {
