@@ -8,8 +8,13 @@
     <link rel="icon" type="image/png" sizes="64x64" href="/icon-64.png?v=20260325b" />
     <title>OpenCode Agent</title>
     <script>
-        (function() {
-            var bootEntries = [];
+        (function () {
+            var bootTimeline = [];
+            var MAX_VISIBLE_EVENTS = 10;
+
+            function getNode(id) {
+                return document.getElementById(id);
+            }
 
             function stringifyDetail(detail) {
                 if (detail == null) return '';
@@ -22,22 +27,23 @@
                 }
             }
 
-            function renderBootLog() {
-                var text = bootEntries.slice(-10).map(function(entry) {
+            function updatePanels() {
+                var lines = bootTimeline.slice(-MAX_VISIBLE_EVENTS).map(function (entry) {
                     return entry.timestamp + ' ' + entry.level.toUpperCase() + ' [' + entry.tag + '] ' + entry.message + (entry.detail ? ' | ' + entry.detail : '');
                 }).join('\n');
-                Array.prototype.forEach.call(document.querySelectorAll('[data-boot-log]'), function(panel) {
-                    panel.textContent = text;
+
+                Array.prototype.forEach.call(document.querySelectorAll('[data-boot-log]'), function (panel) {
+                    panel.textContent = lines;
                 });
             }
 
-            function toggleState(id, visible) {
-                var node = document.getElementById(id);
+            function setVisible(id, visible) {
+                var node = getNode(id);
                 if (!node) return;
                 node.style.display = visible ? 'flex' : 'none';
             }
 
-            function sendBootLog(entry) {
+            function postBootEvent(entry) {
                 try {
                     fetch('/api/log', {
                         method: 'POST',
@@ -49,39 +55,62 @@
                             detail: entry.detail || undefined,
                         }),
                         keepalive: true,
-                    }).catch(function() {});
+                    }).catch(function () {});
                 } catch (error) {}
             }
 
-            window.__opencodeTaskpaneBoot = function(entry) {
-                var normalized = {
+            function remember(entry) {
+                bootTimeline.push({
                     timestamp: new Date().toISOString(),
                     level: entry.level,
                     tag: entry.tag,
                     message: entry.message,
                     detail: stringifyDetail(entry.detail),
-                };
-                bootEntries.push(normalized);
-                // Skip remote log when called from bundled code (which uses
-                // remoteLog directly) to avoid double POST to /api/log.
-                if (!entry._skipRemote) {
-                    sendBootLog(normalized);
-                }
-                renderBootLog();
+                });
+                updatePanels();
+            }
 
+            function handleBootEvent(entry) {
+                remember(entry);
+
+                if (!entry._skipRemote) {
+                    postBootEvent(entry);
+                }
                 if (entry.level === 'error') {
-                    toggleState('boot-failure', true);
+                    setVisible('boot-failure', true);
                 }
                 if (entry.tag === 'ui.bootstrap' && /rendering react task pane/i.test(entry.message)) {
-                    toggleState('boot-shell', false);
+                    setVisible('boot-shell', false);
                 }
-            };
+            }
+
+            function markOfficeTimeout() {
+                if (window.__officeJsLoaded) {
+                    return;
+                }
+                setVisible('office-js-error', true);
+                handleBootEvent({ level: 'error', tag: 'ui.bootstrap', message: 'Office.js did not load within timeout' });
+            }
+
+            function warnIfRootStaysEmpty() {
+                var root = getNode('root');
+                if (root && root.childElementCount === 0) {
+                    handleBootEvent({ level: 'warn', tag: 'ui.bootstrap', message: 'Root remained empty after startup timeout' });
+                }
+            }
 
             window.__officeJsLoaded = false;
-            window.__opencodeTaskpaneBoot({ level: 'info', tag: 'ui.bootstrap', message: 'Inline boot monitor ready', detail: { href: window.location.href } });
+            window.__opencodeTaskpaneBoot = handleBootEvent;
 
-            window.addEventListener('error', function(event) {
-                window.__opencodeTaskpaneBoot({
+            handleBootEvent({
+                level: 'info',
+                tag: 'ui.bootstrap',
+                message: 'Boot monitor initialized',
+                detail: { href: window.location.href },
+            });
+
+            window.addEventListener('error', function (event) {
+                handleBootEvent({
                     level: 'error',
                     tag: 'ui.window',
                     message: event.message || 'Unhandled window error',
@@ -94,23 +123,17 @@
                 });
             });
 
-            window.addEventListener('unhandledrejection', function(event) {
-                window.__opencodeTaskpaneBoot({ level: 'error', tag: 'ui.promise', message: 'Unhandled promise rejection', detail: event.reason });
+            window.addEventListener('unhandledrejection', function (event) {
+                handleBootEvent({
+                    level: 'error',
+                    tag: 'ui.promise',
+                    message: 'Unhandled promise rejection',
+                    detail: event.reason,
+                });
             });
 
-            setTimeout(function() {
-                if (!window.__officeJsLoaded) {
-                    toggleState('office-js-error', true);
-                    window.__opencodeTaskpaneBoot({ level: 'error', tag: 'ui.bootstrap', message: 'Office.js did not load within timeout' });
-                }
-            }, 10000);
-
-            setTimeout(function() {
-                var root = document.getElementById('root');
-                if (root && root.childElementCount === 0) {
-                    window.__opencodeTaskpaneBoot({ level: 'warn', tag: 'ui.bootstrap', message: 'Root remained empty after startup timeout' });
-                }
-            }, 4000);
+            window.setTimeout(markOfficeTimeout, 10000);
+            window.setTimeout(warnIfRootStaysEmpty, 4000);
         })();
     </script>
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"
