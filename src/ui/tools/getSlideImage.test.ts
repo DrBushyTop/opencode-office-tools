@@ -60,7 +60,7 @@ describe("getSlideImage", () => {
     expect(slide.getImageAsBase64).toHaveBeenCalledWith({ width: 1024 });
     expect(result).toMatchObject({
       resultType: "success",
-      textResultForLlm: "Captured image of slide 1 of 1 (1024px wide)",
+      textResultForLlm: "Rendered slide 1 of 1 as a 1024px PNG snapshot.",
       binaryResultsForLlm: [
         {
           data: "abc123",
@@ -85,7 +85,7 @@ describe("getSlideImage", () => {
     expect(result).toMatchObject({
       resultType: "failure",
       error: "API not available",
-      textResultForLlm: expect.stringContaining("Slide image capture is not supported"),
+      textResultForLlm: expect.stringContaining("cannot export slide images"),
     });
   });
 });

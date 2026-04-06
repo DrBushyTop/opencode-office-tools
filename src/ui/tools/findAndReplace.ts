@@ -37,10 +37,10 @@ function buildSearchOptions(matchCase: boolean, matchWholeWord: boolean) {
 
 function formatReplacementSummary(find: string, replace: string, label: string, count: number) {
   if (count === 0) {
-    return `No matches found for "${find}" in ${label}.`;
+    return `No text matching "${find}" was found in ${label}.`;
   }
 
-  return `Replaced ${count} occurrence${count === 1 ? "" : "s"} of "${find}" with "${replace}" in ${label}.`;
+  return `Updated ${count} occurrence${count === 1 ? "" : "s"} in ${label}, replacing "${find}" with "${replace}".`;
 }
 
 function replaceSearchResults(results: Word.RangeCollection, replace: string) {

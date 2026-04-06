@@ -52,6 +52,6 @@ describe("getWorkbookContent", () => {
     const { getWorkbookContent } = await import("./getWorkbookContent");
     const result = await getWorkbookContent.handler({ sheetName: "Budget" });
 
-    expect(result).toBe("Worksheet: Budget\nRange: (empty used range)\n\n(empty range)");
+    expect(result).toBe("Worksheet: Budget\nRange: (empty used range)\n\nNo populated cells were found.");
   });
 });

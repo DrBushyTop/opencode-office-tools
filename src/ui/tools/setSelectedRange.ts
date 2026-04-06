@@ -74,7 +74,7 @@ export const setSelectedRange: Tool = {
 
         await context.sync();
 
-        return `Successfully wrote ${dataRowCount} rows and ${dataColCount} columns to the selected range in ${worksheet.name}.`;
+        return `Wrote a ${dataRowCount} by ${dataColCount} block into the current selection on ${worksheet.name}.`;
       });
     } catch (error: unknown) {
       return toolFailure(error);

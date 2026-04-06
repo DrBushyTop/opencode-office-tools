@@ -128,7 +128,7 @@ export const getWorkbookOverview: Tool = {
         const totalPivotTables = worksheetSummaries.reduce((sum, sheet) => sum + sheet.pivotCount, 0);
 
         const lines: string[] = [
-          `Workbook overview`,
+          `Workbook summary`,
           `${"━".repeat(40)}`,
           `Worksheets: ${sheets.items.length}`,
           `Active sheet: ${activeSheet.name}`,
@@ -140,10 +140,10 @@ export const getWorkbookOverview: Tool = {
 
         lines.push(
           "",
-          `Total cells with data: ${totalCells.toLocaleString()}`,
-          `Total charts: ${totalCharts}`,
-          `Total tables: ${totalTables}`,
-          `Total PivotTables: ${totalPivotTables}`,
+          `Cells in used ranges: ${totalCells.toLocaleString()}`,
+          `Charts across workbook: ${totalCharts}`,
+          `Tables across workbook: ${totalTables}`,
+          `PivotTables across workbook: ${totalPivotTables}`,
         );
 
         if (names.items.length) {

@@ -63,6 +63,6 @@ describe("insertTable", () => {
     for (const cell of firstDataRow.cells.items) {
       expect(cell.shadingColor).toBe("#E8E8E8");
     }
-    expect(result).toBe("Inserted 3x2 table with striped style and header row.");
+    expect(result).toBe("Inserted a 3 row by 2 column table using the striped preset with header styling.");
   });
 });

@@ -61,7 +61,7 @@ describe("getWorkbookOverview", () => {
     const { getWorkbookOverview } = await import("./getWorkbookOverview");
     const result = await getWorkbookOverview.handler();
 
-    expect(result).toContain("Workbook overview");
+    expect(result).toContain("Workbook summary");
     expect(result).toContain("Worksheets: 1");
     expect(result).toContain("Active sheet: Sheet1");
     expect(result).toContain("usedRange=Sheet1!A1:B2 (2 rows x 2 cols)");

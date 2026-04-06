@@ -45,7 +45,7 @@ async function exportSlideImage(context: PowerPoint.RequestContext, slideIndex: 
   await context.sync();
 
   return {
-    textResultForLlm: `Captured image of slide ${slideIndex + 1} of ${deck.items.length} (${width}px wide)`,
+    textResultForLlm: `Rendered slide ${slideIndex + 1} of ${deck.items.length} as a ${width}px PNG snapshot.`,
     binaryResultsForLlm: [
       {
         data: request.value,
@@ -89,8 +89,8 @@ export const getSlideImage: Tool = {
       return await PowerPoint.run((context) => exportSlideImage(context, request.data.slideIndex, request.data.width));
     } catch (error: unknown) {
       if (isImageExportUnavailable(error)) {
-        return buildCaptureFailure(
-          "Slide image capture is not supported in this version of PowerPoint. Please ensure you're using a recent version (Windows 16.0.17628+, Mac 16.85+, or PowerPoint on the web).",
+      return buildCaptureFailure(
+          "This PowerPoint host cannot export slide images. Use a recent PowerPoint build on Windows, Mac, or the web and try again.",
           "API not available",
         );
       }

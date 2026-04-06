@@ -139,7 +139,7 @@ Examples:
 
         await context.sync();
 
-        return `Inserted ${rowCount}x${colCount} table with ${style} style${hasHeader ? " and header row" : ""}.`;
+        return `Inserted a ${rowCount} row by ${colCount} column table using the ${style} preset${hasHeader ? " with header styling" : ""}.`;
       });
     } catch (error: unknown) {
       return toolFailure(error);

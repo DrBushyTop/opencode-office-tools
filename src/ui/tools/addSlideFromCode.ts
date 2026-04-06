@@ -8,6 +8,35 @@ const addSlideFromCodeArgsSchema = z.object({
   replaceSlideIndex: z.number().optional(),
 });
 
+type AddSlideFromCodeArgs = z.infer<typeof addSlideFromCodeArgsSchema>;
+
+type SlidePackage = {
+  base64: string;
+  widthInches: number;
+  heightInches: number;
+};
+
+type InsertPlan = {
+  mode: "append" | "replace";
+  targetSlideId?: string;
+  removeAfterInsertIndex?: number;
+};
+
+function failureResult(message: string, error = message, includeStack?: string) {
+  return {
+    textResultForLlm: includeStack ? `${message}\n\nStack: ${includeStack}` : message,
+    resultType: "failure" as const,
+    error,
+    toolTelemetry: {},
+  };
+}
+
+function successResult(args: AddSlideFromCodeArgs) {
+  return args.replaceSlideIndex !== undefined
+    ? `Replaced slide ${args.replaceSlideIndex + 1} with generated content.`
+    : "Inserted a generated slide into the presentation.";
+}
+
 export function normalizeAddSlideCode(input: string) {
   return String(input || "")
     .replace(/^\s*import\s+.+?from\s+["']pptxgenjs["'];?\s*$/gm, "")
@@ -19,7 +48,7 @@ export function normalizeAddSlideCode(input: string) {
 }
 
 export function buildGeneratedSlide(code: string, slide: any, pptx: any) {
-  const ctx = {
+  const runtime = {
     slide,
     pptx,
     pptxgen,
@@ -28,231 +57,170 @@ export function buildGeneratedSlide(code: string, slide: any, pptx: any) {
     AlignV: pptx.AlignV,
   };
 
-  const run = new Function("ctx", `with (ctx) { ${normalizeAddSlideCode(code)} }`);
-  run(ctx);
+  const compiled = new Function("runtime", `with (runtime) { ${normalizeAddSlideCode(code)} }`);
+  compiled(runtime);
+}
+
+async function readDeckDimensions() {
+  let widthInches = 13.333;
+  let heightInches = 7.5;
+
+  if (!isPowerPointRequirementSetSupported("1.10")) {
+    return { widthInches, heightInches };
+  }
+
+  try {
+    await PowerPoint.run(async (context) => {
+      const pageSetup = context.presentation.pageSetup;
+      pageSetup.load(["slideWidth", "slideHeight"]);
+      await context.sync();
+      widthInches = pageSetup.slideWidth / 72;
+      heightInches = pageSetup.slideHeight / 72;
+    });
+  } catch {
+    // Keep the fallback widescreen size when the host cannot report page setup.
+  }
+
+  return { widthInches, heightInches };
+}
+
+function validateAddSlideArgs(args: unknown) {
+  const parsed = addSlideFromCodeArgsSchema.safeParse(args);
+  if (!parsed.success) {
+    return { ok: false as const, failure: failureResult(parsed.error.issues[0]?.message || "Invalid arguments.") };
+  }
+
+  if (parsed.data.replaceSlideIndex !== undefined && (!Number.isInteger(parsed.data.replaceSlideIndex) || parsed.data.replaceSlideIndex < 0)) {
+    return { ok: false as const, failure: failureResult("replaceSlideIndex must be a non-negative integer.") };
+  }
+
+  return { ok: true as const, data: parsed.data };
+}
+
+async function buildSlidePackage(args: AddSlideFromCodeArgs): Promise<SlidePackage> {
+  const dimensions = await readDeckDimensions();
+  const deck = new pptxgen();
+  deck.defineLayout({ name: "OPENCODE_RUNTIME_LAYOUT", width: dimensions.widthInches, height: dimensions.heightInches });
+  deck.layout = "OPENCODE_RUNTIME_LAYOUT";
+  const slide = deck.addSlide();
+
+  buildGeneratedSlide(args.code, slide, deck);
+  const base64 = await deck.write({ outputType: "base64" }) as string;
+  return { base64, ...dimensions };
+}
+
+async function loadSlides(context: PowerPoint.RequestContext) {
+  const slides = context.presentation.slides;
+  slides.load("items");
+  await context.sync();
+  return slides;
+}
+
+async function buildInsertPlan(context: PowerPoint.RequestContext, replaceSlideIndex?: number): Promise<InsertPlan> {
+  const slides = await loadSlides(context);
+
+  if (replaceSlideIndex === undefined) {
+    if (slides.items.length === 0) {
+      return { mode: "append" };
+    }
+
+    const previousSlide = slides.items[slides.items.length - 1];
+    previousSlide.load("id");
+    await context.sync();
+    return { mode: "append", targetSlideId: previousSlide.id };
+  }
+
+  if (replaceSlideIndex >= slides.items.length) {
+    throw new Error(`Invalid replaceSlideIndex ${replaceSlideIndex}. Must be 0-${slides.items.length - 1} (current slide count: ${slides.items.length})`);
+  }
+
+  if (replaceSlideIndex === 0) {
+    return { mode: "replace", removeAfterInsertIndex: 1 };
+  }
+
+  const anchor = slides.items[replaceSlideIndex - 1];
+  anchor.load("id");
+  await context.sync();
+  return { mode: "replace", targetSlideId: anchor.id, removeAfterInsertIndex: replaceSlideIndex + 1 };
+}
+
+async function applyInsertPlan(context: PowerPoint.RequestContext, slidePackage: SlidePackage, plan: InsertPlan) {
+  context.presentation.insertSlidesFromBase64(slidePackage.base64, {
+    formatting: PowerPoint.InsertSlideFormatting.useDestinationTheme,
+    ...(plan.targetSlideId ? { targetSlideId: plan.targetSlideId } : {}),
+  });
+  await context.sync();
+
+  if (plan.mode !== "replace" || plan.removeAfterInsertIndex === undefined) {
+    return;
+  }
+
+  const slides = await loadSlides(context);
+  if (plan.removeAfterInsertIndex < slides.items.length) {
+    slides.items[plan.removeAfterInsertIndex].delete();
+    await context.sync();
+  }
 }
 
 export const addSlideFromCode: Tool = {
   name: "add_slide_from_code",
-  description: `Advanced fallback: add a new slide to the PowerPoint presentation by providing PptxGenJS code.
+  description: `Build a PowerPoint slide from a PptxGenJS recipe, then import that generated slide into the live deck.
 
-Your code can be either:
-- slide-only code that uses the provided 'slide' object, or
-- a fuller PptxGenJS snippet that references 'pptx', 'pptxgen', or 'pptx.ShapeType'.
+Use this when native slide-editing tools are not enough and you need a programmatic fallback.
 
-The tool automatically creates the presentation and slide, then inserts the result into PowerPoint.
-The slide canvas is automatically sized to match the active deck's dimensions. Use get_presentation_structure to learn the actual slide width and height before designing layouts.
-This path does not build directly against the live deck. Prefer native slide editing tools for work on the open deck when possible.
+Accepted code styles:
+- direct calls on the provided \`slide\` object
+- fuller snippets that refer to \`pptx\`, \`pptxgen\`, or \`pptx.addSlide()\`
 
-Available in scope:
-  - slide
-  - pptx
-  - pptxgen
-  - ShapeType
+Runtime objects available to your code:
+- \`slide\`
+- \`pptx\`
+- \`pptxgen\`
+- \`ShapeType\`
+- \`AlignH\`
+- \`AlignV\`
 
-PptxGenJS API Examples:
-
-1. Add text:
-   slide.addText("Hello World", { x: 1, y: 1, w: 8, h: 1, fontSize: 24, bold: true, color: "363636" });
-
-2. Add text with bullets:
-   slide.addText([
-     { text: "First point", options: { bullet: true } },
-     { text: "Second point", options: { bullet: true } },
-     { text: "Sub-point", options: { bullet: true, indentLevel: 1 } }
-   ], { x: 0.5, y: 1.5, w: 9, h: 3, fontSize: 18 });
-
-3. Add a table:
-   slide.addTable([
-     [{ text: "Header 1", options: { bold: true, fill: "0088CC", color: "FFFFFF" } }, { text: "Header 2", options: { bold: true, fill: "0088CC", color: "FFFFFF" } }],
-     ["Row 1 Cell 1", "Row 1 Cell 2"],
-     ["Row 2 Cell 1", "Row 2 Cell 2"]
-   ], { x: 0.5, y: 2, w: 9, fontSize: 14, border: { pt: 1, color: "CFCFCF" } });
-
-4. Add a shape:
-   slide.addShape("rect", { x: 1, y: 1, w: 3, h: 1, fill: "FF0000" });
-   slide.addShape("ellipse", { x: 5, y: 1, w: 2, h: 2, fill: "00FF00" });
-
-5. Add an image from URL:
-   slide.addImage({ path: "https://example.com/image.png", x: 1, y: 1, w: 4, h: 3 });
-
-6. Positioning and sizing (all values in inches):
-   - x: distance from left edge
-   - y: distance from top edge  
-   - w: width
-   - h: height
-
-7. Text formatting options:
-   - fontSize: number (points)
-   - bold: true/false
-   - italic: true/false
-   - underline: true/false
-   - color: "RRGGBB" (hex without #)
-   - align: "left" | "center" | "right"
-   - valign: "top" | "middle" | "bottom"
-   - fontFace: "Arial", "Calibri", etc.
-
-8. Complete slide example:
-   // Title
-   slide.addText("Quarterly Report", { x: 0.5, y: 0.3, w: 9, h: 0.8, fontSize: 32, bold: true, color: "003366" });
-   // Subtitle
-   slide.addText("Q3 2024 Results", { x: 0.5, y: 1, w: 9, h: 0.5, fontSize: 18, color: "666666" });
-   // Bullet points
-   slide.addText([
-     { text: "Revenue increased 25% YoY", options: { bullet: true } },
-     { text: "Customer base grew to 10,000", options: { bullet: true } },
-     { text: "Launched 3 new products", options: { bullet: true } }
-   ], { x: 0.5, y: 1.8, w: 9, h: 2.5, fontSize: 16 });
-`,
+The generated slide is sized to the current deck when the host exposes page setup information.`,
   parameters: {
     type: "object",
     properties: {
       code: {
         type: "string",
-        description: "JavaScript code (function body) that receives a 'slide' parameter and calls PptxGenJS methods to build the slide content.",
+        description: "JavaScript statements that assemble one slide with PptxGenJS.",
       },
       replaceSlideIndex: {
         type: "number",
-        description: "Optional 0-based index of an existing slide to replace. If provided, the slide at this index will be deleted and the new slide inserted in its place. If not provided, the new slide is appended at the end.",
+        description: "Optional 0-based slide index to replace after the generated slide is imported.",
       },
     },
     required: ["code"],
   },
   handler: async (args) => {
-    const parsedArgs = addSlideFromCodeArgsSchema.safeParse(args);
-    if (!parsedArgs.success) {
-      return {
-        textResultForLlm: parsedArgs.error.issues[0]?.message || "Invalid arguments.",
-        resultType: "failure",
-        error: parsedArgs.error.issues[0]?.message || "Invalid arguments.",
-        toolTelemetry: {},
-      };
-    }
-    const { code, replaceSlideIndex } = parsedArgs.data;
-
-    if (replaceSlideIndex !== undefined && (!Number.isInteger(replaceSlideIndex) || replaceSlideIndex < 0)) {
-      return {
-        textResultForLlm: "replaceSlideIndex must be a non-negative integer.",
-        resultType: "failure",
-        error: "replaceSlideIndex must be a non-negative integer.",
-        toolTelemetry: {},
-      };
-    }
+    const validated = validateAddSlideArgs(args);
+    if (!validated.ok) return validated.failure;
 
     try {
-      let slideWidthInches = 13.333;
-      let slideHeightInches = 7.5;
-
-      if (isPowerPointRequirementSetSupported("1.10")) {
-        try {
-          await PowerPoint.run(async (context) => {
-            const pageSetup = context.presentation.pageSetup;
-            pageSetup.load(["slideWidth", "slideHeight"]);
-            await context.sync();
-            slideWidthInches = pageSetup.slideWidth / 72;
-            slideHeightInches = pageSetup.slideHeight / 72;
-          });
-        } catch {
-          // Fall through to default dimensions
-        }
-      }
-
-      const pptx = new pptxgen();
-      pptx.defineLayout({ name: "DECK_MATCH", width: slideWidthInches, height: slideHeightInches });
-      pptx.layout = "DECK_MATCH";
-      const slide = pptx.addSlide();
-
-      try {
-        buildGeneratedSlide(code, slide, pptx);
-      } catch (codeError: any) {
-        return {
-          textResultForLlm: `Code execution error: ${codeError.message}\n\nStack: ${codeError.stack}`,
-          resultType: "failure",
-          error: codeError.message,
-          toolTelemetry: {},
-        };
-      }
-
-      let base64: string;
-      try {
-        base64 = await pptx.write({ outputType: "base64" }) as string;
-      } catch (writeError: any) {
-        return {
-          textResultForLlm: `Failed to generate presentation: ${writeError.message}`,
-          resultType: "failure",
-          error: writeError.message,
-          toolTelemetry: {},
-        };
-      }
+      const slidePackage = await buildSlidePackage(validated.data);
 
       try {
         await PowerPoint.run(async (context) => {
-          const slides = context.presentation.slides;
-          slides.load("items");
-          await context.sync();
-
-          const slideCount = slides.items.length;
-
-          if (replaceSlideIndex !== undefined) {
-            if (replaceSlideIndex < 0 || replaceSlideIndex >= slideCount) {
-              throw new Error(`Invalid replaceSlideIndex ${replaceSlideIndex}. Must be 0-${slideCount - 1} (current slide count: ${slideCount})`);
-            }
-          }
-
-          const insertOptions: PowerPoint.InsertSlideOptions = {
-            formatting: PowerPoint.InsertSlideFormatting.useDestinationTheme,
-          };
-
-          if (replaceSlideIndex !== undefined) {
-            if (replaceSlideIndex > 0) {
-              const prevSlide = slides.items[replaceSlideIndex - 1];
-              prevSlide.load("id");
-              await context.sync();
-              insertOptions.targetSlideId = prevSlide.id;
-            }
-
-            context.presentation.insertSlidesFromBase64(base64, insertOptions);
-            await context.sync();
-
-            slides.load("items");
-            await context.sync();
-
-            const oldSlideIndex = replaceSlideIndex + 1;
-            if (oldSlideIndex < slides.items.length) {
-              slides.items[oldSlideIndex].delete();
-              await context.sync();
-            }
-          } else {
-            if (slides.items.length > 0) {
-              const lastSlide = slides.items[slides.items.length - 1];
-              lastSlide.load("id");
-              await context.sync();
-              insertOptions.targetSlideId = lastSlide.id;
-            }
-
-            context.presentation.insertSlidesFromBase64(base64, insertOptions);
-            await context.sync();
-          }
+          const plan = await buildInsertPlan(context, validated.data.replaceSlideIndex);
+          await applyInsertPlan(context, slidePackage, plan);
         });
       } catch (insertError: any) {
-        return {
-          textResultForLlm: `Failed to insert slide: ${insertError.message}`,
-          resultType: "failure",
-          error: insertError.message,
-          toolTelemetry: {},
-        };
+        return failureResult(`Failed to insert slide: ${insertError.message}`, insertError.message);
       }
 
-      return replaceSlideIndex !== undefined
-        ? `Successfully replaced slide ${replaceSlideIndex + 1} in the presentation.`
-        : "Successfully added new slide to the presentation.";
-    } catch (e: any) {
-      return {
-        textResultForLlm: `Unexpected error: ${e.message}\n\nStack: ${e.stack}`,
-        resultType: "failure",
-        error: e.message,
-        toolTelemetry: {},
-      };
+      return successResult(validated.data);
+    } catch (error: any) {
+      const text = String(error?.message || error || "Unknown error");
+      if (/write|generate/i.test(text)) {
+        return failureResult(`Presentation generation failed: ${text}`, text);
+      }
+      if (/syntax|reference|type|is not defined|unexpected token/i.test(text)) {
+        return failureResult(`The supplied slide recipe failed while running: ${text}`, text, error?.stack);
+      }
+      return failureResult(`Unexpected add_slide_from_code failure: ${text}`, text, error?.stack);
     }
   },
 };

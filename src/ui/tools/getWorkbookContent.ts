@@ -48,7 +48,7 @@ export const getWorkbookContent: Tool = {
         await context.sync();
 
         if ((targetRange as Excel.Range & { isNullObject?: boolean }).isNullObject) {
-          return `Worksheet: ${worksheet.name}\nRange: (empty used range)\n\n(empty range)`;
+          return `Worksheet: ${worksheet.name}\nRange: (empty used range)\n\nNo populated cells were found.`;
         }
 
         return await describeRange(context, targetRange as Excel.Range, worksheet.name, describeOptions);

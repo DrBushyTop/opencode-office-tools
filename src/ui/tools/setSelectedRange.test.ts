@@ -66,6 +66,6 @@ describe("setSelectedRange", () => {
     expect(selectedRange.getResizedRange).toHaveBeenCalledWith(0, 1);
     expect(targetRange.formulas).toEqual(data);
     expect(targetRange.values).toBeUndefined();
-    expect(result).toBe("Successfully wrote 1 rows and 2 columns to the selected range in Sheet1.");
+    expect(result).toBe("Wrote a 1 by 2 block into the current selection on Sheet1.");
   });
 });

@@ -39,7 +39,7 @@ async function createTableIfRequested(
   if (options.tableStyle) table.style = options.tableStyle;
   table.load("name");
   await context.sync();
-  return ` Created table ${table.name}.`;
+  return ` Promoted the written range to table ${table.name}.`;
 }
 
 export const setWorkbookContent: Tool = {
@@ -120,7 +120,7 @@ export const setWorkbookContent: Tool = {
           tableStyle,
         });
 
-        return `Wrote ${rowCount} rows and ${columnCount} columns to ${targetRange.address} in ${worksheet.name}.${tableResult}`;
+        return `Updated ${targetRange.address} on ${worksheet.name} with ${rowCount} rows and ${columnCount} columns.${tableResult}`;
       });
     } catch (error: unknown) {
       return toolFailure(error);
