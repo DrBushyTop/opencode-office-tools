@@ -57,6 +57,6 @@ describe("setWorkbookContent", () => {
     expect(worksheet.tables.add).toHaveBeenCalledWith(targetRange, true);
     expect(table.name).toBe("SalesTable");
     expect(table.style).toBe("TableStyleMedium2");
-    expect(result).toBe("Updated Budget!B2:C3 on Budget with 2 rows and 2 columns. Promoted the written range to table SalesTable.");
+    expect(result).toBe("Write plan applied to Budget at Budget!B2:C3: 2 row(s) x 2 column(s). Table promotion complete: SalesTable.");
   });
 });

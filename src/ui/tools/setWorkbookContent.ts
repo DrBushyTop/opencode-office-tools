@@ -14,37 +14,62 @@ const setWorkbookContentArgsSchema = z.object({
   tableStyle: z.string().optional(),
 });
 
-function clearTargetRange(range: Excel.Range, clearMode: "none" | "contents" | "all") {
+type WorkbookWritePlan = {
+  rowCount: number;
+  columnCount: number;
+  clearMode: "none" | "contents" | "all";
+  createTable: boolean;
+  tableName?: string;
+  hasHeaders: boolean;
+  tableStyle?: string;
+};
+
+function createWritePlan(args: z.infer<typeof setWorkbookContentArgsSchema>): WorkbookWritePlan {
+  return {
+    rowCount: args.data.length,
+    columnCount: countDataColumns(args.data),
+    clearMode: args.clearMode,
+    createTable: args.createTable,
+    tableName: args.tableName,
+    hasHeaders: args.hasHeaders,
+    tableStyle: args.tableStyle,
+  };
+}
+
+function applyClearMode(range: Excel.Range, clearMode: WorkbookWritePlan["clearMode"]) {
   if (clearMode === "contents") {
     range.clear(Excel.ClearApplyTo.contents);
-  }
-  if (clearMode === "all") {
+  } else if (clearMode === "all") {
     range.clear(Excel.ClearApplyTo.all);
   }
 }
 
-async function createTableIfRequested(
+async function finalizeTablePromotion(
   context: Excel.RequestContext,
   worksheet: Excel.Worksheet,
   targetRange: Excel.Range,
-  options: { createTable: boolean; tableName?: string; hasHeaders: boolean; tableStyle?: string },
+  plan: WorkbookWritePlan,
 ) {
-  if (!options.createTable) {
+  if (!plan.createTable) {
     await context.sync();
     return "";
   }
 
-  const table = worksheet.tables.add(targetRange, options.hasHeaders);
-  if (options.tableName) table.name = options.tableName;
-  if (options.tableStyle) table.style = options.tableStyle;
+  const table = worksheet.tables.add(targetRange, plan.hasHeaders);
+  if (plan.tableName) table.name = plan.tableName;
+  if (plan.tableStyle) table.style = plan.tableStyle;
   table.load("name");
   await context.sync();
-  return ` Promoted the written range to table ${table.name}.`;
+  return ` Table promotion complete: ${table.name}.`;
+}
+
+function formatWriteSummary(worksheetName: string, rangeAddress: string, plan: WorkbookWritePlan, tableSummary: string) {
+  return `Write plan applied to ${worksheetName} at ${rangeAddress}: ${plan.rowCount} row(s) x ${plan.columnCount} column(s).${tableSummary}`;
 }
 
 export const setWorkbookContent: Tool = {
   name: "set_workbook_content",
-  description: "Write a rectangular block of Excel data beginning at a chosen start cell. The write can clear the target first, preserve formulas, and optionally promote the block into a table.",
+  description: "Build a workbook write plan from a start cell and a 2D data block, then apply clearing, writing, and optional table promotion in one Excel operation.",
   parameters: {
     type: "object",
     properties: {
@@ -54,11 +79,11 @@ export const setWorkbookContent: Tool = {
       },
       startCell: {
         type: "string",
-        description: "Starting cell address such as 'A1' or 'B5'.",
+        description: "Top-left cell for the write plan, such as 'A1' or 'B5'.",
       },
       data: {
         type: "array",
-        description: "2D array of values to write.",
+        description: "Rectangular 2D array of values to write.",
         items: {
           type: "array",
           items: {
@@ -68,28 +93,28 @@ export const setWorkbookContent: Tool = {
       },
       useFormulas: {
         type: "boolean",
-        description: "If true, string values starting with '=' are written as formulas. Default false.",
+        description: "Treat strings beginning with '=' as formulas when true.",
       },
       clearMode: {
         type: "string",
         enum: ["none", "contents", "all"],
-        description: "Optionally clear the target range before writing. Default none.",
+        description: "Optional clear behavior applied before writing.",
       },
       createTable: {
         type: "boolean",
-        description: "Create an Excel table over the written range after writing. Default false.",
+        description: "Promote the written range into an Excel table after writing.",
       },
       tableName: {
         type: "string",
-        description: "Optional table name to assign when createTable is true.",
+        description: "Optional table name used when createTable is true.",
       },
       hasHeaders: {
         type: "boolean",
-        description: "Whether the written range includes a header row when createTable is true. Default true.",
+        description: "Whether the written range already includes a header row for table promotion.",
       },
       tableStyle: {
         type: "string",
-        description: "Optional Excel table style to apply when createTable is true.",
+        description: "Optional Excel table style to apply during table promotion.",
       },
     },
     required: ["startCell", "data"],
@@ -98,29 +123,20 @@ export const setWorkbookContent: Tool = {
     const parsedArgs = parseToolArgs(setWorkbookContentArgsSchema, args);
     if (!parsedArgs.success) return parsedArgs.failure;
 
-    const { sheetName, startCell, data, useFormulas, clearMode, createTable, tableName, hasHeaders, tableStyle } = parsedArgs.data;
-    const columnCount = countDataColumns(data);
+    const plan = createWritePlan(parsedArgs.data);
 
     try {
       return await Excel.run(async (context) => {
-        const worksheet = await getWorksheet(context, sheetName);
-        const rowCount = data.length;
-        const startRange = worksheet.getRange(startCell);
-        const targetRange = startRange.getResizedRange(rowCount - 1, columnCount - 1);
-        targetRange.load("address");
+        const worksheet = await getWorksheet(context, parsedArgs.data.sheetName);
+        const anchorRange = worksheet.getRange(parsedArgs.data.startCell);
+        const writeRange = anchorRange.getResizedRange(plan.rowCount - 1, plan.columnCount - 1);
+        writeRange.load("address");
         await context.sync();
 
-        clearTargetRange(targetRange, clearMode);
-        writeExcelData(targetRange, data, useFormulas);
-
-        const tableResult = await createTableIfRequested(context, worksheet, targetRange, {
-          createTable,
-          tableName,
-          hasHeaders,
-          tableStyle,
-        });
-
-        return `Updated ${targetRange.address} on ${worksheet.name} with ${rowCount} rows and ${columnCount} columns.${tableResult}`;
+        applyClearMode(writeRange, plan.clearMode);
+        writeExcelData(writeRange, parsedArgs.data.data, parsedArgs.data.useFormulas);
+        const tableSummary = await finalizeTablePromotion(context, worksheet, writeRange, plan);
+        return formatWriteSummary(worksheet.name, writeRange.address, plan, tableSummary);
       });
     } catch (error: unknown) {
       return toolFailure(error);

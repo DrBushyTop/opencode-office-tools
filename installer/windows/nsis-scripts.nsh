@@ -1,16 +1,16 @@
-; Custom NSIS hooks for OpenCode Office Add-in
+; OpenCode Office Add-in NSIS hooks
 
 !define OfficeDevRegPath "Software\Microsoft\Office\16.0\WEF\Developer"
 !define StartupRunPath "Software\Microsoft\Windows\CurrentVersion\Run"
 !define StartupValueName "OpenCodeOfficeAddin"
 
-!macro RunLoggedPowerShell SCRIPT
+!macro OpenCodeRunPowerShell SCRIPT
   nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "${SCRIPT}"'
 !macroend
 
-!macro customInstall
+!macro OpenCodeInstallCertificate
   DetailPrint "Installing SSL certificate..."
-  !insertmacro RunLoggedPowerShell '
+  !insertmacro OpenCodeRunPowerShell '
     $$certPath = "$INSTDIR\resources\certs\localhost.pem"; \
     if (Test-Path $$certPath) { \
       $$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($$certPath); \
@@ -21,9 +21,11 @@
       $$store.Close(); \
       $$cert.Thumbprint | Out-File -FilePath "$INSTDIR\resources\certs\.thumbprint" -NoNewline; \
     }'
+!macroend
 
-  DetailPrint "Registering Office Add-in..."
-  !insertmacro RunLoggedPowerShell '
+!macro OpenCodeSyncManifest
+  DetailPrint "Syncing Office add-in registration..."
+  !insertmacro OpenCodeRunPowerShell '
     $$regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"; \
     $$manifestPath = "$INSTDIR\resources\manifest.xml"; \
     function Get-ManifestId([string]$$path) { \
@@ -41,16 +43,16 @@
       } \
       if ($$shouldRemove) { Remove-ItemProperty -Path $$regPath -Name $$name -ErrorAction SilentlyContinue; } \
     }'
-
   WriteRegStr HKCU "${OfficeDevRegPath}" "${StartupValueName}" "$INSTDIR\resources\manifest.xml"
+!macroend
+
+!macro OpenCodeRegisterStartup
   WriteRegStr HKCU "${StartupRunPath}" "${StartupValueName}" '"$INSTDIR\OpenCode Office Add-in.exe"'
 !macroend
 
-!macro customUnInstall
-  nsExec::ExecToLog 'taskkill /F /IM "OpenCode Office Add-in.exe"'
-
+!macro OpenCodeRemoveCertificate
   DetailPrint "Removing SSL certificate..."
-  !insertmacro RunLoggedPowerShell '
+  !insertmacro OpenCodeRunPowerShell '
     $$thumbprintFile = "$INSTDIR\resources\certs\.thumbprint"; \
     $$store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "CurrentUser"); \
     $$store.Open("ReadWrite"); \
@@ -63,8 +65,10 @@
       foreach ($$c in $$certs) { $$store.Remove($$c); } \
     } \
     $$store.Close();'
+!macroend
 
-  !insertmacro RunLoggedPowerShell '
+!macro OpenCodeRemoveManifest
+  !insertmacro OpenCodeRunPowerShell '
     $$regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"; \
     $$manifestPath = "$INSTDIR\resources\manifest.xml"; \
     function Get-ManifestId([string]$$path) { \
@@ -85,6 +89,21 @@
       $$remaining = (Get-Item -Path $$regPath -ErrorAction SilentlyContinue).Property | Where-Object { $$_ -notlike "PS*" }; \
       if (-not $$remaining) { Remove-Item $$regPath -Force -ErrorAction SilentlyContinue; } \
     }'
+!macroend
 
+!macro OpenCodeRemoveStartup
   DeleteRegValue HKCU "${StartupRunPath}" "${StartupValueName}"
+!macroend
+
+!macro customInstall
+  !insertmacro OpenCodeInstallCertificate
+  !insertmacro OpenCodeSyncManifest
+  !insertmacro OpenCodeRegisterStartup
+!macroend
+
+!macro customUnInstall
+  nsExec::ExecToLog 'taskkill /F /IM "OpenCode Office Add-in.exe"'
+  !insertmacro OpenCodeRemoveCertificate
+  !insertmacro OpenCodeRemoveManifest
+  !insertmacro OpenCodeRemoveStartup
 !macroend

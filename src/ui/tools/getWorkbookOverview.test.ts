@@ -61,13 +61,14 @@ describe("getWorkbookOverview", () => {
     const { getWorkbookOverview } = await import("./getWorkbookOverview");
     const result = await getWorkbookOverview.handler();
 
-    expect(result).toContain("Workbook summary");
-    expect(result).toContain("Worksheets: 1");
+    expect(result).toContain("Workbook inventory");
+    expect(result).toContain("Sheet count: 1");
     expect(result).toContain("Active sheet: Sheet1");
-    expect(result).toContain("usedRange=Sheet1!A1:B2 (2 rows x 2 cols)");
-    expect(result).toContain("charts=1, tables=1, pivotTables=0");
-    expect(result).toContain("tableDetails=Sales (TableStyleMedium2)");
-    expect(result).toContain("worksheetNames=LocalTotal");
+    expect(result).toContain("footprint: Sheet1!A1:B2 (2 rows x 2 cols)");
+    expect(result).toContain("objects: charts=1, tables=1, pivotTables=0");
+    expect(result).toContain("table catalog: Sales (TableStyleMedium2)");
+    expect(result).toContain("local names: LocalTotal");
+    expect(result).toContain("Workbook totals:");
     expect(result).toContain("Workbook names (1):");
     expect(result).toContain("- GrandTotal [Workbook]: =Sheet1!$B$2");
   });
