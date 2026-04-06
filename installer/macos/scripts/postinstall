@@ -69,25 +69,7 @@ resolve_user_home() {
     dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
 }
 
-trust_certificate_if_present() {
-    if [ ! -f "$CERT_PATH" ]; then
-        echo "Note: Certificate file not found at $CERT_PATH, skipping trust"
-        return
-    fi
-
-    echo "Trusting SSL certificate..."
-    if security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH" 2>&1; then
-        echo "SSL certificate trusted successfully"
-    else
-        echo "Warning: Could not add certificate to system keychain."
-        echo "You may need to manually trust the certificate:"
-        echo "  1. Open Keychain Access"
-        echo "  2. Drag $CERT_PATH to the System keychain"
-        echo "  3. Double-click the localhost cert and set 'Always Trust'"
-    fi
-}
-
-write_launch_agent() {
+install_launch_agent() {
     local install_user="$1"
     local user_home="$2"
     local target_file="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
@@ -122,10 +104,10 @@ EOF
 
     chown "$install_user":staff "$target_file"
     chmod 644 "$target_file"
-    echo "LaunchAgent installed"
+    printf '%s\n' "$target_file"
 }
 
-register_manifest() {
+sync_manifest_registrations() {
     local install_user="$1"
     local user_home="$2"
 
@@ -154,16 +136,31 @@ register_manifest() {
     echo "Add-in registered for Word, PowerPoint, Excel, and OneNote"
 }
 
-start_background_service() {
+trust_certificate_if_present() {
+    if [ ! -f "$CERT_PATH" ]; then
+        echo "Note: Certificate file not found at $CERT_PATH, skipping trust"
+        return
+    fi
+
+    echo "Trusting SSL certificate..."
+    if security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH" 2>&1; then
+        echo "SSL certificate trusted successfully"
+    else
+        echo "Warning: Could not add certificate to system keychain."
+        echo "You may need to manually trust the certificate:"
+        echo "  1. Open Keychain Access"
+        echo "  2. Drag $CERT_PATH to the System keychain"
+        echo "  3. Double-click the localhost cert and set 'Always Trust'"
+    fi
+}
+
+start_runtime_session() {
     local install_user="$1"
     local launch_agent_path="$2"
 
     sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
     sudo -u "$install_user" launchctl load "$launch_agent_path"
     sudo -u "$install_user" open -a "$APP_DIR" --args --hidden 2>/dev/null || true
-
-    echo "Service started"
-    echo "Installation complete!"
 }
 
 main() {
@@ -173,15 +170,18 @@ main() {
 
     install_user="$(resolve_install_user)"
     user_home="$(resolve_user_home "$install_user")"
-    launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
 
     echo "Installing for user: $install_user"
     echo "User home: $user_home"
 
+    launch_agent_path="$(install_launch_agent "$install_user" "$user_home")"
+    echo "LaunchAgent installed"
+    sync_manifest_registrations "$install_user" "$user_home"
     trust_certificate_if_present
-    write_launch_agent "$install_user" "$user_home"
-    register_manifest "$install_user" "$user_home"
-    start_background_service "$install_user" "$launch_agent_path"
+    start_runtime_session "$install_user" "$launch_agent_path"
+
+    echo "Service started"
+    echo "Installation complete!"
 }
 
 main "$@"

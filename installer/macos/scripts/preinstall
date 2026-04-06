@@ -23,20 +23,22 @@ resolve_user_home() {
     dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
 }
 
-stop_launch_agent() {
+run_cleanup_action() {
     local install_user="$1"
-    local launch_agent_path="$2"
+    local action_name="$2"
+    local action_value="$3"
 
-    if [ -f "$launch_agent_path" ]; then
-        echo "Stopping existing service..."
-        sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
-    fi
-}
-
-stop_known_processes() {
-    pkill -f "$APP_NAME" 2>/dev/null || true
-    pkill -f "copilot-office-server" 2>/dev/null || true
-    pkill -f "opencode-office-server" 2>/dev/null || true
+    case "$action_name" in
+        unload-launch-agent)
+            if [ -f "$action_value" ]; then
+                echo "Stopping existing service..."
+                sudo -u "$install_user" launchctl unload "$action_value" 2>/dev/null || true
+            fi
+            ;;
+        kill-process)
+            pkill -f "$action_value" 2>/dev/null || true
+            ;;
+    esac
 }
 
 main() {
@@ -48,8 +50,10 @@ main() {
     user_home="$(resolve_user_home "$install_user")"
     launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
 
-    stop_launch_agent "$install_user" "$launch_agent_path"
-    stop_known_processes
+    run_cleanup_action "$install_user" unload-launch-agent "$launch_agent_path"
+    run_cleanup_action "$install_user" kill-process "$APP_NAME"
+    run_cleanup_action "$install_user" kill-process "copilot-office-server"
+    run_cleanup_action "$install_user" kill-process "opencode-office-server"
 
     echo "Pre-install cleanup complete"
 }

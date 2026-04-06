@@ -62,22 +62,6 @@ resolve_user_home() {
     dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
 }
 
-stop_background_items() {
-    local install_user="$1"
-    local user_home="$2"
-    local launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
-
-    echo "Stopping service..."
-    if [ -f "$launch_agent_path" ]; then
-        sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
-        rm -f "$launch_agent_path"
-    fi
-
-    pkill -f "$APP_NAME" 2>/dev/null || true
-    pkill -f "opencode-office-server" 2>/dev/null || true
-    pkill -f "copilot-office-server" 2>/dev/null || true
-}
-
 remove_manifest_registrations() {
     local user_home="$1"
     local target_manifest_id="$2"
@@ -95,6 +79,30 @@ remove_manifest_registrations() {
     done
 }
 
+run_uninstall_action() {
+    local install_user="$1"
+    local user_home="$2"
+    local action_name="$3"
+
+    case "$action_name" in
+        stop-launch-agent)
+            local launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
+            if [ -f "$launch_agent_path" ]; then
+                sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
+                rm -f "$launch_agent_path"
+            fi
+            ;;
+        kill-app)
+            pkill -f "$APP_NAME" 2>/dev/null || true
+            pkill -f "opencode-office-server" 2>/dev/null || true
+            pkill -f "copilot-office-server" 2>/dev/null || true
+            ;;
+        remove-app)
+            rm -rf "$APP_DIR"
+            ;;
+    esac
+}
+
 main() {
     local install_user
     local user_home
@@ -105,11 +113,12 @@ main() {
     user_home="$(resolve_user_home "$install_user")"
     target_manifest_id="$(manifest_id "$MANIFEST_PATH")"
 
-    stop_background_items "$install_user" "$user_home"
     remove_manifest_registrations "$user_home" "$target_manifest_id"
+    run_uninstall_action "$install_user" "$user_home" stop-launch-agent
+    run_uninstall_action "$install_user" "$user_home" kill-app
 
     echo "Removing application..."
-    rm -rf "$APP_DIR"
+    run_uninstall_action "$install_user" "$user_home" remove-app
 
     echo ""
     echo "✓ OpenCode Office Add-in has been uninstalled."

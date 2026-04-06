@@ -4,126 +4,123 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-function getPackagingContext() {
-  const rootDir = path.resolve(__dirname, '..');
-  const version = require(path.join(rootDir, 'package.json')).version;
+function createReleaseProfile() {
+  const projectRoot = path.resolve(__dirname, '..');
+  const version = require(path.join(projectRoot, 'package.json')).version;
   const platform = os.platform();
-  const stageDir = path.join(rootDir, 'build', 'tray-package');
-  const electronOutputDir = path.join(rootDir, 'build', 'electron');
-  const zipName = platform === 'darwin'
+  const stageRoot = path.join(projectRoot, 'build', 'tray-package');
+  const archiveName = platform === 'darwin'
     ? `opencode-office-addin-macos-v${version}.zip`
     : `opencode-office-addin-windows-v${version}.zip`;
 
   return {
+    projectRoot,
     platform,
-    rootDir,
     version,
-    stageDir,
-    electronOutputDir,
-    zipName,
-    zipPath: path.join(rootDir, 'build', zipName),
+    electronOutputRoot: path.join(projectRoot, 'build', 'electron'),
+    stageRoot,
+    archiveName,
+    archivePath: path.join(projectRoot, 'build', archiveName),
+    guideSource: path.join(projectRoot, 'installer', 'GETTING_STARTED_RELEASE.md'),
   };
 }
 
-function resetStageDirectory(stageDir) {
-  if (fs.existsSync(stageDir)) {
-    fs.rmSync(stageDir, { recursive: true });
+function resetReleaseWorkspace(stageRoot) {
+  if (fs.existsSync(stageRoot)) {
+    fs.rmSync(stageRoot, { recursive: true });
   }
-  fs.mkdirSync(stageDir, { recursive: true });
+  fs.mkdirSync(stageRoot, { recursive: true });
 }
 
-function runDesktopBuild(context) {
-  console.log(`Packaging tray app for ${context.platform}...`);
-  console.log('Building Electron app...');
-  execSync('bun run clean:extraneous && bun run build', { cwd: context.rootDir, stdio: 'inherit' });
-
-  if (context.platform === 'darwin') {
-    execSync('bunx electron-builder --mac --dir', { cwd: context.rootDir, stdio: 'inherit' });
-    return;
-  }
-
-  if (context.platform === 'win32') {
-    execSync('bunx electron-builder --win --dir', { cwd: context.rootDir, stdio: 'inherit' });
-    return;
-  }
-
-  throw new Error(`Unsupported platform: ${context.platform}`);
-}
-
-function locateBuiltBundle(context) {
-  if (context.platform === 'darwin') {
+function resolvePlatformBundle(profile) {
+  if (profile.platform === 'darwin') {
     const appName = 'OpenCode Office Add-in.app';
     const candidates = [
-      path.join(context.electronOutputDir, 'mac-arm64', appName),
-      path.join(context.electronOutputDir, 'mac', appName),
+      path.join(profile.electronOutputRoot, 'mac-arm64', appName),
+      path.join(profile.electronOutputRoot, 'mac', appName),
     ];
-    const sourceApp = candidates.find((candidate) => fs.existsSync(candidate));
-    if (!sourceApp) {
+    const appBundle = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!appBundle) {
       throw new Error('Could not find built macOS app');
     }
 
-    return { source: sourceApp, registerScript: 'register.sh' };
+    return {
+      buildCommand: 'bunx electron-builder --mac --dir',
+      bundlePath: appBundle,
+      bundleLabel: path.basename(appBundle),
+      registrationScript: 'register.sh',
+      copyBundle(stageRoot) {
+        execSync(`cp -R "${appBundle}" "${stageRoot}/"`, { stdio: 'inherit' });
+      },
+      archive(stageRoot, archivePath) {
+        execSync(`ditto -c -k --sequesterRsrc "${stageRoot}" "${archivePath}"`, { stdio: 'inherit' });
+      },
+    };
   }
 
-  const unpackedDir = path.join(context.electronOutputDir, 'win-unpacked');
-  if (!fs.existsSync(unpackedDir)) {
-    throw new Error('Could not find built Windows app');
+  if (profile.platform === 'win32') {
+    const unpackedDir = path.join(profile.electronOutputRoot, 'win-unpacked');
+    if (!fs.existsSync(unpackedDir)) {
+      throw new Error('Could not find built Windows app');
+    }
+
+    return {
+      buildCommand: 'bunx electron-builder --win --dir',
+      bundlePath: unpackedDir,
+      bundleLabel: 'Windows app',
+      registrationScript: 'register.ps1',
+      copyBundle(stageRoot) {
+        execSync(`xcopy "${unpackedDir}\\*" "${stageRoot}\\" /E /I /Y`, { stdio: 'inherit' });
+      },
+      archive(stageRoot, archivePath) {
+        execSync(`powershell -Command "Compress-Archive -Path '${stageRoot}\\*' -DestinationPath '${archivePath}' -Force"`, { stdio: 'inherit' });
+      },
+    };
   }
 
-  return { source: unpackedDir, registerScript: 'register.ps1' };
+  throw new Error(`Unsupported platform: ${profile.platform}`);
 }
 
-function stageReleaseNotes(context) {
-  fs.copyFileSync(
-    path.join(context.rootDir, 'installer', 'GETTING_STARTED_RELEASE.md'),
-    path.join(context.stageDir, 'GETTING_STARTED.md'),
-  );
-  console.log('Copied GETTING_STARTED.md');
+function buildDesktopRuntime(profile, platformBundle) {
+  console.log(`Packaging tray app for ${profile.platform}...`);
+  console.log('Preparing desktop runtime...');
+  execSync('bun run clean:extraneous && bun run build', { cwd: profile.projectRoot, stdio: 'inherit' });
+  execSync(platformBundle.buildCommand, { cwd: profile.projectRoot, stdio: 'inherit' });
 }
 
-function stageBundle(context, bundle) {
-  if (context.platform === 'darwin') {
-    console.log(`Copying ${path.basename(bundle.source)}...`);
-    execSync(`cp -R "${bundle.source}" "${context.stageDir}/"`, { stdio: 'inherit' });
-  } else {
-    console.log('Copying Windows app...');
-    execSync(`xcopy "${bundle.source}\\*" "${context.stageDir}\\" /E /I /Y`, { stdio: 'inherit' });
-  }
+function stageReleaseAssets(profile, platformBundle) {
+  fs.copyFileSync(profile.guideSource, path.join(profile.stageRoot, 'GETTING_STARTED.md'));
+  console.log('Staged GETTING_STARTED.md');
 
-  const sourceScript = path.join(context.rootDir, bundle.registerScript);
-  const targetScript = path.join(context.stageDir, bundle.registerScript);
+  const sourceScript = path.join(profile.projectRoot, platformBundle.registrationScript);
+  const targetScript = path.join(profile.stageRoot, platformBundle.registrationScript);
   fs.copyFileSync(sourceScript, targetScript);
-  if (bundle.registerScript.endsWith('.sh')) {
+  if (platformBundle.registrationScript.endsWith('.sh')) {
     fs.chmodSync(targetScript, 0o755);
   }
-  console.log(`Copied ${bundle.registerScript}`);
+  console.log(`Staged ${platformBundle.registrationScript}`);
+
+  console.log(`Staging ${platformBundle.bundleLabel}...`);
+  platformBundle.copyBundle(profile.stageRoot);
 }
 
-function createReleaseArchive(context) {
-  if (fs.existsSync(context.zipPath)) {
-    fs.unlinkSync(context.zipPath);
+function writeArchive(profile, platformBundle) {
+  if (fs.existsSync(profile.archivePath)) {
+    fs.unlinkSync(profile.archivePath);
   }
 
-  console.log(`Creating ${context.zipName}...`);
-  if (context.platform === 'darwin') {
-    execSync(`ditto -c -k --sequesterRsrc "${context.stageDir}" "${context.zipPath}"`, { stdio: 'inherit' });
-  } else {
-    execSync(
-      `powershell -Command "Compress-Archive -Path '${context.stageDir}\\*' -DestinationPath '${context.zipPath}' -Force"`,
-      { stdio: 'inherit' },
-    );
-  }
-
-  console.log(`\nPackage created: build/${context.zipName}`);
+  console.log(`Creating ${profile.archiveName}...`);
+  platformBundle.archive(profile.stageRoot, profile.archivePath);
+  console.log(`\nPackage created: build/${profile.archiveName}`);
 }
 
 function main() {
-  const context = getPackagingContext();
-  resetStageDirectory(context.stageDir);
-  runDesktopBuild(context);
-  stageReleaseNotes(context);
-  stageBundle(context, locateBuiltBundle(context));
-  createReleaseArchive(context);
+  const profile = createReleaseProfile();
+  const platformBundle = resolvePlatformBundle(profile);
+  resetReleaseWorkspace(profile.stageRoot);
+  buildDesktopRuntime(profile, platformBundle);
+  stageReleaseAssets(profile, platformBundle);
+  writeArchive(profile, platformBundle);
 }
 
 main();

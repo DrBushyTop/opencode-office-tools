@@ -10,7 +10,7 @@ const TrayEnvSchema = z.object({
   OPENCODE_OFFICE_CONFIG_DIR: NonEmptyPathSchema,
 });
 
-function requirePath(value, label) {
+function expectPath(value, label) {
   const parsed = NonEmptyPathSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(`Invalid ${label}`);
@@ -18,39 +18,36 @@ function requirePath(value, label) {
   return parsed.data;
 }
 
-function ensureSingleInstance() {
+function claimSingleInstance() {
   if (app.requestSingleInstanceLock()) {
-    return true;
+    return;
   }
 
   app.quit();
   process.exit(0);
 }
 
-function hideDockWhenNeeded() {
+function applyPlatformBootTweaks() {
   if (process.platform === 'darwin') {
     app.dock.hide();
   }
 }
 
-function resolveInstallRoot() {
-  return app.isPackaged
-    ? requirePath(path.join(process.resourcesPath), 'resources path')
-    : requirePath(path.resolve(__dirname, '../..'), 'development resources path');
-}
-
-function resolveLogFilePath(rootDir) {
-  if (!app.isPackaged) {
-    return requirePath(path.join(rootDir, '.opencode', 'debug.log'), 'development log file path');
+function resolveRuntimeRoot() {
+  if (app.isPackaged) {
+    return expectPath(path.join(process.resourcesPath), 'resources path');
   }
-
-  return requirePath(path.join(app.getPath('userData'), 'logs', 'debug.log'), 'packaged log file path');
+  return expectPath(path.resolve(__dirname, '../..'), 'development resources path');
 }
 
-function resolveTrayIcon(rootDir) {
-  const filename = process.platform === 'darwin' ? 'tray-icon.png' : 'tray-icon.ico';
-  const platformLabel = process.platform === 'darwin' ? 'macOS tray icon path' : 'Windows tray icon path';
-  return requirePath(path.join(rootDir, 'assets', filename), platformLabel);
+function resolveRuntimePaths(rootDir) {
+  const trayIconName = process.platform === 'darwin' ? 'tray-icon.png' : 'tray-icon.ico';
+  const trayIconPath = expectPath(path.join(rootDir, 'assets', trayIconName), 'tray icon path');
+  const logFilePath = app.isPackaged
+    ? expectPath(path.join(app.getPath('userData'), 'logs', 'debug.log'), 'packaged log file path')
+    : expectPath(path.join(rootDir, '.opencode', 'debug.log'), 'development log file path');
+
+  return { rootDir, trayIconPath, logFilePath };
 }
 
 function buildServerEnvironment(rootDir) {
@@ -61,23 +58,10 @@ function buildServerEnvironment(rootDir) {
   });
 }
 
-function createRuntimeState(rootDir) {
-  return {
-    rootDir,
-    tray: null,
-    server: null,
-    serverRunning: false,
-    logFilePath: null,
-  };
-}
+function installProcessDiagnostics(logFilePath) {
+  process.env.OPENCODE_OFFICE_LOG_FILE = logFilePath;
+  logInfo('tray', 'Debug logging enabled', { logFilePath });
 
-function applyLogging(state) {
-  state.logFilePath = resolveLogFilePath(state.rootDir);
-  process.env.OPENCODE_OFFICE_LOG_FILE = state.logFilePath;
-  logInfo('tray', 'Debug logging enabled', { logFilePath: state.logFilePath });
-}
-
-function attachProcessDiagnostics() {
   process.on('uncaughtException', (error) => {
     logError('tray', 'Uncaught exception', error);
   });
@@ -86,42 +70,79 @@ function attachProcessDiagnostics() {
   });
 }
 
-function describeServiceState(isRunning) {
+function createServiceAdapter(rootDir) {
+  const state = {
+    server: null,
+    phase: 'stopped',
+  };
+
+  function statusSnapshot() {
+    return {
+      isRunning: state.phase === 'running',
+      phase: state.phase,
+    };
+  }
+
+  async function start() {
+    try {
+      Object.assign(process.env, buildServerEnvironment(rootDir));
+      const serverModulePath = require.resolve('../server-prod.js');
+      delete require.cache[serverModulePath];
+      const { createServer } = require('../server-prod.js');
+      state.phase = 'starting';
+      state.server = await createServer();
+      state.phase = 'running';
+      console.log('Server started successfully');
+      logInfo('tray', 'Server started successfully');
+    } catch (error) {
+      state.server = null;
+      state.phase = 'stopped';
+      console.error('Failed to start server:', error);
+      logError('tray', 'Failed to start server', error);
+    }
+
+    return statusSnapshot();
+  }
+
+  async function stop() {
+    if (state.server) {
+      await state.server.close?.();
+      state.server = null;
+    }
+    state.phase = 'stopped';
+    console.log('Server stopped');
+    logInfo('tray', 'Server stopped');
+    return statusSnapshot();
+  }
+
+  async function toggle() {
+    return state.phase === 'running' ? stop() : start();
+  }
+
+  function dispose() {
+    state.server?.close?.();
+  }
+
   return {
-    statusLabel: isRunning ? '● Service Running' : '○ Service Stopped',
-    toggleLabel: isRunning ? 'Disable Service' : 'Enable Service',
-    tooltip: `OpenCode Office Add-in - ${isRunning ? 'Running' : 'Stopped'}`,
+    statusSnapshot,
+    start,
+    stop,
+    toggle,
+    dispose,
   };
 }
 
-function refreshTrayUi(state, actions) {
-  if (!state.tray) {
-    return;
-  }
-
-  const presentation = describeServiceState(state.serverRunning);
-  state.tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'OpenCode Office Add-in', enabled: false },
-    { type: 'separator' },
-    { label: presentation.statusLabel, enabled: false },
-    { label: presentation.toggleLabel, click: () => actions.toggleServer() },
-    {
-      label: 'Open Debug Log',
-      click: () => {
-        if (state.logFilePath) {
-          shell.showItemInFolder(requirePath(state.logFilePath, 'debug log file path'));
-        }
-      },
-    },
-    { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() },
-  ]));
-  state.tray.setToolTip(presentation.tooltip);
+function describeMenuState(serviceStatus) {
+  return {
+    statusLabel: serviceStatus.isRunning ? '● Service Running' : '○ Service Stopped',
+    toggleLabel: serviceStatus.isRunning ? 'Disable Service' : 'Enable Service',
+    tooltip: `OpenCode Office Add-in - ${serviceStatus.isRunning ? 'Running' : 'Stopped'}`,
+  };
 }
 
-function loadTrayIcon(state) {
+function createTrayIcon(trayIconPath) {
   try {
-    let icon = nativeImage.createFromPath(resolveTrayIcon(state.rootDir));
+    let icon = nativeImage.createFromPath(trayIconPath);
     if (process.platform === 'darwin') {
       icon = icon.resize({ width: 16, height: 16 });
       icon.setTemplateImage(false);
@@ -134,92 +155,63 @@ function loadTrayIcon(state) {
   }
 }
 
-function mountTray(state, actions) {
-  state.tray = new Tray(loadTrayIcon(state));
-  state.tray.setToolTip('OpenCode Office Add-in - Starting...');
-  refreshTrayUi(state, actions);
+function createTrayPresenter(paths, service) {
+  const tray = new Tray(createTrayIcon(paths.trayIconPath));
 
+  function render() {
+    const menuState = describeMenuState(service.statusSnapshot());
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'OpenCode Office Add-in', enabled: false },
+      { type: 'separator' },
+      { label: menuState.statusLabel, enabled: false },
+      { label: menuState.toggleLabel, click: async () => {
+        await service.toggle();
+        render();
+      } },
+      {
+        label: 'Open Debug Log',
+        click: () => {
+          shell.showItemInFolder(expectPath(paths.logFilePath, 'debug log file path'));
+        },
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ]));
+    tray.setToolTip(menuState.tooltip);
+  }
+
+  tray.setToolTip('OpenCode Office Add-in - Starting...');
   if (process.platform === 'win32') {
-    state.tray.on('click', () => {
-      state.tray.popUpContextMenu();
-    });
-  }
-}
-
-async function startServer(state, actions) {
-  try {
-    Object.assign(process.env, buildServerEnvironment(state.rootDir));
-
-    const serverModulePath = require.resolve('../server-prod.js');
-    delete require.cache[serverModulePath];
-    const { createServer } = require('../server-prod.js');
-    state.server = await createServer();
-    state.serverRunning = true;
-    console.log('Server started successfully');
-    logInfo('tray', 'Server started successfully');
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    logError('tray', 'Failed to start server', error);
-    state.server = null;
-    state.serverRunning = false;
+    tray.on('click', () => tray.popUpContextMenu());
   }
 
-  refreshTrayUi(state, actions);
+  return { tray, render };
 }
 
-async function stopServer(state, actions) {
-  if (!state.server) {
-    return;
-  }
-
-  await state.server.close?.();
-  state.server = null;
-  state.serverRunning = false;
-  console.log('Server stopped');
-  logInfo('tray', 'Server stopped');
-  refreshTrayUi(state, actions);
-}
-
-function createActions(state) {
-  const actions = {
-    startServer: () => startServer(state, actions),
-    stopServer: () => stopServer(state, actions),
-    toggleServer: async () => {
-      if (state.serverRunning) {
-        await stopServer(state, actions);
-        return;
-      }
-
-      await startServer(state, actions);
-    },
-  };
-
-  return actions;
-}
-
-function bindAppLifecycle(state) {
+function registerAppLifecycle(service) {
   app.on('window-all-closed', (event) => {
     event.preventDefault();
   });
 
   app.on('before-quit', () => {
     logInfo('tray', 'Application quitting', { logFilePath: process.env.OPENCODE_OFFICE_LOG_FILE || getLogFilePath() });
-    state.server?.close?.();
+    service.dispose();
   });
 }
 
-async function bootTrayApplication() {
-  const state = createRuntimeState(resolveInstallRoot());
-  const actions = createActions(state);
+async function launchTrayRuntime() {
+  const paths = resolveRuntimePaths(resolveRuntimeRoot());
+  installProcessDiagnostics(paths.logFilePath);
 
-  applyLogging(state);
-  attachProcessDiagnostics();
-  mountTray(state, actions);
-  bindAppLifecycle(state);
-  await startServer(state, actions);
+  const service = createServiceAdapter(paths.rootDir);
+  const presenter = createTrayPresenter(paths, service);
+  registerAppLifecycle(service);
+
+  presenter.render();
+  await service.start();
+  presenter.render();
 }
 
-if (ensureSingleInstance()) {
-  hideDockWhenNeeded();
-  app.whenReady().then(() => bootTrayApplication());
-}
+claimSingleInstance();
+applyPlatformBootTweaks();
+app.whenReady().then(() => launchTrayRuntime());

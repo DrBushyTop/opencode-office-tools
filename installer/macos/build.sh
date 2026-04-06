@@ -30,9 +30,6 @@ build_desktop_bundle() {
     bun run build
     bunx electron-builder --mac
   )
-
-  echo ""
-  echo "Electron app built successfully!"
 }
 
 locate_app_bundle() {
@@ -50,48 +47,26 @@ locate_app_bundle() {
   exit 1
 }
 
-prepare_stage_root() {
+prepare_stage_layout() {
   rm -rf "${BUILD_DIR}"
-  mkdir -p "${BUILD_DIR}/payload/Applications"
-  mkdir -p "${BUILD_DIR}/scripts"
+  mkdir -p "${BUILD_DIR}/component-root/Applications"
+  mkdir -p "${BUILD_DIR}/script-root"
+  mkdir -p "${BUILD_DIR}/resource-root"
 }
 
-install_payload_assets() {
+copy_payload_assets() {
   local app_bundle="$1"
 
-  cp -R "$app_bundle" "${BUILD_DIR}/payload/Applications/"
-  cp "${SCRIPT_DIR}/launchagent/com.opencode.office-addin.plist" "${BUILD_DIR}/payload/Applications/${APP_NAME}.app/Contents/Resources/"
-  cp "${SCRIPT_DIR}/scripts/preinstall" "${BUILD_DIR}/scripts/"
-  cp "${SCRIPT_DIR}/scripts/postinstall" "${BUILD_DIR}/scripts/"
-  chmod +x "${BUILD_DIR}/scripts/preinstall"
-  chmod +x "${BUILD_DIR}/scripts/postinstall"
+  cp -R "$app_bundle" "${BUILD_DIR}/component-root/Applications/"
+  cp "${SCRIPT_DIR}/launchagent/com.opencode.office-addin.plist" "${BUILD_DIR}/component-root/Applications/${APP_NAME}.app/Contents/Resources/"
+  cp "${SCRIPT_DIR}/scripts/preinstall" "${BUILD_DIR}/script-root/"
+  cp "${SCRIPT_DIR}/scripts/postinstall" "${BUILD_DIR}/script-root/"
+  chmod +x "${BUILD_DIR}/script-root/preinstall"
+  chmod +x "${BUILD_DIR}/script-root/postinstall"
 }
 
-write_distribution_assets() {
-  cat > "${BUILD_DIR}/distribution.xml" <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="2">
-    <title>${APP_NAME}</title>
-    <organization>${APP_IDENTIFIER}</organization>
-    <domains enable_localSystem="true" enable_currentUserHome="false"/>
-    <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
-    <welcome file="welcome.html"/>
-    <conclusion file="conclusion.html"/>
-    <pkg-ref id="${APP_IDENTIFIER}"/>
-    <choices-outline>
-        <line choice="default">
-            <line choice="${APP_IDENTIFIER}"/>
-        </line>
-    </choices-outline>
-    <choice id="default"/>
-    <choice id="${APP_IDENTIFIER}" visible="false">
-        <pkg-ref id="${APP_IDENTIFIER}"/>
-    </choice>
-    <pkg-ref id="${APP_IDENTIFIER}" version="${APP_VERSION}" onConclusion="none">OpenCodeOfficeAddin-component.pkg</pkg-ref>
-</installer-gui-script>
-EOF
-
-  cat > "${BUILD_DIR}/welcome.html" <<'EOF'
+write_installer_documents() {
+  cat > "${BUILD_DIR}/resource-root/welcome.html" <<'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -117,7 +92,7 @@ EOF
 </html>
 EOF
 
-  cat > "${BUILD_DIR}/conclusion.html" <<'EOF'
+  cat > "${BUILD_DIR}/resource-root/conclusion.html" <<'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -145,31 +120,55 @@ EOF
 EOF
 }
 
-build_installer_packages() {
-  echo "Building component package..."
+write_distribution_spec() {
+  cat > "${BUILD_DIR}/distribution.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>${APP_NAME}</title>
+    <organization>${APP_IDENTIFIER}</organization>
+    <domains enable_localSystem="true" enable_currentUserHome="false"/>
+    <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
+    <welcome file="welcome.html"/>
+    <conclusion file="conclusion.html"/>
+    <pkg-ref id="${APP_IDENTIFIER}"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="${APP_IDENTIFIER}"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="${APP_IDENTIFIER}" visible="false">
+        <pkg-ref id="${APP_IDENTIFIER}"/>
+    </choice>
+    <pkg-ref id="${APP_IDENTIFIER}" version="${APP_VERSION}" onConclusion="none">OpenCodeOfficeAddin-component.pkg</pkg-ref>
+</installer-gui-script>
+EOF
+}
+
+build_component_pkg() {
   pkgbuild \
-    --root "${BUILD_DIR}/payload" \
-    --scripts "${BUILD_DIR}/scripts" \
+    --root "${BUILD_DIR}/component-root" \
+    --scripts "${BUILD_DIR}/script-root" \
     --identifier "${APP_IDENTIFIER}" \
     --version "${APP_VERSION}" \
     --install-location "/" \
     "${BUILD_DIR}/OpenCodeOfficeAddin-component.pkg"
+}
 
-  echo "Building distribution package..."
+build_distribution_pkg() {
   productbuild \
     --distribution "${BUILD_DIR}/distribution.xml" \
-    --resources "${BUILD_DIR}" \
+    --resources "${BUILD_DIR}/resource-root" \
     --package-path "${BUILD_DIR}" \
     "${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg"
 }
 
-cleanup_stage_root() {
+cleanup_stage_layout() {
   rm -f "${BUILD_DIR}/OpenCodeOfficeAddin-component.pkg"
   rm -f "${BUILD_DIR}/distribution.xml"
-  rm -f "${BUILD_DIR}/welcome.html"
-  rm -f "${BUILD_DIR}/conclusion.html"
-  rm -rf "${BUILD_DIR}/payload"
-  rm -rf "${BUILD_DIR}/scripts"
+  rm -rf "${BUILD_DIR}/component-root"
+  rm -rf "${BUILD_DIR}/script-root"
+  rm -rf "${BUILD_DIR}/resource-root"
 }
 
 main() {
@@ -180,23 +179,21 @@ main() {
   local app_bundle
   app_bundle="$(locate_app_bundle)"
   echo "App location: ${app_bundle}"
-  echo ""
-  echo "Creating installer package..."
 
-  prepare_stage_root
-  install_payload_assets "$app_bundle"
-  write_distribution_assets
-  build_installer_packages
-  cleanup_stage_root
+  prepare_stage_layout
+  copy_payload_assets "$app_bundle"
+  write_installer_documents
+  write_distribution_spec
+
+  echo "Building component package..."
+  build_component_pkg
+  echo "Building distribution package..."
+  build_distribution_pkg
+  cleanup_stage_layout
 
   echo ""
   echo "✓ macOS installer built successfully!"
   echo "  Output: ${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg"
-  echo ""
-  echo "To sign the package for distribution (optional):"
-  echo "  productsign --sign 'Developer ID Installer: Your Name' \\"
-  echo "    '${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg' \\"
-  echo "    '${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}-signed.pkg'"
 }
 
 main "$@"
