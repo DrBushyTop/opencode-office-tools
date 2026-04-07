@@ -156,6 +156,11 @@ export class OpencodeClient {
     return readJson("/api/opencode/commands", z.array(slashCommandSchema), withDirectory(directory));
   }
 
+  async searchFilesAndDirectories(query: string, directory?: string, limit = 20) {
+    const params = new URLSearchParams({ query, dirs: "true", limit: String(limit) });
+    return readJson(`/api/opencode/find/files?${params.toString()}`, z.array(z.string()), withDirectory(directory));
+  }
+
   async sendCommand(sessionId: string, input: { command: string; arguments: string; agent?: string; model?: string }, directory?: string) {
     const payload = { command: input.command, arguments: input.arguments, agent: input.agent, model: input.model };
     trafficStats.bytesOut += JSON.stringify(payload).length;

@@ -206,4 +206,26 @@ describe("directory-scoped opencode routing", () => {
       expect.objectContaining({ id: "two", directory: "/tmp/folder" }),
     ]);
   });
+
+  it("proxies file mention search requests", async () => {
+    const calls: Array<{ url: string; options: any }> = [];
+    const { baseUrl } = await startApiServer(undefined, {
+      request: async (url: string, options?: any) => {
+        calls.push({ url, options });
+        return ["src/App.tsx"];
+      },
+    });
+
+    const response = await fetch(
+      `${baseUrl}/api/opencode/find/files?query=${encodeURIComponent("App")}&dirs=true&limit=15`,
+      { headers: { "x-opencode-directory": "/repo" } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(["src/App.tsx"]);
+    expect(calls[0]).toMatchObject({
+      url: "/find/file?query=App&dirs=true&limit=15",
+      options: expect.objectContaining({ directory: "/repo" }),
+    });
+  });
 });

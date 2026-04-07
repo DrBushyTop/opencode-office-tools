@@ -9,6 +9,8 @@ import { modelInfoSchema } from "../lib/opencode-schemas";
 import type { SlashCommand } from "../lib/opencode-schemas";
 import { trafficStats } from "../lib/opencode-events";
 import { liveStatusText, type Message } from "./MessageList";
+import { insertMention, mentionQuery } from "../lib/file-mentions";
+import { MentionPopover } from "./MentionPopover";
 import { SlashPopover, filterCommands } from "./SlashPopover";
 
 const ImageAttachmentSchema = z.object({
@@ -37,6 +39,7 @@ interface ChatInputProps {
   currentActivity?: string;
   todos?: TodoItem[];
   slashCommands?: SlashCommand[];
+  onSearchMentions?: (query: string) => Promise<string[]>;
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
@@ -445,6 +448,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   currentActivity = "",
   todos = [],
   slashCommands = [],
+  onSearchMentions,
 }) => {
   const styles = useStyles();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -479,6 +483,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const showSlash = slashMatch !== null && slashCommands.length > 0;
   const [slashIndex, setSlashIndex] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionItems, setMentionItems] = useState<string[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [caret, setCaret] = useState(0);
 
   // Reset highlight when filter changes
   useEffect(() => {
@@ -489,6 +497,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     () => (showSlash ? filterCommands(slashCommands, slashMatch || "").length : 0),
     [showSlash, slashCommands, slashMatch],
   );
+  const currentMention = React.useMemo(() => mentionQuery(value, caret), [value, caret]);
+  const mentionText = currentMention?.query || "";
+  const showMention = !showSlash && !!currentMention && !!onSearchMentions;
 
   // Clamp index when filtered results shrink
   useEffect(() => {
@@ -496,6 +507,41 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       filteredSlashCount === 0 ? 0 : Math.min(prev, filteredSlashCount - 1),
     );
   }, [filteredSlashCount]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mentionText]);
+
+  useEffect(() => {
+    if (!showMention || !currentMention || !onSearchMentions) {
+      setMentionItems([]);
+      setMentionLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setMentionLoading(true);
+    onSearchMentions(mentionText)
+      .then((items) => {
+        if (cancelled) return;
+        setMentionItems(items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMentionItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMentionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mentionText, onSearchMentions, showMention]);
+
+  useEffect(() => {
+    setMentionIndex((prev) => (mentionItems.length === 0 ? 0 : Math.min(prev, mentionItems.length - 1)));
+  }, [mentionItems]);
 
   const handleSlashSelect = React.useCallback(
     (cmd: SlashCommand) => {
@@ -505,6 +551,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     },
     [onChange],
   );
+
+  const handleMentionSelect = React.useCallback((path: string) => {
+    const next = insertMention(value, caret, path);
+    if (!next) return;
+    onChange(next.value);
+    setMentionItems([]);
+    setMentionIndex(0);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.caret, next.caret);
+      setCaret(next.caret);
+    });
+  }, [caret, onChange, value]);
 
   useEffect(() => {
     if (value === "") {
@@ -519,6 +578,29 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [modelOpen, selectedLabel]);
 
   const onInputKeyDown = (e: React.KeyboardEvent) => {
+    if (showMention && mentionItems.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev + 1) % mentionItems.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev - 1 + mentionItems.length) % mentionItems.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const selected = mentionItems[mentionIndex];
+        if (selected) handleMentionSelect(selected);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionItems([]);
+        return;
+      }
+    }
     if (showSlash && filteredSlashCount > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -618,6 +700,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onHighlight={setSlashIndex}
         />
       )}
+      {showMention && (
+        <MentionPopover
+          items={mentionItems}
+          selectedIndex={mentionIndex}
+          onSelect={handleMentionSelect}
+          onHighlight={setMentionIndex}
+          loading={mentionLoading}
+        />
+      )}
       {hasTodos && <TodoDock todos={todos} />}
 
       {hasStatus && (
@@ -715,9 +806,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               ref={inputRef}
               className={styles.input}
               value={value}
-              onChange={(e, data) => onChange(data.value)}
+              onChange={(e, data) => {
+                onChange(data.value);
+                const next = e.target as HTMLTextAreaElement;
+                setCaret(next.selectionStart ?? data.value.length);
+              }}
               onKeyDown={onInputKeyDown}
               onPaste={onClipboardPaste}
+              onClick={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? value.length)}
+              onKeyUp={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? value.length)}
+              onSelect={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? value.length)}
               placeholder="Ask OpenCode to work on the current document..."
               rows={2}
               disabled={disabled}

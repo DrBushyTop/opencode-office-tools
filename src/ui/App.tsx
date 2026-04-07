@@ -17,6 +17,7 @@ import type { SlashCommand } from "./lib/opencode-schemas";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats, type UiEvent } from "./lib/opencode-events";
+import { expandMentions, mentionParts } from "./lib/file-mentions";
 import { formatTokenUsage, sessionUsageSchema, type SessionUsage } from "./lib/opencode-usage";
 import { buildHeaderSubtitle, buildPowerPointContextLabel, deriveConnectionIndicator } from "./lib/chat-shell";
 import { defaultThemeId, getThemeCssVars, resolveThemeTokens, themeOptions, useThemeMode, type ThemePreference } from "./lib/ui-theme";
@@ -327,9 +328,10 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
   return `${base} Current PowerPoint context: ${contextBits.join("; ")}.`;
 }
 
-function toPromptParts(text: string, images: Array<{ path: string; name: string; mime: string }>) {
+function toPromptParts(text: string, images: Array<{ path: string; name: string; mime: string }>, directory?: string) {
   return [
     { type: "text" as const, text: text || "Here are some images for you to analyze." },
+    ...(directory ? mentionParts(text, directory) : []),
     ...images.map((image) => ({
       type: "file" as const,
       filename: image.name,
@@ -419,6 +421,10 @@ export const App: React.FC = () => {
   const activeDirectory = useMemo(
     () => currentSessionId ? currentSessionDirectory || safeDefaultFolder || runtimeDirectory : safeDefaultFolder || runtimeDirectory,
     [currentSessionDirectory, currentSessionId, runtimeDirectory, safeDefaultFolder],
+  );
+  const searchMentions = React.useCallback(
+    (query: string) => client.searchFilesAndDirectories(query, activeDirectory || undefined),
+    [activeDirectory, client],
   );
   const sessionCreatedAt = useRef<string>("");
   const messagesRef = useRef<Message[]>([]);
@@ -981,6 +987,7 @@ export const App: React.FC = () => {
 
       if (matchedCommand) {
         const commandArgs = (slashMatch![2] || "").trim();
+        const resolvedArgs = session.directory ? expandMentions(commandArgs, session.directory) : commandArgs;
 
         if (isFirstUserTurn && userInput.trim()) {
           updateSessionTitle(session.id, makeSessionTitle(officeHost, userInput), session.directory || undefined).catch(() => undefined);
@@ -988,7 +995,7 @@ export const App: React.FC = () => {
 
         await client.sendCommand(session.id, {
           command: matchedCommand.name,
-          arguments: commandArgs,
+          arguments: resolvedArgs,
           agent: matchedCommand.agent || officeHost,
           model: matchedCommand.model,
         }, session.directory || undefined);
@@ -1012,7 +1019,7 @@ export const App: React.FC = () => {
         }
 
         const model = availableModels.find((item) => item.key === safeSelectedModel) || FALLBACK_MODELS[0];
-        const parts = toPromptParts(userInput, uploads);
+        const parts = toPromptParts(userInput, uploads, session.directory || undefined);
         const tools = getEnabledTools(officeHost);
 
         if (isFirstUserTurn && userInput.trim()) {
@@ -1160,6 +1167,7 @@ export const App: React.FC = () => {
             currentActivity={currentActivity}
             todos={todos}
             slashCommands={slashCommands}
+            onSearchMentions={searchMentions}
           />
           {permission && (
             <PermissionDialog

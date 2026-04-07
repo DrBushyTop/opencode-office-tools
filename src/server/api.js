@@ -396,6 +396,20 @@ function createApiRouter(runtime, bridge) {
     }
   });
 
+  apiRouter.get('/opencode/find/files', async (req, res) => {
+    try {
+      const query = String(req.query.query || '');
+      const dirs = String(req.query.dirs || 'true');
+      const type = typeof req.query.type === 'string' ? req.query.type : '';
+      const limit = Number(req.query.limit || 20);
+      const params = new URLSearchParams({ query, dirs, limit: String(limit) });
+      if (type) params.set('type', type);
+      res.json(await runtime.request(`/find/file?${params.toString()}`, runtimeOptions(req)));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.post('/opencode/session/:id/command', async (req, res) => {
     try {
       const parsed = commandBodySchema.safeParse(req.body || {});
