@@ -50,13 +50,19 @@ async function startServer(router: any, options?: { trustProxy?: boolean; secure
   return { baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
-async function startApiServer(options?: { trustProxy?: boolean; secure?: boolean }) {
+async function startApiServer(
+  options?: { trustProxy?: boolean; secure?: boolean },
+  runtimeOverrides?: Record<string, unknown>,
+) {
   const runtime = {
-    status: async () => ({ models: [] }),
+    directory: () => process.cwd(),
+    status: async () => ({ models: [], directory: process.cwd() }),
     request: async () => ({ ok: true }),
+    ...runtimeOverrides,
   };
   const bridge = new OfficeToolBridge();
   return {
+    runtime,
     bridge,
     ...(await startServer(createApiRouter(runtime, bridge), options)),
   };
@@ -147,5 +153,57 @@ describe("bridge router hardening", () => {
 
     expect(statusResponse.status).toBe(404);
     expect(sessionResponse.status).toBe(404);
+  });
+});
+
+describe("directory-scoped opencode routing", () => {
+  it("forwards request directory overrides to the runtime", async () => {
+    const calls: Array<{ url: string; options: any }> = [];
+    const { baseUrl } = await startApiServer(undefined, {
+      request: async (url: string, options?: any) => {
+        calls.push({ url, options });
+        return { ok: true };
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/opencode/session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-opencode-directory": "/tmp/folder",
+      },
+      body: JSON.stringify({ title: "test" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "/session",
+      options: expect.objectContaining({
+        directory: "/tmp/folder",
+      }),
+    });
+  });
+
+  it("uses the requested directory when filtering local session history", async () => {
+    const { baseUrl } = await startApiServer(undefined, {
+      directory: () => "/repo/root",
+      request: async (url: string) => {
+        if (String(url).startsWith("/session?")) {
+          return [
+            { id: "one", title: "Word: A", directory: "/repo/root" },
+            { id: "two", title: "Word: B", directory: "/tmp/folder" },
+          ];
+        }
+        return { ok: true };
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/opencode/sessions?host=word&directory=${encodeURIComponent("/tmp/folder")}`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({ id: "two", directory: "/tmp/folder" }),
+    ]);
   });
 });

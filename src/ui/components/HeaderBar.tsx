@@ -10,7 +10,7 @@ import {
   Tooltip,
   makeStyles,
 } from "@fluentui/react-components";
-import { Compose20Regular, History20Regular, Settings20Regular } from "@fluentui/react-icons";
+import { Compose20Regular, Folder20Regular, History20Regular, Settings20Regular } from "@fluentui/react-icons";
 import { z } from "zod";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo } from "../lib/opencode-client";
@@ -59,6 +59,10 @@ interface HeaderBarProps {
   onThemeChange: (themeId: string) => void;
   themePreference: ThemePreference;
   onThemePreferenceChange: (preference: ThemePreference) => void;
+  activeFolder?: string;
+  defaultFolder?: string;
+  onChooseDefaultFolder: () => void;
+  onClearDefaultFolder: () => void;
   connectionStatus?: HeaderConnectionStatus;
   subtitle?: string;
   contextLabel?: string;
@@ -295,11 +299,81 @@ const useStyles = makeStyles({
     color: "var(--oc-accent)",
     fontWeight: "600",
   },
+  folderMenu: {
+    width: "280px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "14px",
+    background: "var(--oc-bg-elevated, var(--oc-bg, #1b1818))",
+    color: "var(--oc-text, #f1ecec)",
+    border: "1px solid var(--oc-border, rgba(255,255,255,0.10))",
+    borderRadius: "16px",
+    boxShadow: "var(--oc-shadow, 0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px rgba(0,0,0,0.32))",
+    position: "relative",
+    zIndex: 20,
+  },
+  folderTitle: {
+    fontSize: "13px",
+    fontWeight: "700",
+    color: "var(--oc-text)",
+    marginBottom: "2px",
+  },
+  folderName: {
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "var(--oc-text)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  folderPath: {
+    fontSize: "11px",
+    color: "var(--oc-text-faint)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    lineHeight: "1.5",
+  },
+  folderCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    border: "1px solid var(--oc-border)",
+    background: "color-mix(in srgb, var(--oc-bg-soft) 88%, transparent)",
+  },
+  folderActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "2px",
+  },
+  folderIconActive: {
+    minWidth: "28px",
+    width: "28px",
+    height: "28px",
+    padding: "0",
+    borderRadius: "8px",
+    color: "var(--oc-accent)",
+    background: "color-mix(in srgb, var(--oc-accent) 10%, transparent)",
+    border: "none",
+    ":hover": {
+      background: "color-mix(in srgb, var(--oc-accent) 18%, transparent)",
+      color: "var(--oc-accent-strong, var(--oc-accent))",
+    },
+  },
 });
 
 function displayLabel(models: ModelInfo[], model: ModelType) {
   if (!model) return "Same as primary model";
   return models.find((item) => item.key === model)?.label || model;
+}
+
+function tail(path?: string) {
+  if (!path) return "App root";
+  return path.split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
@@ -322,6 +396,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onThemeChange,
   themePreference,
   onThemePreferenceChange,
+  activeFolder,
+  defaultFolder,
+  onChooseDefaultFolder,
+  onClearDefaultFolder,
   connectionStatus,
   subtitle,
   contextLabel,
@@ -372,6 +450,38 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       </div>
       <div className={styles.right}>
         {usageSummary && <div className={styles.usage}>{usageSummary}</div>}
+        <Popover positioning="below-end" inline>
+          <PopoverTrigger disableButtonEnhancement>
+            <Tooltip content={activeFolder ? activeFolder : "No folder set"} relationship="label">
+              <Button
+                icon={<Folder20Regular />}
+                appearance="subtle"
+                aria-label="Working folder"
+                className={activeFolder ? styles.folderIconActive : styles.icon}
+                size="small"
+              />
+            </Tooltip>
+          </PopoverTrigger>
+          <PopoverSurface className={styles.folderMenu}>
+            <div className={styles.folderTitle}>Working folder</div>
+            <div className={styles.folderCard}>
+              <div className={styles.folderName}>{tail(activeFolder)}</div>
+              <div className={styles.folderPath}>{activeFolder || "Using the app root folder."}</div>
+            </div>
+            {defaultFolder && defaultFolder !== activeFolder && (
+              <div className={styles.folderCard}>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--oc-text-faint)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Default folder</div>
+                <div className={styles.folderName}>{tail(defaultFolder)}</div>
+                <div className={styles.folderPath}>{defaultFolder}</div>
+              </div>
+            )}
+            <div className={styles.folderActions}>
+              <Button appearance="secondary" size="small" onClick={onChooseDefaultFolder}>Change default</Button>
+              {defaultFolder && <Button appearance="subtle" size="small" onClick={onClearDefaultFolder}>Use app root</Button>}
+            </div>
+            <div className={styles.help}>New chats start in the default folder. Change it to set where OpenCode reads and writes files.</div>
+          </PopoverSurface>
+        </Popover>
         <Popover positioning="below-end" inline>
           <PopoverTrigger disableButtonEnhancement>
             <Button icon={<Settings20Regular />} appearance="subtle" aria-label="Options" className={styles.icon} size="small" />

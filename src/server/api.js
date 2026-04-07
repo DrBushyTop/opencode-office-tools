@@ -144,6 +144,35 @@ function readRecentLogs(limit = 200) {
   return lines.slice(-limit);
 }
 
+function decodeDirectory(value) {
+  if (typeof value !== 'string') return '';
+  const next = value.trim();
+  if (!next) return '';
+
+  try {
+    return decodeURIComponent(next);
+  } catch {
+    return next;
+  }
+}
+
+function requestDirectory(req) {
+  return decodeDirectory(
+    req.get('x-opencode-directory')
+      || req.body?.directory
+      || req.query.directory,
+  );
+}
+
+function runtimeOptions(req, options = {}) {
+  const directory = requestDirectory(req);
+  if (!directory) return options;
+  return {
+    ...options,
+    directory,
+  };
+}
+
 function createApiRouter(runtime, bridge) {
   const apiRouter = express.Router();
   apiRouter.use(express.json({ limit: '50mb' }));
@@ -232,7 +261,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/models', async (req, res) => {
     try {
-      const status = await runtime.status();
+      const status = await runtime.status(requestDirectory(req));
       res.json({ models: status.models.length ? status.models : MODEL_FALLBACK });
     } catch {
       res.json({ models: MODEL_FALLBACK });
@@ -266,7 +295,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/status', async (req, res) => {
     try {
-      res.json(await runtime.status());
+      res.json(await runtime.status(requestDirectory(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -274,7 +303,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/config', async (req, res) => {
     try {
-      res.json(await runtime.request('/config'));
+      res.json(await runtime.request('/config', runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -282,10 +311,10 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.patch('/opencode/config', async (req, res) => {
     try {
-      res.json(await runtime.request('/config', {
+      res.json(await runtime.request('/config', runtimeOptions(req, {
         method: 'PATCH',
         body: req.body || {},
-      }));
+      })));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -295,11 +324,15 @@ function createApiRouter(runtime, bridge) {
     try {
       const host = String(req.query.host || 'word');
       const shared = String(req.query.shared || '0') === '1';
-      const sessions = await runtime.request(`/session?roots=true&limit=100${shared ? '' : `&directory=${encodeURIComponent(runtime.directory())}`}`);
+      const directory = requestDirectory(req) || runtime.directory();
+      const sessions = await runtime.request(
+        `/session?roots=true&limit=100${shared ? '' : `&directory=${encodeURIComponent(directory)}`}`,
+        runtimeOptions(req),
+      );
       const prefix = hostPrefix(host);
       const filtered = shared
         ? sessions
-        : sessions.filter((item) => item.directory === runtime.directory() && String(item.title || '').startsWith(prefix));
+        : sessions.filter((item) => item.directory === directory && String(item.title || '').startsWith(prefix));
       res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -308,7 +341,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/session/:id', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}`));
+      res.json(await runtime.request(`/session/${req.params.id}`, runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -316,7 +349,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/session/:id/children', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}/children`));
+      res.json(await runtime.request(`/session/${req.params.id}/children`, runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -324,11 +357,11 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.patch('/opencode/session/:id', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}`, {
+      res.json(await runtime.request(`/session/${req.params.id}`, runtimeOptions(req, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: req.body || {},
-      }));
+      })));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -336,7 +369,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.delete('/opencode/session/:id', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}`, { method: 'DELETE' }));
+      res.json(await runtime.request(`/session/${req.params.id}`, runtimeOptions(req, { method: 'DELETE' })));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -344,11 +377,11 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/opencode/session', async (req, res) => {
     try {
-      const session = await runtime.request('/session', {
+      const session = await runtime.request('/session', runtimeOptions(req, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: req.body || {},
-      });
+      }));
       res.json(session);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -357,7 +390,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/commands', async (req, res) => {
     try {
-      res.json(await runtime.request('/command'));
+      res.json(await runtime.request('/command', runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -369,11 +402,11 @@ function createApiRouter(runtime, bridge) {
       if (!parsed.success) {
         return res.status(400).json({ error: 'Invalid command payload' });
       }
-      await runtime.request(`/session/${req.params.id}/command`, {
+      await runtime.request(`/session/${req.params.id}/command`, runtimeOptions(req, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: parsed.data,
-      });
+      }));
       res.status(202).json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -382,11 +415,11 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/opencode/session/:id/message', async (req, res) => {
     try {
-      await runtime.request(`/session/${req.params.id}/prompt_async`, {
+      await runtime.request(`/session/${req.params.id}/prompt_async`, runtimeOptions(req, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: req.body,
-      });
+      }));
       res.status(202).json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -395,7 +428,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/opencode/session/:id/abort', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}/abort`, { method: 'POST' }));
+      res.json(await runtime.request(`/session/${req.params.id}/abort`, runtimeOptions(req, { method: 'POST' })));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -403,7 +436,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/session/:id/messages', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}/message`));
+      res.json(await runtime.request(`/session/${req.params.id}/message`, runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -411,7 +444,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/session/:id/todo', async (req, res) => {
     try {
-      res.json(await runtime.request(`/session/${req.params.id}/todo`));
+      res.json(await runtime.request(`/session/${req.params.id}/todo`, runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -419,7 +452,7 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.get('/opencode/permissions', async (req, res) => {
     try {
-      res.json(await runtime.request('/permission'));
+      res.json(await runtime.request('/permission', runtimeOptions(req)));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -427,11 +460,11 @@ function createApiRouter(runtime, bridge) {
 
   apiRouter.post('/opencode/permission/:id/reply', async (req, res) => {
     try {
-      res.json(await runtime.request(`/permission/${req.params.id}/reply`, {
+      res.json(await runtime.request(`/permission/${req.params.id}/reply`, runtimeOptions(req, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: req.body || {},
-      }));
+      })));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -440,7 +473,7 @@ function createApiRouter(runtime, bridge) {
   apiRouter.get('/opencode/events', async (req, res) => {
     try {
       const sessionId = req.query.sessionId ? String(req.query.sessionId) : null;
-      const response = await runtime.request('/event', { raw: true });
+      const response = await runtime.request('/event', runtimeOptions(req, { raw: true }));
 
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');

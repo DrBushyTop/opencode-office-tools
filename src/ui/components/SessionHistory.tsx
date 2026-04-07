@@ -23,6 +23,7 @@ const SessionInfoSchema = z.object({
 interface SessionHistoryProps {
   host: OfficeHost;
   shared: boolean;
+  directory?: string;
   onSharedChange: (shared: boolean) => void;
   onSelectSession: (session: OpencodeSessionInfo) => void;
   onClose: () => void;
@@ -257,6 +258,7 @@ const SessionEntry: React.FC<EntryProps> = ({ session, onSelect, onDelete }) => 
 export const SessionHistory: React.FC<SessionHistoryProps> = ({
   host,
   shared,
+  directory,
   onSharedChange,
   onSelectSession,
   onClose,
@@ -266,17 +268,18 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
 
   const refresh = React.useCallback(
     () =>
-      listSessions(host, shared)
+      listSessions(host, shared, directory)
         .then((raw) => setSessions(z.array(SessionInfoSchema).catch([]).parse(raw)))
         .catch(() => setSessions([])),
-    [host, shared],
+    [directory, host, shared],
   );
 
   React.useEffect(() => { refresh(); }, [refresh]);
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    deleteSession(id).then(refresh).catch(refresh);
+    const session = sessions.find((item) => item.id === id);
+    deleteSession(id, session?.directory).then(refresh).catch(refresh);
   };
 
   return (
@@ -302,14 +305,14 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
             className={cls.pill}
             onClick={() => onSharedChange(false)}
           >
-            This app
+            This folder
           </Button>
           <Button
             appearance={shared ? "primary" : "subtle"}
             className={cls.pill}
             onClick={() => onSharedChange(true)}
           >
-            All apps
+            All folders
           </Button>
         </div>
       </div>

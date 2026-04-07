@@ -61,6 +61,7 @@ const modelsResponseSchema = z.object({
 const createSessionResponseSchema = z.object({
   id: z.string(),
   title: z.string(),
+  directory: z.string().optional(),
 });
 
 const opencodeMessagesSchema = z.array(opencodeMessageSchema);
@@ -73,96 +74,109 @@ async function readJson<T>(path: string, schema: z.ZodType<T>, init?: RequestIni
   return schema.parse(await response.json());
 }
 
+function withDirectory(directory?: string, init: RequestInit = {}) {
+  if (!directory) return init;
+  return {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      "x-opencode-directory": directory,
+    },
+  } satisfies RequestInit;
+}
+
 export class OpencodeClient {
-  async getStatus() {
-    return readJson("/api/opencode/status", statusSchema);
+  async getStatus(directory?: string) {
+    return readJson("/api/opencode/status", statusSchema, withDirectory(directory));
   }
 
-  async listModels() {
-    const data = await readJson("/api/models", modelsResponseSchema);
+  async listModels(directory?: string) {
+    const data = await readJson("/api/models", modelsResponseSchema, withDirectory(directory));
     return data.models;
   }
 
-  async createSession(input: { title?: string } = {}) {
-    return readJson("/api/opencode/session", createSessionResponseSchema, {
+  async createSession(input: { title?: string; directory?: string } = {}) {
+    return readJson("/api/opencode/session", createSessionResponseSchema, withDirectory(input.directory, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+      body: JSON.stringify({ title: input.title }),
+    }));
   }
 
-  async getMessages(sessionId: string) {
-    return readJson(`/api/opencode/session/${sessionId}/messages`, opencodeMessagesSchema);
+  async getMessages(sessionId: string, directory?: string) {
+    return readJson(`/api/opencode/session/${sessionId}/messages`, opencodeMessagesSchema, withDirectory(directory));
   }
 
-  async getSession(sessionId: string) {
-    return readJson(`/api/opencode/session/${sessionId}`, sessionInfoSchema);
+  async getSession(sessionId: string, directory?: string) {
+    return readJson(`/api/opencode/session/${sessionId}`, sessionInfoSchema, withDirectory(directory));
   }
 
-  async getSessionChildren(sessionId: string) {
-    return readJson(`/api/opencode/session/${sessionId}/children`, z.array(sessionInfoSchema));
+  async getSessionChildren(sessionId: string, directory?: string) {
+    return readJson(`/api/opencode/session/${sessionId}/children`, z.array(sessionInfoSchema), withDirectory(directory));
   }
 
-  async getTodos(sessionId: string): Promise<TodoItem[]> {
-    return readJson(`/api/opencode/session/${sessionId}/todo`, z.array(todoItemSchema));
+  async getTodos(sessionId: string, directory?: string): Promise<TodoItem[]> {
+    return readJson(`/api/opencode/session/${sessionId}/todo`, z.array(todoItemSchema), withDirectory(directory));
   }
 
-  async abortSession(sessionId: string) {
-    return readJson(`/api/opencode/session/${sessionId}/abort`, z.unknown(), {
+  async abortSession(sessionId: string, directory?: string) {
+    return readJson(`/api/opencode/session/${sessionId}/abort`, z.unknown(), withDirectory(directory, {
       method: "POST",
-    });
+    }));
   }
 
-  async getConfig() {
-    return readJson("/api/opencode/config", opencodeConfigSchema);
+  async getConfig(directory?: string) {
+    return readJson("/api/opencode/config", opencodeConfigSchema, withDirectory(directory));
   }
 
-  async updateConfig(config: OpencodeConfig) {
-    return readJson("/api/opencode/config", opencodeConfigSchema, {
+  async updateConfig(config: OpencodeConfig, directory?: string) {
+    return readJson("/api/opencode/config", opencodeConfigSchema, withDirectory(directory, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
-    });
+    }));
   }
 
-  async sendMessage(sessionId: string, input: PromptInput) {
+  async sendMessage(sessionId: string, input: PromptInput, directory?: string) {
     const payload = promptInputSchema.parse(input);
     trafficStats.bytesOut += JSON.stringify(payload).length;
 
-    const response = await fetch(`/api/opencode/session/${sessionId}/message`, {
+    const response = await fetch(`/api/opencode/session/${sessionId}/message`, withDirectory(directory, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+    }));
 
     if (!response.ok) {
       throw new Error((await response.text()) || "Failed to send prompt");
     }
   }
 
-  async listCommands(): Promise<SlashCommand[]> {
-    return readJson("/api/opencode/commands", z.array(slashCommandSchema));
+  async listCommands(directory?: string): Promise<SlashCommand[]> {
+    return readJson("/api/opencode/commands", z.array(slashCommandSchema), withDirectory(directory));
   }
 
-  async sendCommand(sessionId: string, input: { command: string; arguments: string; agent?: string; model?: string }) {
+  async sendCommand(sessionId: string, input: { command: string; arguments: string; agent?: string; model?: string }, directory?: string) {
     const payload = { command: input.command, arguments: input.arguments, agent: input.agent, model: input.model };
     trafficStats.bytesOut += JSON.stringify(payload).length;
 
-    const response = await fetch(`/api/opencode/session/${sessionId}/command`, {
+    const response = await fetch(`/api/opencode/session/${sessionId}/command`, withDirectory(directory, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    });
+    }));
 
     if (!response.ok) {
       throw new Error((await response.text()) || "Failed to send command");
     }
   }
 
-  subscribe(sessionId: string, handlers: SessionEventHandlers, opts: { signal?: AbortSignal } = {}) {
+  subscribe(sessionId: string, handlers: SessionEventHandlers, opts: { signal?: AbortSignal; directory?: string } = {}) {
     const parts = new Map<string, { type: string; text: string; pending: string }>();
     const roles = new Map<string, string>();
-    const eventSource = new EventSource(`/api/opencode/events?sessionId=${encodeURIComponent(sessionId)}`);
+    const query = new URLSearchParams({ sessionId });
+    if (opts.directory) query.set("directory", opts.directory);
+    const eventSource = new EventSource(`/api/opencode/events?${query.toString()}`);
     let lastAssistantId = "";
     let closed = false;
     let failed = false;
@@ -258,7 +272,7 @@ export class OpencodeClient {
     };
   }
 
-  async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal } = {}): AsyncGenerator<UiEvent, void, undefined> {
+  async *query(sessionId: string, input: PromptInput, opts: { signal?: AbortSignal; directory?: string } = {}): AsyncGenerator<UiEvent, void, undefined> {
     const queue: UiEvent[] = [];
     let done = false;
     let wake: (() => void) | null = null;
@@ -276,8 +290,8 @@ export class OpencodeClient {
 
     opts.signal?.addEventListener("abort", stop, { once: true });
 
-    const subscription = this.subscribe(sessionId, { onEvent: push }, { signal: ctl.signal });
-    const send = subscription.ready.then(() => this.sendMessage(sessionId, input));
+    const subscription = this.subscribe(sessionId, { onEvent: push }, { signal: ctl.signal, directory: opts.directory });
+    const send = subscription.ready.then(() => this.sendMessage(sessionId, input, opts.directory));
 
     send.catch((error: Error) => {
       push({ type: "session.error", data: { message: error.message } });

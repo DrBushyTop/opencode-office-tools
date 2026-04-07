@@ -77,6 +77,7 @@ export const sessionInfoSchema = z.object({
   id: z.string(),
   title: z.string().nullable().optional(),
   parentID: z.string().nullable().optional(),
+  directory: z.string().optional(),
 });
 
 export const opencodeConfigSchema = z.object({

@@ -10,7 +10,7 @@ export type OpencodeSessionInfo = z.infer<typeof opencodeSessionInfoSchema>;
 
 const opencodeMessagesSchema = z.array(opencodeMessageSchema);
 const opencodeSessionListSchema = z.array(opencodeSessionInfoSchema);
-const opencodeSessionSchema = opencodeSessionInfoSchema.pick({ id: true, title: true, time: true });
+const opencodeSessionSchema = opencodeSessionInfoSchema.pick({ id: true, title: true, directory: true, time: true });
 
 function hostLabel(host: OfficeHost) {
   return getOfficeHostLabel(host);
@@ -144,30 +144,46 @@ export function mapMessages(items: unknown[]): Message[] {
   });
 }
 
-export async function listSessions(host: OfficeHost, shared: boolean) {
-  const response = await fetch(`/api/opencode/sessions?host=${encodeURIComponent(host)}&shared=${shared ? "1" : "0"}`);
+export async function listSessions(host: OfficeHost, shared: boolean, directory?: string) {
+  const query = new URLSearchParams({
+    host,
+    shared: shared ? "1" : "0",
+  });
+  if (directory) query.set("directory", directory);
+  const response = await fetch(`/api/opencode/sessions?${query.toString()}`);
   if (!response.ok) throw new Error((await response.text()) || "Failed to load sessions");
   return opencodeSessionListSchema.parse(await response.json());
 }
 
-export async function deleteSession(id: string) {
-  const response = await fetch(`/api/opencode/session/${id}`, { method: "DELETE" });
+export async function deleteSession(id: string, directory?: string) {
+  const response = await fetch(
+    directory
+      ? `/api/opencode/session/${id}?directory=${encodeURIComponent(directory)}`
+      : `/api/opencode/session/${id}`,
+    { method: "DELETE" },
+  );
   if (!response.ok) throw new Error((await response.text()) || "Failed to delete session");
 }
 
-export async function updateSessionTitle(id: string, title: string) {
-  const response = await fetch(`/api/opencode/session/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
+export async function updateSessionTitle(id: string, title: string, directory?: string) {
+  const response = await fetch(
+    directory
+      ? `/api/opencode/session/${id}?directory=${encodeURIComponent(directory)}`
+      : `/api/opencode/session/${id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    },
+  );
   if (!response.ok) throw new Error((await response.text()) || "Failed to update session title");
 }
 
-export async function restoreSession(id: string, model: ModelType): Promise<SavedSession> {
+export async function restoreSession(id: string, model: ModelType, directory?: string): Promise<SavedSession> {
+  const query = directory ? `?directory=${encodeURIComponent(directory)}` : "";
   const [sessionResponse, messagesResponse] = await Promise.all([
-    fetch(`/api/opencode/session/${id}`),
-    fetch(`/api/opencode/session/${id}/messages`),
+    fetch(`/api/opencode/session/${id}${query}`),
+    fetch(`/api/opencode/session/${id}/messages${query}`),
   ]);
 
   if (!sessionResponse.ok) throw new Error((await sessionResponse.text()) || "Failed to load session");
@@ -179,6 +195,7 @@ export async function restoreSession(id: string, model: ModelType): Promise<Save
   return savedSessionSchema.parse({
     id: session.id,
     title: session.title,
+    directory: session.directory,
     model,
     messages: mapMessages(messages),
     usage: getLatestSessionUsage(messages),

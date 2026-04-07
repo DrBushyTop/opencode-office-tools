@@ -34,6 +34,7 @@ export const savedMessageSchema = z.object({
 export const savedSessionSchema = z.object({
   id: z.string(),
   title: z.string(),
+  directory: z.string().optional(),
   model: z.string(),
   messages: z.array(savedMessageSchema),
   usage: sessionUsageSchema.nullable().optional(),

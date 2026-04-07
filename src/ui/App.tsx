@@ -6,6 +6,7 @@ import {
   makeStyles,
 } from "@fluentui/react-components";
 import { ChatInput, ImageAttachment } from "./components/ChatInput";
+import { FolderPickerDialog } from "./components/FolderPickerDialog";
 import { Message, MessageList, DebugEvent } from "./components/MessageList";
 import { HeaderBar, ModelType } from "./components/HeaderBar";
 import { SessionHistory } from "./components/SessionHistory";
@@ -135,17 +136,17 @@ function getEnabledTools(host: OfficeHost) {
   return tools;
 }
 
-async function getSessionFamily(client: ReturnType<typeof createOpencodeClient>, rootId: string) {
+async function getSessionFamily(client: ReturnType<typeof createOpencodeClient>, rootId: string, directory?: string) {
   const ids = new Set<string>([rootId]);
   const titles = new Map<string, string>();
   const queue = [rootId];
 
-  const root = await client.getSession(rootId).catch(() => null);
+  const root = await client.getSession(rootId, directory).catch(() => null);
   if (root?.title) titles.set(root.id, root.title);
 
   while (queue.length > 0) {
     const id = queue.shift()!;
-    const children = await client.getSessionChildren(id).catch(() => [] as SessionInfo[]);
+    const children = await client.getSessionChildren(id, directory).catch(() => [] as SessionInfo[]);
     for (const child of children) {
       if (!child?.id || ids.has(child.id)) continue;
       ids.add(child.id);
@@ -155,6 +156,12 @@ async function getSessionFamily(client: ReturnType<typeof createOpencodeClient>,
   }
 
   return { ids, titles };
+}
+
+function withDirectoryQuery(path: string, directory?: string) {
+  if (!directory) return path;
+  const prefix = path.includes("?") ? "&" : "?";
+  return `${path}${prefix}directory=${encodeURIComponent(directory)}`;
 }
 
 function describeToolActivity(toolName: string, toolArgs: Record<string, unknown>) {
@@ -334,6 +341,7 @@ function toPromptParts(text: string, images: Array<{ path: string; name: string;
 
 type SessionStream = {
   sessionId: string;
+  directory: string;
   ready: Promise<void>;
   close: () => void;
 };
@@ -352,11 +360,13 @@ export const App: React.FC = () => {
   const [selectedModel, setSelectedModel] = useLocalStorage<ModelType>("word-addin-selected-model", "");
   const [showHistory, setShowHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
+  const [currentSessionDirectory, setCurrentSessionDirectory] = useState("");
   const [officeHost, setOfficeHost] = useState<OfficeHost>("word");
   const [debugEnabled, setDebugEnabled] = useLocalStorage<boolean>("opencode-debug", false);
   const [showThinking, setShowThinking] = useLocalStorage<boolean>("opencode-show-thinking", true);
   const [showToolResponses, setShowToolResponses] = useLocalStorage<boolean>("opencode-show-tool-responses", false);
   const [sharedHistory, setSharedHistory] = useLocalStorage<boolean>("opencode-shared-history", false);
+  const [defaultFolder, setDefaultFolder] = useLocalStorage<string>("opencode-default-folder", "");
   const [selectedThemeId, setSelectedThemeId] = useLocalStorage<string>("opencode-ui-theme", defaultThemeId);
   const [qaSubagentModel, setQaSubagentModel] = useState<ModelType>("");
   const [qaSubagentVariant, setQaSubagentVariant] = useState<string | undefined>(undefined);
@@ -369,6 +379,8 @@ export const App: React.FC = () => {
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [runtimeDirectory, setRuntimeDirectory] = useState("");
   const [themePreference, setThemePreference] = useLocalStorage<ThemePreference>("opencode-theme-mode", "system");
   const safeThemePreference: ThemePreference = (themePreference === "light" || themePreference === "dark") ? themePreference : "system";
   const themeMode = useThemeMode(safeThemePreference);
@@ -377,6 +389,7 @@ export const App: React.FC = () => {
   const safeShowThinking = PersistedBooleanSchema.catch(true).parse(showThinking);
   const safeShowToolResponses = PersistedBooleanSchema.catch(false).parse(showToolResponses);
   const safeSharedHistory = PersistedBooleanSchema.catch(false).parse(sharedHistory);
+  const safeDefaultFolder = PersistedModelSchema.catch("").parse(defaultFolder).trim();
   const safeSelectedThemeId = themeOptions.some((theme) => theme.id === selectedThemeId) ? selectedThemeId : defaultThemeId;
   const safeQaSubagentModel = PersistedModelSchema.catch("").parse(qaSubagentModel);
   const hostLabel = getOfficeHostLabel(officeHost);
@@ -399,6 +412,14 @@ export const App: React.FC = () => {
     [safeSelectedThemeId, themeMode],
   );
   const connectionStatus = useMemo(() => deriveConnectionIndicator(connectionState), [connectionState]);
+  const requestedDirectory = useMemo(
+    () => currentSessionId ? currentSessionDirectory || undefined : safeDefaultFolder || undefined,
+    [currentSessionDirectory, currentSessionId, safeDefaultFolder],
+  );
+  const activeDirectory = useMemo(
+    () => currentSessionId ? currentSessionDirectory || safeDefaultFolder || runtimeDirectory : safeDefaultFolder || runtimeDirectory,
+    [currentSessionDirectory, currentSessionId, runtimeDirectory, safeDefaultFolder],
+  );
   const sessionCreatedAt = useRef<string>("");
   const messagesRef = useRef<Message[]>([]);
   const liveRef = useRef<Message[]>([]);
@@ -602,8 +623,8 @@ export const App: React.FC = () => {
     }
   };
 
-  const ensureSessionStream = async (sessionId: string) => {
-    if (streamRef.current?.sessionId === sessionId) {
+  const ensureSessionStream = async (sessionId: string, directory: string) => {
+    if (streamRef.current?.sessionId === sessionId && streamRef.current.directory === directory) {
       await streamRef.current.ready;
       return;
     }
@@ -618,9 +639,10 @@ export const App: React.FC = () => {
       onTodoUpdated: (items) => {
         setTodos(items);
       },
-    }, { signal: controller.signal });
+    }, { signal: controller.signal, directory: directory || undefined });
     const next = {
       sessionId,
+      directory,
       ready: subscription.ready,
       close: () => {
         controller.abort();
@@ -636,7 +658,10 @@ export const App: React.FC = () => {
     setConnectionState((current) => ({ ...current, isLoading: true, hasFailed: false }));
 
     try {
-      const status = await client.getStatus();
+      const status = await client.getStatus(requestedDirectory);
+      if (!requestedDirectory && status.directory) {
+        setRuntimeDirectory(status.directory);
+      }
       setConnectionState({ isLoading: false, hasLoaded: true, hasFailed: false });
       const models = status.models?.length ? status.models : FALLBACK_MODELS;
       setAvailableModels(models);
@@ -652,7 +677,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      const config = await client.getConfig();
+      const config = await client.getConfig(requestedDirectory);
       setQaSubagentModel(qaModel(config));
       setQaSubagentVariant(qaVariant(config));
     } catch {
@@ -661,7 +686,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      const commands = await client.listCommands();
+      const commands = await client.listCommands(requestedDirectory);
       setSlashCommands(commands);
     } catch {
       setSlashCommands([]);
@@ -670,7 +695,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     void fetchModels();
-  }, []);
+  }, [requestedDirectory]);
 
   useEffect(() => {
     const host = normalizeOfficeHost(Office.context.host);
@@ -729,10 +754,10 @@ export const App: React.FC = () => {
           return;
         }
 
-        const response = await fetch("/api/opencode/permissions");
+        const response = await fetch(withDirectoryQuery("/api/opencode/permissions", currentSessionDirectory || undefined));
         if (!response.ok) return;
         const items = z.array(OfficePermissionRequestSchema).catch([]).parse(await response.json());
-        const family = await getSessionFamily(client, currentSessionId);
+        const family = await getSessionFamily(client, currentSessionId, currentSessionDirectory || undefined);
         const next = items.find((item) => family.ids.has(item.sessionID));
 
         if (!next) {
@@ -742,7 +767,7 @@ export const App: React.FC = () => {
         }
 
         if (canAutoApprove(next)) {
-          await fetch(`/api/opencode/permission/${next.id}/reply`, {
+          await fetch(withDirectoryQuery(`/api/opencode/permission/${next.id}/reply`, currentSessionDirectory || undefined), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ reply: "once" }),
@@ -757,7 +782,7 @@ export const App: React.FC = () => {
     const timer = window.setInterval(poll, 1000);
     void poll();
     return () => window.clearInterval(timer);
-  }, [client, currentSessionId]);
+  }, [client, currentSessionDirectory, currentSessionId]);
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -766,7 +791,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    void ensureSessionStream(currentSessionId).catch((err) => {
+    void ensureSessionStream(currentSessionId, currentSessionDirectory).catch((err) => {
       const text = err instanceof Error ? err.message : String(err);
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       setMessages((prev) => [...prev, {
@@ -778,16 +803,16 @@ export const App: React.FC = () => {
     });
 
     return () => {
-      if (streamRef.current?.sessionId !== currentSessionId) return;
+      if (streamRef.current?.sessionId !== currentSessionId || streamRef.current.directory !== currentSessionDirectory) return;
       streamRef.current.close();
       streamRef.current = null;
     };
-  }, [currentSessionId]);
+  }, [currentSessionDirectory, currentSessionId]);
 
   const handlePermissionDecision = async (decision: PermissionDecision) => {
     if (!permission) return;
     const reply = decision === "deny" ? "reject" : decision === "always" ? "always" : "once";
-    await fetch(`/api/opencode/permission/${permission.id}/reply`, {
+    await fetch(withDirectoryQuery(`/api/opencode/permission/${permission.id}/reply`, currentSessionDirectory || undefined), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reply }),
@@ -813,24 +838,29 @@ export const App: React.FC = () => {
     setOfficeHost(office);
 
     setCurrentSessionId("");
+    setCurrentSessionDirectory("");
     sessionCreatedAt.current = restored?.createdAt || new Date().toISOString();
     setMessages(restored?.messages || []);
     setTodos([]);
 
     if (restored) {
+      setCurrentSessionDirectory(restored.directory || "");
       setCurrentSessionId(restored.id);
-      client.getTodos(restored.id).then((items) => setTodos(items)).catch(() => {});
+      client.getTodos(restored.id, restored.directory).then((items) => setTodos(items)).catch(() => {});
       return;
     }
 
-    await client.getStatus().catch(() => null);
+    const status = await client.getStatus(safeDefaultFolder || undefined).catch(() => null);
+    if (!safeDefaultFolder && status?.directory) {
+      setRuntimeDirectory(status.directory);
+    }
     if (!safeSelectedModel && availableModels.length > 0) {
       setSelectedModel(pickDefaultModel(availableModels));
     }
   };
 
   const handleRestoreSession = async (saved: OpencodeSessionInfo) => {
-    const restored = await restoreSession(saved.id, safeSelectedModel);
+    const restored = await restoreSession(saved.id, safeSelectedModel, saved.directory);
     void startNewSession(safeSelectedModel, restored);
   };
 
@@ -843,14 +873,22 @@ export const App: React.FC = () => {
   };
 
   const ensureSession = async () => {
-    if (currentSessionId) return currentSessionId;
+    if (currentSessionId) {
+      return {
+        id: currentSessionId,
+        directory: currentSessionDirectory || activeDirectory || "",
+      };
+    }
 
     const office = normalizeOfficeHost(Office.context.host);
     const session = await client.createSession({
       title: `${getOfficeHostLabel(office)}: New chat`,
+      directory: safeDefaultFolder || undefined,
     });
+    const directory = session.directory || safeDefaultFolder || runtimeDirectory || "";
+    setCurrentSessionDirectory(directory);
     setCurrentSessionId(session.id);
-    return session.id;
+    return { id: session.id, directory };
   };
 
   const handleQaSubagentModelChange = async (model: ModelType) => {
@@ -858,8 +896,8 @@ export const App: React.FC = () => {
     setQaSubagentModel(model);
 
     try {
-      const config = await client.getConfig();
-      await client.updateConfig(mergeQaModel(config, model));
+      const config = await client.getConfig(requestedDirectory);
+      await client.updateConfig(mergeQaModel(config, model), requestedDirectory);
     } catch {
       setQaSubagentModel(previous);
     }
@@ -870,8 +908,8 @@ export const App: React.FC = () => {
     setQaSubagentVariant(variant);
 
     try {
-      const config = await client.getConfig();
-      await client.updateConfig(mergeQaVariant(config, variant));
+      const config = await client.getConfig(requestedDirectory);
+      await client.updateConfig(mergeQaVariant(config, variant), requestedDirectory);
     } catch {
       setQaSubagentVariant(previous);
     }
@@ -893,14 +931,18 @@ export const App: React.FC = () => {
     const wasTyping = isTyping;
     const carried = wasTyping ? liveRef.current : [];
 
-    let sessionId = currentSessionId;
+    let session = currentSessionId
+      ? { id: currentSessionId, directory: currentSessionDirectory || activeDirectory || "" }
+      : null;
 
     try {
-      sessionId = await ensureSession();
+      session = await ensureSession();
     } catch (err) {
       setError(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
+
+    if (!session) return;
 
     setMessages((prev) => {
       const next = mergeMessages(prev, carried);
@@ -929,7 +971,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      await ensureSessionStream(sessionId);
+      await ensureSessionStream(session.id, session.directory);
 
       // Detect slash command: /<name> [arguments]
       const slashMatch = userInput.match(/^\/(\S+)(?:\s(.*))?$/s);
@@ -941,15 +983,15 @@ export const App: React.FC = () => {
         const commandArgs = (slashMatch![2] || "").trim();
 
         if (isFirstUserTurn && userInput.trim()) {
-          updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+          updateSessionTitle(session.id, makeSessionTitle(officeHost, userInput), session.directory || undefined).catch(() => undefined);
         }
 
-        await client.sendCommand(sessionId, {
+        await client.sendCommand(session.id, {
           command: matchedCommand.name,
           arguments: commandArgs,
           agent: matchedCommand.agent || officeHost,
           model: matchedCommand.model,
-        });
+        }, session.directory || undefined);
       } else {
         const uploads: Array<{ path: string; name: string; mime: string }> = [];
 
@@ -974,17 +1016,17 @@ export const App: React.FC = () => {
         const tools = getEnabledTools(officeHost);
 
         if (isFirstUserTurn && userInput.trim()) {
-          updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+          updateSessionTitle(session.id, makeSessionTitle(officeHost, userInput), session.directory || undefined).catch(() => undefined);
         }
 
-        await client.sendMessage(sessionId, {
+        await client.sendMessage(session.id, {
           model: { providerID: model.providerID, modelID: model.modelID },
           agent: officeHost,
           system: getSystemMessage(Office.context.host),
           parts,
           tools,
           variant: safeSelectedVariant,
-        });
+        }, session.directory || undefined);
       }
     } catch (err) {
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
@@ -1007,7 +1049,7 @@ export const App: React.FC = () => {
     setCurrentActivity("Stopping...");
 
     try {
-      await client.abortSession(currentSessionId);
+      await client.abortSession(currentSessionId, currentSessionDirectory || undefined);
       streamTextRef.current.clear();
       setMessages((prev) => mergeMessages(prev, liveRef.current));
       setLiveMessages([]);
@@ -1032,6 +1074,7 @@ export const App: React.FC = () => {
           <div className={styles.shell}>
             <SessionHistory
               host={officeHost}
+              directory={activeDirectory || undefined}
               shared={safeSharedHistory}
               onSharedChange={setSharedHistory}
               onSelectSession={handleRestoreSession}
@@ -1076,6 +1119,10 @@ export const App: React.FC = () => {
             onThemeChange={setSelectedThemeId}
             themePreference={safeThemePreference}
             onThemePreferenceChange={setThemePreference}
+            activeFolder={activeDirectory || undefined}
+            defaultFolder={safeDefaultFolder || undefined}
+            onChooseDefaultFolder={() => setFolderPickerOpen(true)}
+            onClearDefaultFolder={() => setDefaultFolder("")}
             connectionStatus={connectionStatus}
             subtitle={headerSubtitle}
             contextLabel={headerContext}
@@ -1122,6 +1169,15 @@ export const App: React.FC = () => {
               onDecision={handlePermissionDecision}
             />
           )}
+          <FolderPickerDialog
+            open={folderPickerOpen}
+            initialPath={safeDefaultFolder || activeDirectory || undefined}
+            onClose={() => setFolderPickerOpen(false)}
+            onSelect={(path) => {
+              setDefaultFolder(path);
+              setFolderPickerOpen(false);
+            }}
+          />
         </div>
       </div>
     </FluentProvider>

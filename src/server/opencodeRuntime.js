@@ -25,6 +25,7 @@ const runtimeProviderSchema = z.object({
 
 const requestOptionsSchema = z.object({
   baseUrl: z.string().optional(),
+  directory: z.string().optional(),
   method: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   body: z.unknown().optional(),
@@ -171,14 +172,14 @@ class OpencodeRuntime {
     this.cleanup = null;
   }
 
-  directory() {
-    return officeDirectory();
+  directory(value) {
+    return value ? path.resolve(value) : officeDirectory();
   }
 
-  headers(extra = {}) {
+  headers(extra = {}, directory) {
     return {
       ...extra,
-      'x-opencode-directory': encodeURIComponent(this.directory()),
+      'x-opencode-directory': encodeURIComponent(this.directory(directory)),
     };
   }
 
@@ -255,7 +256,7 @@ class OpencodeRuntime {
     const runtime = parsedOptions.baseUrl ? { baseUrl: parsedOptions.baseUrl } : await this.ensureRuntime();
     const response = await fetch(`${runtime.baseUrl}${url}`, {
       method: parsedOptions.method || 'GET',
-      headers: this.headers(parsedOptions.headers),
+      headers: this.headers(parsedOptions.headers, parsedOptions.directory),
       body: parsedOptions.body ? JSON.stringify(parsedOptions.body) : undefined,
     });
 
@@ -293,7 +294,7 @@ class OpencodeRuntime {
     return items;
   }
 
-  async status() {
+  async status(directory) {
     const runtime = await this.ensureRuntime();
     let models = [];
 
@@ -306,7 +307,7 @@ class OpencodeRuntime {
     return {
       mode: runtime.mode,
       baseUrl: runtime.baseUrl,
-      directory: this.directory(),
+      directory: this.directory(directory),
       configDirectory: officeConfigDirectory(),
       models,
     };
