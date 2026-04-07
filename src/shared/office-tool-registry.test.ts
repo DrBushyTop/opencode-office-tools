@@ -32,7 +32,6 @@ describe("office tool registry", () => {
     const manageRangeWrapper = fs.readFileSync(path.join(toolsDir, "manage_range.ts"), "utf8");
     const manageSlideWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide.ts"), "utf8");
     const manageSlideShapesWrapper = fs.readFileSync(path.join(toolsDir, "manage_slide_shapes.ts"), "utf8");
-    const getNotebookOverviewWrapper = fs.readFileSync(path.join(toolsDir, "get_notebook_overview.ts"), "utf8");
 
     expect(wrapperFiles).toEqual(registryFiles);
     expect(getDocumentPartWrapper).toContain('export default word("get_document_part"');
@@ -71,7 +70,6 @@ describe("office tool registry", () => {
     expect(wrapperFiles).not.toContain("manage_slide_chart.ts");
     expect(wrapperFiles).not.toContain("insert_business_layout.ts");
     expect(wrapperFiles).not.toContain("create_slide_from_template.ts");
-    expect(getNotebookOverviewWrapper).toContain('export default onenote("get_notebook_overview"');
     expect(getOfficeToolNames("word")).toContain("get_document_part");
     expect(getOfficeToolNames("word")).toContain("get_document_range");
     expect(getOfficeToolNames("powerpoint")).toContain("add_slide_animation");
@@ -101,7 +99,6 @@ describe("office tool registry", () => {
     expect(getOfficeToolNames("powerpoint")).not.toContain("manage_slide_chart");
     expect(getOfficeToolNames("powerpoint")).not.toContain("insert_business_layout");
     expect(getOfficeToolNames("powerpoint")).not.toContain("create_slide_from_template");
-    expect(getOfficeToolNames("onenote")).toContain("get_notebook_overview");
   });
 
   it("keeps active prompt assets free of removed PowerPoint tool names", () => {

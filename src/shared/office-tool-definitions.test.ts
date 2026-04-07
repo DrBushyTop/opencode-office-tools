@@ -36,9 +36,5 @@ describe("office tool definitions", () => {
     expect(getOfficeToolNames("powerpoint")).toContain("set_slide_transition");
     expect(getOfficeToolNames("powerpoint")).not.toContain("add_slide_from_code");
     expect(getOfficeToolNames("powerpoint")).not.toContain("get_selection_text");
-    expect(getOfficeToolNames("onenote")).toContain("get_notebook_overview");
-    expect(getOfficeToolNames("onenote")).toContain("get_page_content");
-    expect(getOfficeToolNames("onenote")).toContain("navigate_to_page");
-    expect(getOfficeToolNames("onenote")).not.toContain("manage_range");
   });
 });

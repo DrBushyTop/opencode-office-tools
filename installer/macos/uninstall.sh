@@ -92,7 +92,6 @@ remove_manifest_registrations() {
         "$user_home/Library/Containers/com.microsoft.Word/Data/Documents/wef"
         "$user_home/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
         "$user_home/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
-        "$user_home/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
     )
 
     echo "Removing add-in registrations..."

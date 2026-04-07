@@ -124,7 +124,7 @@ function pickDefaultModel(models: { key: string }[]): ModelType {
 }
 
 // Per-host tool guidance and verification instructions are now defined in the
-// OpenCode agent prompts under .opencode/agents/{powerpoint,word,excel,onenote}.md.
+// OpenCode agent prompts under .opencode/agents/{powerpoint,word,excel}.md.
 // The system message passed per-call is kept minimal; the agent prompt is primary.
 
 function getEnabledTools(host: OfficeHost) {
@@ -301,8 +301,6 @@ function getSystemMessage(host: typeof Office.HostType[keyof typeof Office.HostT
       ? "Word"
       : host === Office.HostType.Excel
         ? "Excel"
-        : host === Office.HostType.OneNote
-          ? "OneNote"
         : "Office";
 
   const base = `The user's Microsoft ${hostName} document is currently open. Always operate on the open document through the available tools.`;

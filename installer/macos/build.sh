@@ -99,7 +99,7 @@ write_installer_documents() {
     <p>During setup, it will:</p>
     <ul>
         <li>Copy the desktop app into your Applications folder</li>
-        <li>Refresh the OpenCode sideload manifest for Word, PowerPoint, Excel, and OneNote</li>
+        <li>Refresh the OpenCode sideload manifest for Word, PowerPoint, and Excel</li>
         <li>Configure the helper app to start automatically at login</li>
         <li>Expose a menu bar entry for status and troubleshooting</li>
     </ul>
@@ -126,7 +126,7 @@ EOF
     <p><strong>Next steps:</strong></p>
     <ol>
         <li>Confirm the OpenCode icon is visible in your menu bar</li>
-        <li>Open Word, PowerPoint, Excel, or OneNote</li>
+        <li>Open Word, PowerPoint, or Excel</li>
         <li>Open the "OpenCode" command from the Home ribbon</li>
         <li>Wait for the task pane to connect to the local helper</li>
     </ol>

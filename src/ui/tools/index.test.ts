@@ -48,7 +48,6 @@ describe("normalizeToolExecutionResult", () => {
       Word: "Word",
       PowerPoint: "PowerPoint",
       Excel: "Excel",
-      OneNote: "OneNote",
     };
 
     Object.assign(globalThis, {

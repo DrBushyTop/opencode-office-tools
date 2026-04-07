@@ -12,14 +12,12 @@ describe("officeHost", () => {
         PowerPoint: "PowerPoint",
         Word: "Word",
         Excel: "Excel",
-        OneNote: "OneNote",
       },
     };
 
     expect(normalizeOfficeHost("PowerPoint")).toBe("powerpoint");
     expect(normalizeOfficeHost("Word")).toBe("word");
     expect(normalizeOfficeHost("Excel")).toBe("excel");
-    expect(normalizeOfficeHost("OneNote")).toBe("onenote");
     expect(normalizeOfficeHost("unknown")).toBe("word");
   });
 
@@ -27,6 +25,5 @@ describe("officeHost", () => {
     expect(getOfficeHostLabel("powerpoint")).toBe("PowerPoint");
     expect(getOfficeHostLabel("word")).toBe("Word");
     expect(getOfficeHostLabel("excel")).toBe("Excel");
-    expect(getOfficeHostLabel("onenote")).toBe("OneNote");
   });
 });

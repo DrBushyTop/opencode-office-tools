@@ -1,6 +1,6 @@
 # OpenCode Office Add-in
 
-A Microsoft Office add-in that brings OpenCode into Word, Excel, PowerPoint, and OneNote.
+A Microsoft Office add-in that brings OpenCode into Word, Excel, and PowerPoint.
 
 > **Note:** This project is not affiliated with, endorsed by, or associated with [anomalyco/opencode](https://github.com/anomalyco/opencode/tree/dev) in any way. It is an independent project built on the opencode SDK.
 
@@ -24,8 +24,7 @@ The getting started guide walks you through running the add-in locally using the
 +-------------------+
 | Office Add-in UI  |
 | Word / Excel /    |
-| PowerPoint /      |
-| OneNote           |
+| PowerPoint        |
 +---------+---------+
           |
           | user prompt / action
@@ -59,7 +58,7 @@ The getting started guide walks you through running the add-in locally using the
 | Read state |                   | Make edits   |
 | document,  |                   | update Word, |
 | slides,    |                   | Excel, PPT,  |
-| workbook   |                   | OneNote      |
+| workbook   |                   | PowerPoint   |
 +-----+------+                   +------+-------+
       |                                   |
       +----------------+------------------+
@@ -88,7 +87,7 @@ The getting started guide walks you through running the add-in locally using the
 ├── dist/                  # Built frontend assets
 ├── certs/                 # Development localhost certs and OpenSSL config
 ├── scripts/               # Build and packaging helper scripts
-├── manifest.xml           # Office add-in manifest for Word, Excel, PowerPoint, and OneNote
+├── manifest.xml           # Office add-in manifest for Word, Excel, and PowerPoint
 ├── installer/             # Installer resources (Electron Builder)
 │   ├── macos/             # macOS post-install scripts
 │   └── windows/           # Windows NSIS scripts

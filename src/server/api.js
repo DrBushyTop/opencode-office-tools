@@ -45,7 +45,6 @@ const commandBodySchema = z.object({
 function hostPrefix(host) {
   if (host === 'powerpoint') return 'PowerPoint: ';
   if (host === 'excel') return 'Excel: ';
-  if (host === 'onenote') return 'OneNote: ';
   return 'Word: ';
 }
 

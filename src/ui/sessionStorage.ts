@@ -10,7 +10,7 @@ const dateSchema = z.preprocess((value) => {
   return value;
 }, z.date());
 
-export const officeHostSchema = z.enum(["powerpoint", "word", "excel", "onenote"]);
+export const officeHostSchema = z.enum(["powerpoint", "word", "excel"]);
 
 export type OfficeHost = z.infer<typeof officeHostSchema>;
 

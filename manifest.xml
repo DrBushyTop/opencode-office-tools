@@ -9,7 +9,7 @@
   <ProviderName>Your Company</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OpenCode Office"/>
-  <Description DefaultValue="OpenCode Office for Word, Excel, PowerPoint, and OneNote."/>
+  <Description DefaultValue="OpenCode Office for Word, Excel, and PowerPoint."/>
   <IconUrl DefaultValue="https://localhost:52390/icon-32.png?v=20260407b"/>
   <HighResolutionIconUrl DefaultValue="https://localhost:52390/icon-64.png?v=20260407b"/>
   <SupportUrl DefaultValue="https://www.contoso.com/help"/>
@@ -20,7 +20,6 @@
     <Host Name="Document"/>
     <Host Name="Presentation"/>
     <Host Name="Workbook"/>
-    <Host Name="Notebook"/>
   </Hosts>
   <Permissions>ReadWriteDocument</Permissions>
   <DefaultSettings>
@@ -122,39 +121,6 @@
                   <bt:Image size="80" resid="Icon.80"/>
                 </Icon>
                 <Control xsi:type="Button" id="OpenCodeTaskpaneWorkbook">
-                  <Label resid="Surface.ButtonLabel"/>
-                  <Supertip>
-                    <Title resid="Surface.ButtonLabel"/>
-                    <Description resid="Surface.ButtonTooltip"/>
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="Icon.16"/>
-                    <bt:Image size="32" resid="Icon.32"/>
-                    <bt:Image size="80" resid="Icon.80"/>
-                  </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <TaskpaneId>OpenCodePanel</TaskpaneId>
-                    <SourceLocation resid="Surface.TaskpaneUrl"/>
-                  </Action>
-                </Control>
-              </Group>
-            </OfficeTab>
-          </ExtensionPoint>
-        </DesktopFormFactor>
-      </Host>
-      <Host xsi:type="Notebook">
-        <DesktopFormFactor>
-          <FunctionFile resid="Surface.CommandsUrl"/>
-          <ExtensionPoint xsi:type="PrimaryCommandSurface">
-            <OfficeTab id="TabHome">
-              <Group id="OpenCodeGroupNotebook">
-                <Label resid="Surface.GroupLabel"/>
-                <Icon>
-                  <bt:Image size="16" resid="Icon.16"/>
-                  <bt:Image size="32" resid="Icon.32"/>
-                  <bt:Image size="80" resid="Icon.80"/>
-                </Icon>
-                <Control xsi:type="Button" id="OpenCodeTaskpaneNotebook">
                   <Label resid="Surface.ButtonLabel"/>
                   <Supertip>
                     <Title resid="Surface.ButtonLabel"/>

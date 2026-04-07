@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const officeToolHostSchema = z.enum(["word", "powerpoint", "excel", "onenote"]);
+export const officeToolHostSchema = z.enum(["word", "powerpoint", "excel"]);
 export type OfficeToolHost = z.infer<typeof officeToolHostSchema>;
 
 export const officeToolParametersSchema = z.record(z.string(), z.unknown());

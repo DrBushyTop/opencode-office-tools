@@ -174,9 +174,9 @@ Write-Host "  ✓ Office sideload registration updated" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "Setup complete. Next steps:" -ForegroundColor Cyan
-Write-Host "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
+Write-Host "1. Close Word, PowerPoint, and Excel if they are open"
 Write-Host "2. Launch the installed tray app"
-Write-Host "3. Open Word, PowerPoint, Excel, or OneNote"
+Write-Host "3. Open Word, PowerPoint, or Excel"
 Write-Host "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 Write-Host ""
 Write-Host "To remove the sideload registration later, run: .\unregister.ps1" -ForegroundColor Gray

@@ -130,7 +130,6 @@ sync_manifest_registrations() {
         "$user_home/Library/Containers/com.microsoft.Word/Data/Documents/wef"
         "$user_home/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
         "$user_home/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
-        "$user_home/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
     )
 
     local wef_dir
@@ -141,7 +140,7 @@ sync_manifest_registrations() {
         chown -R "$install_user":staff "$wef_dir"
     done
 
-    echo "Office sideload registration refreshed for Word, PowerPoint, Excel, and OneNote"
+    echo "Office sideload registration refreshed for Word, PowerPoint, and Excel"
 }
 
 ensure_local_certificate() {

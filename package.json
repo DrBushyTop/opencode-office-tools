@@ -1,7 +1,7 @@
 {
   "name": "opencode-office-add-in",
   "version": "1.0.0",
-  "description": "OpenCode Office add-in for Word, Excel, PowerPoint, and OneNote.",
+  "description": "OpenCode Office add-in for Word, Excel, and PowerPoint.",
   "main": "src/tray/main.js",
   "scripts": {
     "dev": "node src/server.js",

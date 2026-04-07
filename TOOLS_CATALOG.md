@@ -72,21 +72,6 @@ This document lists all available tools that OpenCode can use when working with 
 | `manage_worksheet` | Create, rename, delete, move, change visibility, freeze/unfreeze, activate, protect, or unprotect worksheets. |
 | `manage_table` | Create or update Excel tables, including style, totals, resizing, row appends/inserts, filter reset, conversion back to ranges, and deletion. |
 
-## OneNote Tools
-
-| Tool | Description |
-|------|-------------|
-| `get_notebook_overview` | Get a structural overview of the active OneNote notebook, including sections, section groups, page ids, and page client URLs. Use this first. |
-| `get_page_content` | Read the active OneNote page as a summary, extracted text, or structured JSON. OneNote only exposes full page content for the active page. |
-| `get_note_selection` | Read the current OneNote selection as plain text or a matrix of values. |
-| `set_note_selection` | Write text, HTML, or an image to the current OneNote selection using OneNote's supported selection coercions. |
-| `create_page` | Create a new page in the active section or before/after the current page, with optional initial HTML content. |
-| `set_page_title` | Rename the active OneNote page. |
-| `append_page_content` | Append limited supported HTML to the active OneNote page, reusing the last outline when possible. |
-| `navigate_to_page` | Navigate OneNote to a target page by page id or client URL; provide exactly one target so active-page-only reads and edits can work. |
-
----
-
 ## Tool Usage Patterns
 
 ### Start with Overview Tools
@@ -94,7 +79,6 @@ Always begin by using the overview tool for your application:
 - Word: `get_document_overview`
 - PowerPoint: `get_presentation_overview`  
 - Excel: `get_workbook_overview`
-- OneNote: `get_notebook_overview`
 
 This helps OpenCode understand your document structure before making targeted reads or edits.
 
@@ -158,11 +142,3 @@ When working with Excel data:
 3. Use `manage_chart` to visualize or refine the data
 4. Use `manage_named_range` for important data regions
 5. Use `manage_range` for generic range-level cleanup, fill, sort, or filter operations
-
-### OneNote: Active-Page-Centric Workflow
-When working with OneNote:
-1. Use `get_notebook_overview` to discover sections and page ids
-2. Use `navigate_to_page` when the page you need is not currently active
-3. Use `get_page_content` to inspect the active page before mutating it
-4. Use `append_page_content`, `set_page_title`, or `set_note_selection` for edits
-5. Keep HTML simple because OneNote supports only a limited subset and normalizes whitespace

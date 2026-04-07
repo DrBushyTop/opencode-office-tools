@@ -146,15 +146,13 @@ echo "  Manifest source: $MANIFEST_PATH"
 WORD_WEF_DIR="$HOME/Library/Containers/com.microsoft.Word/Data/Documents/wef"
 POWERPOINT_WEF_DIR="$HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
 EXCEL_WEF_DIR="$HOME/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
-ONENOTE_WEF_DIR="$HOME/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
 
 mkdir -p "$WORD_WEF_DIR"
 mkdir -p "$POWERPOINT_WEF_DIR"
 mkdir -p "$EXCEL_WEF_DIR"
-mkdir -p "$ONENOTE_WEF_DIR"
 
 # Replace older OpenCode registrations before copying the active manifest into each host folder.
-for WEF_DIR in "$WORD_WEF_DIR" "$POWERPOINT_WEF_DIR" "$EXCEL_WEF_DIR" "$ONENOTE_WEF_DIR"; do
+for WEF_DIR in "$WORD_WEF_DIR" "$POWERPOINT_WEF_DIR" "$EXCEL_WEF_DIR"; do
     remove_matching_manifests "$WEF_DIR" "$TARGET_MANIFEST_ID"
     cp "$MANIFEST_PATH" "$WEF_DIR/$MANIFEST_FILENAME"
 done
@@ -162,13 +160,12 @@ done
 echo -e "  \033[32m✓ Word sideload registration updated\033[0m"
 echo -e "  \033[32m✓ PowerPoint sideload registration updated\033[0m"
 echo -e "  \033[32m✓ Excel sideload registration updated\033[0m"
-echo -e "  \033[32m✓ OneNote sideload registration updated\033[0m"
 echo ""
 
 echo -e "\033[36mSetup complete. Next steps:\033[0m"
-echo "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
+echo "1. Close Word, PowerPoint, and Excel if they are open"
 echo "2. Launch the installed tray app"
-echo "3. Open Word, PowerPoint, Excel, or OneNote"
+echo "3. Open Word, PowerPoint, or Excel"
 echo "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 echo ""
 echo -e "\033[90mTo remove the sideload registration later, run: ./unregister.sh\033[0m"

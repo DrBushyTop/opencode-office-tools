@@ -194,7 +194,6 @@ const HOST_LABELS: Record<OfficeHost, string> = {
   powerpoint: "PowerPoint",
   word: "Word",
   excel: "Excel",
-  onenote: "OneNote",
 };
 
 /** Produce a compact relative-time label from epoch millis. */

@@ -95,7 +95,6 @@ echo ""
 WORD_WEF_DIR="$HOME/Library/Containers/com.microsoft.Word/Data/Documents/wef"
 POWERPOINT_WEF_DIR="$HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
 EXCEL_WEF_DIR="$HOME/Library/Containers/com.microsoft.Excel/Data/Documents/wef"
-ONENOTE_WEF_DIR="$HOME/Library/Containers/com.microsoft.onenote.mac/Data/Documents/wef"
 
 # Remove any matching OpenCode registration from each host folder.
 if [ -f "$WORD_WEF_DIR/$MANIFEST_FILENAME" ]; then
@@ -128,17 +127,6 @@ else
         echo -e "  \033[32m✓ Removed Excel sideload registration\033[0m"
     else
         echo -e "  \033[90m• No OpenCode registration found for Excel\033[0m"
-    fi
-fi
-
-if [ -f "$ONENOTE_WEF_DIR/$MANIFEST_FILENAME" ]; then
-    rm "$ONENOTE_WEF_DIR/$MANIFEST_FILENAME"
-    echo -e "  \033[32m✓ Removed OneNote sideload registration\033[0m"
-else
-    if remove_matching_manifests "$ONENOTE_WEF_DIR" "$TARGET_MANIFEST_ID"; then
-        echo -e "  \033[32m✓ Removed OneNote sideload registration\033[0m"
-    else
-        echo -e "  \033[90m• No OpenCode registration found for OneNote\033[0m"
     fi
 fi
 

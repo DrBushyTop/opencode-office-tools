@@ -20,7 +20,7 @@ describe("applyStyleToSelection", () => {
       run: async (callback: (context: typeof contextStub) => Promise<unknown>) => callback(contextStub),
     });
 
-    await expect(applyStyleToSelection.handler({ fontSize: 0 })).resolves.toBe("Applied formatting: 0pt.");
+    await expect(applyStyleToSelection.handler({ fontSize: 0 })).resolves.toBe("Styled selection: size=0pt");
     expect(font.size).toBe(0);
   });
 });

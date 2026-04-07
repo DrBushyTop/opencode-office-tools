@@ -44,8 +44,8 @@ describe("office permissions", () => {
       id: "2d",
       sessionID: "s",
       permission: "tool",
-      patterns: ["get_notebook_overview"],
-      metadata: { tool: "get_notebook_overview" },
+      patterns: ["get_workbook_overview"],
+      metadata: { tool: "get_workbook_overview" },
       always: [],
     })).toBe(true);
   });
@@ -82,8 +82,8 @@ describe("office permissions", () => {
       id: "6",
       sessionID: "s",
       permission: "tool",
-      patterns: ["append_page_content"],
-      metadata: { tool: "append_page_content" },
+      patterns: ["set_workbook_content"],
+      metadata: { tool: "set_workbook_content" },
       always: [],
     })).toBe(false);
   });

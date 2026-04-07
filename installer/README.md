@@ -53,7 +53,7 @@ bun run build:installer:win
 2. Bundles the built frontend and manifest
 3. Generates a per-user localhost certificate under `~/Library/Application Support/OpenCode Office Add-in/certs`
 4. Trusts that generated certificate in the System keychain
-5. Refreshes the sideload manifest in the Word, PowerPoint, Excel, and OneNote WEF folders
+5. Refreshes the sideload manifest in the Word, PowerPoint, and Excel WEF folders
 6. Installs a LaunchAgent so the helper app can relaunch on sign-in
 7. Starts the tray app immediately after install
 
