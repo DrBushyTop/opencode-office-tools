@@ -109,6 +109,8 @@ describe("tray main entrypoint", () => {
       OPENCODE_OFFICE_BASE_PATH: path.resolve("."),
       OPENCODE_OFFICE_DIRECTORY: path.resolve("."),
       OPENCODE_OFFICE_CONFIG_DIR: path.join(path.resolve("."), ".opencode"),
+      OPENCODE_OFFICE_USER_DATA_DIR: path.join(path.resolve("."), ".opencode"),
+      OPENCODE_OFFICE_CERT_DIR: path.join(path.resolve("."), ".opencode", "certs"),
     });
     expect(fakeProcess.env.OPENCODE_OFFICE_LOG_FILE).toBe(path.join(path.resolve("."), ".opencode", "debug.log"));
     expect(processEvents.uncaughtException).toEqual(expect.any(Function));

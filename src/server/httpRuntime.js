@@ -59,7 +59,7 @@ function registerShutdown(close, scope = 'server') {
   });
 }
 
-function createHttpRuntime({ port, bridgePort, cert, key }) {
+function createHttpRuntime({ port, bridgePort, ...tlsOptions }) {
   const app = express();
   const bridgeApp = express();
   const runtime = new OpencodeRuntime();
@@ -69,7 +69,7 @@ function createHttpRuntime({ port, bridgePort, cert, key }) {
   app.use('/api', createApiRouter(runtime, bridge));
   bridgeApp.use('/api', createBridgeRouter(bridge));
 
-  const httpsServer = https.createServer({ cert, key }, app);
+  const httpsServer = https.createServer(tlsOptions, app);
   const bridgeServer = http.createServer(bridgeApp);
   let closed = false;
 

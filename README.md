@@ -86,7 +86,7 @@ The getting started guide walks you through running the add-in locally using the
 ├── .opencode/             # Bundled OpenCode tools and config used by the add-in
 ├── assets/                # Tray icons and packaged app assets
 ├── dist/                  # Built frontend assets
-├── certs/                 # SSL certificates for localhost
+├── certs/                 # Development localhost certs and OpenSSL config
 ├── scripts/               # Build and packaging helper scripts
 ├── manifest.xml           # Office add-in manifest for Word, Excel, PowerPoint, and OneNote
 ├── installer/             # Installer resources (Electron Builder)
@@ -106,7 +106,7 @@ The getting started guide walks you through running the add-in locally using the
 | `bun run build` | Build frontend for production |
 | `bun run test` | Regenerate Office tool metadata and run the Vitest suite |
 | `bun run build:installer` | Build installer for current platform |
-| `bun run build:installer:mac` | Build macOS .dmg installer |
+| `bun run build:installer:mac` | Build macOS .pkg installer |
 | `bun run build:installer:win` | Build Windows .exe installer |
 
 ## Unregistering Add-in
@@ -130,7 +130,8 @@ The getting started guide walks you through running the add-in locally using the
 
 ### SSL Certificate errors
 1. Re-run the register script or installer
-2. Or manually trust `certs/localhost.pem`
+2. Development mode uses `certs/localhost.pem`
+3. Installed builds generate and trust a per-user localhost certificate automatically
 
 ### Service not starting after install
 - **Windows**: Check `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` for `OpenCodeOfficeAddin`

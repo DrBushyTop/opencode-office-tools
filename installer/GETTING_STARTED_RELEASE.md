@@ -10,23 +10,19 @@ Run the OpenCode Office Add-in from this package.
 
 ## Setup
 
-### 1. Register the Add-in (one time only)
+### 1. Install the Package
 
-This trusts the SSL certificate and registers the manifest with Office.
+**macOS:** Run the `OpenCodeOfficeAddin-<version>.pkg` installer
 
-**macOS:**
-```bash
-./register.sh
-```
+**Windows:** Run `OpenCode Office Add-in Setup.exe`
 
-**Windows (PowerShell as Administrator):**
-```powershell
-.\register.ps1
-```
+The installer generates and trusts a localhost certificate for this machine and refreshes the Office sideload registration.
 
 ### 2. Launch the App
 
-**macOS:** Double-click `OpenCode Office Add-in.app`
+If the app does not start automatically:
+
+**macOS:** Open `OpenCode Office Add-in.app` from Applications
 
 **Windows:** Run `OpenCode Office Add-in.exe`
 
@@ -37,7 +33,7 @@ You should see the OpenCode icon appear in your system tray (Windows) or menu ba
 1. Confirm you see the OpenCode service running in your system tray/menu bar.
 
 2. **Open** Word, PowerPoint, or Excel
-   > **Close and reopen the app if it was already running before registration**
+   > **Close and reopen the app if it was already running before installation completed**
 
 3. Go to **Insert** → **Add-ins** → **My Add-ins**
 
@@ -48,8 +44,8 @@ You should see the OpenCode icon appear in your system tray (Windows) or menu ba
 ### Add-in not showing up?
 - Make sure the tray app is running (check for the icon in your system tray/menu bar)
 - Completely quit and restart the Office application
-- Re-run the register script
+- Re-run the installer
 
 ### SSL Certificate errors?
-- Re-run `./register.sh` (macOS) or `.\register.ps1` (Windows)
-- On macOS, you may need to enter your password to trust the certificate
+- Re-run the installer
+- On macOS, you may need to enter your password to trust the certificate during install

@@ -9,6 +9,16 @@ ELECTRON_OUTPUT_DIR="${ROOT_DIR}/build/electron"
 APP_NAME="OpenCode Office Add-in"
 APP_IDENTIFIER="com.opencode.office-addin"
 APP_VERSION="1.0.0"
+TARGET_ARCH="${TARGET_ARCH:-}"
+
+package_filename() {
+  if [ -n "${TARGET_ARCH}" ]; then
+    printf 'OpenCodeOfficeAddin-%s-%s.pkg\n' "${APP_VERSION}" "${TARGET_ARCH}"
+    return
+  fi
+
+  printf 'OpenCodeOfficeAddin-%s.pkg\n' "${APP_VERSION}"
+}
 
 ensure_icon_assets() {
   if [ -f "${SCRIPT_DIR}/icon.icns" ]; then
@@ -28,7 +38,11 @@ build_desktop_bundle() {
     cd "${ROOT_DIR}"
     bun run clean:extraneous
     bun run build
-    bunx electron-builder --mac
+    if [ -n "${TARGET_ARCH}" ]; then
+      bunx electron-builder --dir --mac --${TARGET_ARCH}
+    else
+      bunx electron-builder --dir --mac
+    fi
   )
 }
 
@@ -59,8 +73,10 @@ copy_payload_assets() {
 
   cp -R "$app_bundle" "${BUILD_DIR}/component-root/Applications/"
   cp "${SCRIPT_DIR}/launchagent/com.opencode.office-addin.plist" "${BUILD_DIR}/component-root/Applications/${APP_NAME}.app/Contents/Resources/"
+  cp "${SCRIPT_DIR}/uninstall.sh" "${BUILD_DIR}/component-root/Applications/${APP_NAME}.app/Contents/Resources/"
   cp "${SCRIPT_DIR}/scripts/preinstall" "${BUILD_DIR}/script-root/"
   cp "${SCRIPT_DIR}/scripts/postinstall" "${BUILD_DIR}/script-root/"
+  chmod +x "${BUILD_DIR}/component-root/Applications/${APP_NAME}.app/Contents/Resources/uninstall.sh"
   chmod +x "${BUILD_DIR}/script-root/preinstall"
   chmod +x "${BUILD_DIR}/script-root/postinstall"
 }
@@ -156,11 +172,14 @@ build_component_pkg() {
 }
 
 build_distribution_pkg() {
+  local output_name
+  output_name="$(package_filename)"
+
   productbuild \
     --distribution "${BUILD_DIR}/distribution.xml" \
     --resources "${BUILD_DIR}/resource-root" \
     --package-path "${BUILD_DIR}" \
-    "${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg"
+    "${BUILD_DIR}/${output_name}"
 }
 
 cleanup_stage_layout() {
@@ -193,7 +212,7 @@ main() {
 
   echo ""
   echo "✓ macOS installer package built successfully"
-  echo "  Output: ${BUILD_DIR}/OpenCodeOfficeAddin-${APP_VERSION}.pkg"
+  echo "  Output: ${BUILD_DIR}/$(package_filename)"
 }
 
 main "$@"

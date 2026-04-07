@@ -5,6 +5,51 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 APP_PATH="$SCRIPT_DIR/OpenCode Office Add-in.app"
 MANIFEST_FILENAME="manifest.xml"
 
+resolve_user_home() {
+    if [ -n "${HOME:-}" ]; then
+        printf '%s\n' "$HOME"
+        return
+    fi
+
+    dscl . -read "/Users/$(stat -f "%Su" /dev/console)" NFSHomeDirectory | awk '{print $2}'
+}
+
+packaged_user_data_dir() {
+    printf '%s/OpenCode Office Add-in\n' "$(resolve_user_home)/Library/Application Support"
+}
+
+ensure_packaged_certificate() {
+    local data_dir="$1"
+    local cert_dir="$data_dir/certs"
+    local cert_path="$cert_dir/localhost.pem"
+    local key_path="$cert_dir/localhost-key.pem"
+    local thumbprint_path="$cert_dir/thumbprint.txt"
+    local config_path="$APP_PATH/Contents/Resources/certs/localhost.conf"
+
+    mkdir -p "$cert_dir"
+
+    if [ ! -f "$cert_path" ] || [ ! -f "$key_path" ]; then
+        if [ ! -f "$config_path" ]; then
+            echo -e "\033[31mError: Missing certificate config at $config_path\033[0m"
+            exit 1
+        fi
+
+        openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout "$key_path" \
+            -out "$cert_path" \
+            -days 1825 \
+            -config "$config_path" \
+            -extensions v3_req >/dev/null 2>&1
+        chmod 600 "$key_path"
+        chmod 644 "$cert_path"
+    fi
+
+    openssl x509 -in "$cert_path" -fingerprint -sha1 -noout | cut -d= -f2 | tr -d ':' > "$thumbprint_path"
+    chmod 644 "$thumbprint_path"
+
+    printf '%s\n' "$cert_path"
+}
+
 manifest_id() {
     local manifest_path="$1"
 
@@ -50,7 +95,7 @@ remove_matching_manifests() {
 # Prefer packaged resources when the app bundle is present; otherwise use repo-local assets.
 if [ -d "$APP_PATH" ]; then
     MANIFEST_PATH="$APP_PATH/Contents/Resources/manifest.xml"
-    CERT_PATH="$APP_PATH/Contents/Resources/certs/localhost.pem"
+    CERT_PATH="$(ensure_packaged_certificate "$(packaged_user_data_dir)")"
 else
     MANIFEST_PATH="$SCRIPT_DIR/manifest.xml"
     CERT_PATH="$SCRIPT_DIR/certs/localhost.pem"
@@ -122,7 +167,7 @@ echo ""
 
 echo -e "\033[36mSetup complete. Next steps:\033[0m"
 echo "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
-echo "2. Launch the tray runtime: bun run start:tray"
+echo "2. Launch the installed tray app"
 echo "3. Open Word, PowerPoint, Excel, or OneNote"
 echo "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 echo ""

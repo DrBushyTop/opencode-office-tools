@@ -1,7 +1,7 @@
 const path = require('path');
-const fs = require('fs');
 const express = require('express');
 const { createHttpRuntime, registerShutdown } = require('./server/httpRuntime');
+const { certificateDirectory, readPackagedCredentials } = require('./server/localCertificates');
 const { logInfo, logError } = require('./server/devLogger');
 
 const isPkg = typeof process.pkg !== 'undefined';
@@ -25,21 +25,16 @@ function parsePort(value, fallback) {
 }
 
 function readCertificates(basePath) {
-  const certPath = path.join(basePath, 'certs', 'localhost.pem');
-  const keyPath = path.join(basePath, 'certs', 'localhost-key.pem');
-
-  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-    console.error('SSL certificates not found!');
-    console.error('Expected:', certPath);
-    console.error('Expected:', keyPath);
-    logError('server', 'SSL certificates not found', { certPath, keyPath });
-    process.exit(1);
+  try {
+    return readPackagedCredentials(basePath);
+  } catch (error) {
+    logError('server', 'TLS credentials are unavailable', {
+      certDir: certificateDirectory(),
+      basePath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
-
-  return {
-    cert: fs.readFileSync(certPath),
-    key: fs.readFileSync(keyPath),
-  };
 }
 
 function attachBuiltFrontend(app, basePath) {
@@ -79,7 +74,7 @@ async function createServer() {
     await runtime.listen({
       onHttpsListening: () => {
         console.log(`OpenCode Office Add-in Server running on https://localhost:${port}`);
-        logInfo('server', 'HTTPS server started', { port, basePath });
+        logInfo('server', 'HTTPS server started', { port, basePath, certDir: certificateDirectory() });
       },
       onBridgeListening: () => {
         console.log(`Office bridge available at http://127.0.0.1:${bridgePort}/api`);

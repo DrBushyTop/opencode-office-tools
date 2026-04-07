@@ -1,6 +1,37 @@
 $appPath = "$PSScriptRoot\OpenCode Office Add-in.exe"
 $registrationName = "OpenCodeOfficeAddin"
 $regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"
+$userDataRegPath = "HKCU:\Software\OpenCode\OfficeAddin"
+$userDataRegValue = "UserDataDir"
+
+function Get-InstalledUserDataDir {
+    $configured = (Get-ItemProperty -Path $userDataRegPath -Name $userDataRegValue -ErrorAction SilentlyContinue).$userDataRegValue
+    if ($configured) {
+        return $configured
+    }
+
+    return Join-Path ([Environment]::GetFolderPath("ApplicationData")) "OpenCode Office Add-in"
+}
+
+function Remove-TrustedLocalhostCertificate {
+    param(
+        [string]$UserDataDir
+    )
+
+    $thumbprintPath = Join-Path $UserDataDir "certs\thumbprint.txt"
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "CurrentUser")
+    $store.Open("ReadWrite")
+
+    if (Test-Path $thumbprintPath) {
+        $thumbprint = (Get-Content -LiteralPath $thumbprintPath -Raw).Trim()
+        $cert = $store.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint }
+        if ($cert) {
+            $store.Remove($cert)
+        }
+    }
+
+    $store.Close()
+}
 
 function Get-OfficeManifestId {
     param(
@@ -87,6 +118,15 @@ if (Test-Path $regPath) {
     }
 } else {
     Write-Host "The Office developer sideload key is not present" -ForegroundColor Gray
+}
+
+if (Test-Path $appPath) {
+    $userDataDir = Get-InstalledUserDataDir
+    Remove-TrustedLocalhostCertificate -UserDataDir $userDataDir
+    if (Test-Path $userDataDir) {
+        Remove-Item -LiteralPath $userDataDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -Path $userDataRegPath -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""

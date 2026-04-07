@@ -41,19 +41,26 @@ function resolveLogFile(rootDir) {
 function resolveTrayState() {
   const rootDir = resolveWorkspaceRoot();
   const iconName = process.platform === 'darwin' ? 'tray-icon.png' : 'tray-icon.ico';
+  const userDataDir = app.isPackaged
+    ? assertPath(app.getPath('userData'), 'packaged user data path')
+    : assertPath(path.join(rootDir, '.opencode'), 'development user data path');
 
   return {
     rootDir,
     trayIconPath: assertPath(path.join(rootDir, 'assets', iconName), 'tray icon path'),
     logFilePath: resolveLogFile(rootDir),
+    userDataDir,
+    certDir: assertPath(path.join(userDataDir, 'certs'), 'certificate directory path'),
   };
 }
 
-function applyServerEnvironment(rootDir) {
+function applyServerEnvironment(paths) {
   Object.assign(process.env, {
-    OPENCODE_OFFICE_BASE_PATH: rootDir,
-    OPENCODE_OFFICE_DIRECTORY: rootDir,
-    OPENCODE_OFFICE_CONFIG_DIR: path.join(rootDir, '.opencode'),
+    OPENCODE_OFFICE_BASE_PATH: paths.rootDir,
+    OPENCODE_OFFICE_DIRECTORY: paths.rootDir,
+    OPENCODE_OFFICE_CONFIG_DIR: path.join(paths.rootDir, '.opencode'),
+    OPENCODE_OFFICE_USER_DATA_DIR: paths.userDataDir,
+    OPENCODE_OFFICE_CERT_DIR: paths.certDir,
   });
 }
 
@@ -84,7 +91,7 @@ function loadTrayIcon(iconPath) {
   }
 }
 
-function createRuntimeController(rootDir) {
+function createRuntimeController(paths) {
   let currentServer = null;
   let phase = 'stopped';
   const subscribers = new Set();
@@ -103,7 +110,7 @@ function createRuntimeController(rootDir) {
 
   async function start() {
     try {
-      applyServerEnvironment(rootDir);
+      applyServerEnvironment(paths);
       const serverModulePath = require.resolve('../server-prod.js');
       delete require.cache[serverModulePath];
       const { createServer } = require('../server-prod.js');
@@ -232,7 +239,7 @@ async function main() {
   const paths = resolveTrayState();
   installDiagnostics(paths.logFilePath);
 
-  const controller = createRuntimeController(paths.rootDir);
+  const controller = createRuntimeController(paths);
   attachTrayUi(paths, controller);
   wireLifecycle(controller);
 

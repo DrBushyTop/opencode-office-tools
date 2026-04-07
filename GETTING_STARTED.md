@@ -64,7 +64,7 @@ bun run build
 
 ### 2. Register the Add-in
 
-This trusts the SSL certificate and registers the manifest with Office.
+This trusts the development localhost certificate and registers the manifest with Office.
 
 **macOS:**
 ```bash
@@ -131,6 +131,7 @@ https://github.com/user-attachments/assets/5bb771d3-0bf6-4b7b-8e6c-757a085b3131
 ### SSL Certificate errors?
 - Re-run `./register.sh` (macOS) or `.\register.ps1` (Windows)
 - On macOS, you may need to enter your password to trust the certificate
+- These scripts apply to local development; installed builds generate their own per-user localhost certificate
 
 ### Want to use the dev server with hot reload instead?
 ```bash

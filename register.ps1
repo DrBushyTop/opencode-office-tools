@@ -1,6 +1,56 @@
 $appPath = "$PSScriptRoot\OpenCode Office Add-in.exe"
 $registrationName = "OpenCodeOfficeAddin"
 $regPath = "HKCU:\Software\Microsoft\Office\16.0\WEF\Developer"
+$userDataRegPath = "HKCU:\Software\OpenCode\OfficeAddin"
+$userDataRegValue = "UserDataDir"
+$certPassphrase = "OpenCodeOfficeLocalCert"
+
+function Get-InstalledUserDataDir {
+    $configured = (Get-ItemProperty -Path $userDataRegPath -Name $userDataRegValue -ErrorAction SilentlyContinue).$userDataRegValue
+    if ($configured) {
+        return $configured
+    }
+
+    return Join-Path ([Environment]::GetFolderPath("ApplicationData")) "OpenCode Office Add-in"
+}
+
+function Ensure-LocalhostCertificate {
+    param(
+        [string]$UserDataDir,
+        [switch]$Packaged
+    )
+
+    if (!$Packaged) {
+        return "$PSScriptRoot\certs\localhost.pem"
+    }
+
+    $certDir = Join-Path $UserDataDir "certs"
+    $pemPath = Join-Path $certDir "localhost.pem"
+    $pfxPath = Join-Path $certDir "localhost.pfx"
+    $thumbprintPath = Join-Path $certDir "thumbprint.txt"
+    New-Item -ItemType Directory -Path $certDir -Force | Out-Null
+
+    if (!(Test-Path $pfxPath) -or !(Test-Path $pemPath)) {
+        $san = "dns=localhost&dns=*.localhost&ipaddress=127.0.0.1&ipaddress=::1"
+        $cert = New-SelfSignedCertificate -Subject "CN=localhost" -FriendlyName "OpenCode Office Add-in localhost" -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.17={text}$san") -NotAfter (Get-Date).AddYears(5) -DnsName @("localhost", "*.localhost")
+        $password = ConvertTo-SecureString $certPassphrase -Force -AsPlainText
+        Export-PfxCertificate -Cert "Cert:\CurrentUser\My\$($cert.Thumbprint)" -FilePath $pfxPath -Password $password | Out-Null
+        Export-Certificate -Cert "Cert:\CurrentUser\My\$($cert.Thumbprint)" -FilePath $pemPath -Type CERT | Out-Null
+        $cert.Thumbprint | Out-File -FilePath $thumbprintPath -NoNewline
+
+        $leafStore = New-Object System.Security.Cryptography.X509Certificates.X509Store("My", "CurrentUser")
+        $leafStore.Open("ReadWrite")
+        $leaf = $leafStore.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
+        if ($leaf) {
+            $leafStore.Remove($leaf)
+        }
+        $leafStore.Close()
+    }
+
+    New-Item -Path $userDataRegPath -Force | Out-Null
+    New-ItemProperty -Path $userDataRegPath -Name $userDataRegValue -Value $UserDataDir -PropertyType String -Force | Out-Null
+    return $pemPath
+}
 
 function Get-OfficeManifestId {
     param(
@@ -65,7 +115,8 @@ function Remove-OpenCodeRegistrations {
 # Prefer packaged resources when the desktop bundle is present; otherwise use repo-local assets.
 if (Test-Path $appPath) {
     $manifestPath = "$PSScriptRoot\resources\manifest.xml"
-    $certPath = "$PSScriptRoot\resources\certs\localhost.pem"
+    $userDataDir = Get-InstalledUserDataDir
+    $certPath = Ensure-LocalhostCertificate -UserDataDir $userDataDir -Packaged
 } else {
     $manifestPath = "$PSScriptRoot\manifest.xml"
     $certPath = "$PSScriptRoot\certs\localhost.pem"
@@ -124,7 +175,7 @@ Write-Host ""
 
 Write-Host "Setup complete. Next steps:" -ForegroundColor Cyan
 Write-Host "1. Close Word, PowerPoint, Excel, and OneNote if they are open"
-Write-Host "2. Launch the tray runtime: bun run start:tray"
+Write-Host "2. Launch the installed tray app"
 Write-Host "3. Open Word, PowerPoint, Excel, or OneNote"
 Write-Host "4. Go to Insert > Add-ins > My Add-ins and look for 'OpenCode'"
 Write-Host ""

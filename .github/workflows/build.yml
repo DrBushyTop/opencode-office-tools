@@ -30,7 +30,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build installer
-        run: bun run clean:extraneous && bun run build && bunx electron-builder --mac --${{ matrix.arch }}
+        run: TARGET_ARCH=${{ matrix.arch }} bun run build:installer:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer-${{ matrix.arch }}
-          path: build/electron/*.dmg
+          path: build/macos/*.pkg
           if-no-files-found: error
 
   build-windows:

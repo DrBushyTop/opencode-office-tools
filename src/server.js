@@ -1,16 +1,13 @@
 const path = require('path');
-const fs = require('fs');
 const { createHttpRuntime, registerShutdown } = require('./server/httpRuntime');
+const { readDevelopmentCredentials } = require('./server/localCertificates');
 const { logInfo, logError } = require('./server/devLogger');
 
 const DEV_PORT = 52390;
 const DEV_BRIDGE_PORT = 52391;
 
 function readDevCredentials() {
-  return {
-    cert: fs.readFileSync(path.resolve(__dirname, '../certs/localhost.pem')),
-    key: fs.readFileSync(path.resolve(__dirname, '../certs/localhost-key.pem')),
-  };
+  return readDevelopmentCredentials(path.resolve(__dirname, '..'));
 }
 
 async function attachFrontend(app, httpsServer) {

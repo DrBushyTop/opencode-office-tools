@@ -12,9 +12,9 @@
     "prepare:desktop-release": "bun run clean:extraneous && bun run build",
     "start:tray": "bun run build:tray-runtime && electron .",
     "generate:office-tools": "node scripts/generate-office-tools.js",
-    "build:installer": "bun run prepare:desktop-release && electron-builder",
+    "build:installer": "node scripts/build-installer.js",
     "build:installer:win": "bun run prepare:desktop-release && electron-builder --win",
-    "build:installer:mac": "bun run prepare:desktop-release && electron-builder --mac",
+    "build:installer:mac": "bash installer/macos/build.sh",
     "clean:extraneous": "node scripts/clean-extraneous.js",
     "package:tray:archive": "node scripts/package-tray.js",
     "package:tray": "bun run package:tray:archive",
@@ -82,7 +82,7 @@
     "mac": {
       "target": [
         {
-          "target": "dmg",
+          "target": "dir",
           "arch": [
             "x64",
             "arm64"

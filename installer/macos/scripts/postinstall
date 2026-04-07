@@ -4,10 +4,10 @@ set -e
 
 APP_DIR="/Applications/OpenCode Office Add-in.app"
 RESOURCES_DIR="${APP_DIR}/Contents/Resources"
-CERT_PATH="${RESOURCES_DIR}/certs/localhost.pem"
 MANIFEST_PATH="${RESOURCES_DIR}/manifest.xml"
 MANIFEST_FILENAME="manifest.xml"
 LAUNCHAGENT_ID="com.opencode.office-addin"
+CERT_CONFIG_PATH="${RESOURCES_DIR}/certs/localhost.conf"
 
 manifest_id() {
     local manifest_path="$1"
@@ -67,6 +67,14 @@ resolve_install_user() {
 
 resolve_user_home() {
     dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
+}
+
+user_data_dir() {
+    printf '%s/Library/Application Support/OpenCode Office Add-in\n' "$1"
+}
+
+certificate_dir() {
+    printf '%s/certs\n' "$1"
 }
 
 install_launch_agent() {
@@ -136,20 +144,59 @@ sync_manifest_registrations() {
     echo "Office sideload registration refreshed for Word, PowerPoint, Excel, and OneNote"
 }
 
-trust_certificate_if_present() {
-    if [ ! -f "$CERT_PATH" ]; then
-        echo "Note: No certificate found at $CERT_PATH, skipping trust setup"
-        return
+ensure_local_certificate() {
+    local install_user="$1"
+    local user_home="$2"
+    local data_dir
+    local cert_dir
+    local cert_path
+    local key_path
+    local thumbprint_path
+
+    data_dir="$(user_data_dir "$user_home")"
+    cert_dir="$(certificate_dir "$data_dir")"
+    cert_path="$cert_dir/localhost.pem"
+    key_path="$cert_dir/localhost-key.pem"
+    thumbprint_path="$cert_dir/thumbprint.txt"
+
+    mkdir -p "$cert_dir"
+    chown -R "$install_user":staff "$data_dir"
+
+    if [ ! -f "$cert_path" ] || [ ! -f "$key_path" ]; then
+        if [ ! -f "$CERT_CONFIG_PATH" ]; then
+            echo "Error: Missing certificate config at $CERT_CONFIG_PATH"
+            exit 1
+        fi
+
+        sudo -u "$install_user" openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout "$key_path" \
+            -out "$cert_path" \
+            -days 1825 \
+            -config "$CERT_CONFIG_PATH" \
+            -extensions v3_req >/dev/null 2>&1
+        chown "$install_user":staff "$cert_path" "$key_path"
+        chmod 600 "$key_path"
+        chmod 644 "$cert_path"
     fi
 
+    openssl x509 -in "$cert_path" -fingerprint -sha1 -noout | cut -d= -f2 | tr -d ':' > "$thumbprint_path"
+    chown "$install_user":staff "$thumbprint_path"
+    chmod 644 "$thumbprint_path"
+
+    printf '%s\n' "$cert_path"
+}
+
+trust_certificate() {
+    local cert_path="$1"
+
     echo "Trusting localhost HTTPS certificate..."
-    if security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CERT_PATH" 2>&1; then
+    if security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$cert_path" 2>&1; then
         echo "Local certificate trust installed"
     else
         echo "Warning: Could not add the certificate to the system keychain."
         echo "You may need to trust it manually:"
         echo "  1. Open Keychain Access"
-        echo "  2. Drag $CERT_PATH to the System keychain"
+        echo "  2. Drag $cert_path to the System keychain"
         echo "  3. Double-click the localhost cert and set 'Always Trust'"
     fi
 }
@@ -167,6 +214,7 @@ main() {
     local install_user
     local user_home
     local launch_agent_path
+    local cert_path
 
     install_user="$(resolve_install_user)"
     user_home="$(resolve_user_home "$install_user")"
@@ -175,9 +223,10 @@ main() {
     echo "Resolved home directory: $user_home"
 
     launch_agent_path="$(install_launch_agent "$install_user" "$user_home")"
+    cert_path="$(ensure_local_certificate "$install_user" "$user_home")"
     echo "LaunchAgent installed"
     sync_manifest_registrations "$install_user" "$user_home"
-    trust_certificate_if_present
+    trust_certificate "$cert_path"
     start_runtime_session "$install_user" "$launch_agent_path"
 
     echo "Runtime launch requested"

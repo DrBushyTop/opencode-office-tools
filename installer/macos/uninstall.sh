@@ -7,6 +7,29 @@ APP_DIR="/Applications/${APP_NAME}.app"
 LAUNCHAGENT_ID="com.opencode.office-addin"
 MANIFEST_PATH="${APP_DIR}/Contents/Resources/manifest.xml"
 
+user_data_dir() {
+    printf '%s/Library/Application Support/OpenCode Office Add-in\n' "$1"
+}
+
+remove_generated_certificate() {
+    local user_home="$1"
+    local cert_dir
+    local thumbprint_file
+
+    cert_dir="$(user_data_dir "$user_home")/certs"
+    thumbprint_file="$cert_dir/thumbprint.txt"
+
+    if [ -f "$thumbprint_file" ]; then
+        local sha1_hex
+        sha1_hex="$(tr -d '\n\r' < "$thumbprint_file" | tr '[:lower:]' '[:upper:]')"
+        if [ -n "$sha1_hex" ]; then
+            security delete-certificate -Z "$sha1_hex" /Library/Keychains/System.keychain >/dev/null 2>&1 || true
+        fi
+    fi
+
+    rm -rf "$(user_data_dir "$user_home")"
+}
+
 manifest_id() {
     local manifest_path="$1"
 
@@ -119,15 +142,11 @@ main() {
 
     echo "Removing application..."
     run_uninstall_action "$install_user" "$user_home" remove-app
+    remove_generated_certificate "$user_home"
 
     echo ""
     echo "✓ OpenCode Office Add-in has been uninstalled."
-    echo ""
-    echo "Note: The SSL certificate remains in your keychain."
-    echo "To remove it manually:"
-    echo "  1. Open Keychain Access"
-    echo "  2. Search for 'localhost'"
-    echo "  3. Delete the certificate"
+    echo "Generated localhost certificate material and trust entries were removed."
 }
 
 main "$@"
