@@ -35,6 +35,13 @@ const officeRegisterBodySchema = z.object({
   host: z.coerce.string().optional(),
 }).passthrough();
 
+const commandBodySchema = z.object({
+  command: z.string().min(1),
+  arguments: z.string().default(''),
+  agent: z.string().optional(),
+  model: z.string().optional(),
+});
+
 function hostPrefix(host) {
   if (host === 'powerpoint') return 'PowerPoint: ';
   if (host === 'excel') return 'Excel: ';
@@ -343,6 +350,31 @@ function createApiRouter(runtime, bridge) {
         body: req.body || {},
       });
       res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.get('/opencode/commands', async (req, res) => {
+    try {
+      res.json(await runtime.request('/command'));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  apiRouter.post('/opencode/session/:id/command', async (req, res) => {
+    try {
+      const parsed = commandBodySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid command payload' });
+      }
+      await runtime.request(`/session/${req.params.id}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: parsed.data,
+      });
+      res.status(202).json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

@@ -102,7 +102,9 @@ Focus on whether the current slide is visually correct, structurally coherent, a
 ### Excel
 
 1. Start with `get_workbook_overview`
-2. Read the relevant sheet content and check formatting
+2. If a specific range is under review and visual layout matters, call `get_range_image` first to capture the current exact rendered result. Use the `read` tool to view the image.
+3. Read the relevant sheet content and check formatting
+4. Compare the rendered range image against the sheet data to catch truncation, cramped columns, unreadable wrapping, or visually broken table layout
 
 ### OneNote
 

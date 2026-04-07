@@ -94,3 +94,16 @@ export const opencodeSessionInfoSchema = z.object({
     updated: z.number(),
   }),
 });
+
+export const slashCommandSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  agent: z.string().optional(),
+  model: z.string().optional(),
+  source: z.enum(["command", "mcp", "skill"]).optional(),
+  template: z.string().optional(),
+  subtask: z.boolean().optional(),
+  hints: z.array(z.string()).catch([]),
+});
+
+export type SlashCommand = z.infer<typeof slashCommandSchema>;

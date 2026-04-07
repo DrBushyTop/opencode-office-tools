@@ -69,7 +69,7 @@ Suggested pattern:
 
 ## Verification
 
-- After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
+- After any meaningful edit, run a second-pass adversarial check with the **visual-qa** agent via the Task tool before declaring success
 - Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
 - Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
 - Re-read the exact mutated surface during verification: the same Word address you changed

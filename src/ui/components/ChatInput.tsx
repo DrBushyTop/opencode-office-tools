@@ -6,8 +6,10 @@ import { z } from "zod";
 import { filterModels } from "../lib/model-search";
 import type { ModelInfo, TodoItem } from "../lib/opencode-client";
 import { modelInfoSchema } from "../lib/opencode-schemas";
+import type { SlashCommand } from "../lib/opencode-schemas";
 import { trafficStats } from "../lib/opencode-events";
 import { liveStatusText, type Message } from "./MessageList";
+import { SlashPopover, filterCommands } from "./SlashPopover";
 
 const ImageAttachmentSchema = z.object({
   id: z.string().min(1),
@@ -34,6 +36,7 @@ interface ChatInputProps {
   liveMessages?: Message[];
   currentActivity?: string;
   todos?: TodoItem[];
+  slashCommands?: SlashCommand[];
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
@@ -441,6 +444,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   liveMessages = [],
   currentActivity = "",
   todos = [],
+  slashCommands = [],
 }) => {
   const styles = useStyles();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -466,6 +470,42 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     [liveMessages, currentActivity],
   );
 
+  /* ---- slash command autocomplete state ---- */
+  const slashMatch = React.useMemo(() => {
+    // Trigger: input starts with "/" and has no whitespace (just the command name so far)
+    const m = value.match(/^\/(\S*)$/);
+    return m ? m[1] : null;
+  }, [value]);
+
+  const showSlash = slashMatch !== null && slashCommands.length > 0;
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  // Reset highlight when filter changes
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashMatch]);
+
+  const filteredSlashCount = React.useMemo(
+    () => (showSlash ? filterCommands(slashCommands, slashMatch || "").length : 0),
+    [showSlash, slashCommands, slashMatch],
+  );
+
+  // Clamp index when filtered results shrink
+  useEffect(() => {
+    setSlashIndex((prev) =>
+      filteredSlashCount === 0 ? 0 : Math.min(prev, filteredSlashCount - 1),
+    );
+  }, [filteredSlashCount]);
+
+  const handleSlashSelect = React.useCallback(
+    (cmd: SlashCommand) => {
+      // Insert "/<name> " so the user can add arguments
+      onChange(`/${cmd.name} `);
+      setSlashIndex(0);
+    },
+    [onChange],
+  );
+
   useEffect(() => {
     if (value === "") {
       inputRef.current?.focus();
@@ -479,6 +519,38 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [modelOpen, selectedLabel]);
 
   const onInputKeyDown = (e: React.KeyboardEvent) => {
+    if (showSlash && filteredSlashCount > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev + 1) % filteredSlashCount);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((prev) => (prev - 1 + filteredSlashCount) % filteredSlashCount);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const filtered = filterCommands(slashCommands, slashMatch || "");
+        const selected = filtered[slashIndex];
+        if (selected) {
+          handleSlashSelect(selected);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onChange("");
+        return;
+      }
+    }
+    // When popover is showing with no matches, block Enter to avoid sending
+    // a raw "/..." as a normal message
+    if (showSlash && filteredSlashCount === 0 && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSend();
@@ -536,7 +608,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const hasAbove = hasTray || hasStatus || hasTodos;
 
   return (
-    <div className={styles.dock}>
+    <div className={styles.dock} style={{ position: "relative" }}>
+      {showSlash && (
+        <SlashPopover
+          filter={slashMatch || ""}
+          commands={slashCommands}
+          selectedIndex={slashIndex}
+          onSelect={handleSlashSelect}
+          onHighlight={setSlashIndex}
+        />
+      )}
       {hasTodos && <TodoDock todos={todos} />}
 
       {hasStatus && (

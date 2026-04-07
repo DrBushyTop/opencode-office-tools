@@ -7,6 +7,52 @@ const horizontalAlignmentSchema = z.enum(["left", "center", "right", "general", 
 const verticalAlignmentSchema = z.enum(["top", "center", "bottom", "justify", "distributed"]);
 const borderStyleSchema = z.enum(["thin", "medium", "thick", "none", "double", "dashed", "dotted"]);
 
+function isBlankishString(value: string | undefined) {
+  return value !== undefined && value.trim() === "";
+}
+
+function looksUnboundedRange(rangeAddress: string) {
+  return /^\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}$/.test(rangeAddress.trim()) || /^\$?\d+:\$?\d+$/.test(rangeAddress.trim());
+}
+
+function buildRepeated2DArray(rowCount: number, columnCount: number, value: string) {
+  return Array.from({ length: rowCount }, () => Array.from({ length: columnCount }, () => value));
+}
+
+function normalizeFormattingUpdate(update: z.infer<typeof applyCellFormattingArgsSchema>) {
+  const normalized = { ...update };
+
+  if (isBlankishString(normalized.fontColor)) normalized.fontColor = undefined;
+  if (isBlankishString(normalized.backgroundColor)) normalized.backgroundColor = undefined;
+  if (isBlankishString(normalized.numberFormat)) normalized.numberFormat = undefined;
+  if (isBlankishString(normalized.borderColor)) normalized.borderColor = undefined;
+
+  // Model-generated default payloads often use 0 as a placeholder for sizing.
+  // Treat that as "omit" instead of sending an invalid or expensive update.
+  if (normalized.fontSize === 0) normalized.fontSize = undefined;
+  if (normalized.rowHeight === 0) normalized.rowHeight = undefined;
+  if (normalized.columnWidth === 0) normalized.columnWidth = undefined;
+
+  // Omit explicit false for merge when paired with a model-style default payload.
+  // Real unmerge intent can still be expressed by sending merge=false without the
+  // placeholder reset pattern.
+  if (
+    normalized.merge === false
+    && normalized.mergeAcross === false
+    && normalized.bold === false
+    && normalized.italic === false
+    && normalized.underline === false
+    && normalized.wrapText === false
+    && normalized.autoFitRows === false
+    && normalized.autoFitColumns === false
+  ) {
+    normalized.merge = undefined;
+    normalized.mergeAcross = undefined;
+  }
+
+  return normalized;
+}
+
 const applyCellFormattingArgsSchema = z.object({
   range: z.string(),
   sheetName: z.string().optional(),
@@ -33,7 +79,7 @@ const applyCellFormattingArgsSchema = z.object({
 
 export const applyCellFormatting: Tool = {
   name: "apply_cell_formatting",
-  description: "Apply formatting to Excel cells, including fonts, fills, number formats, alignment, wrapping, borders, row or column sizing, and optional merge-state changes. Omit merge to leave merge state unchanged.",
+  description: "Apply formatting to Excel cells, including fonts, fills, number formats, alignment, wrapping, borders, row or column sizing, and optional merge-state changes. Pass only the fields you want to change; omit unchanged/default values. Omit merge to leave merge state unchanged.",
   parameters: {
     type: "object",
     properties: {
@@ -65,7 +111,7 @@ export const applyCellFormatting: Tool = {
     const parsedArgs = parseToolArgs(applyCellFormattingArgsSchema, args);
     if (!parsedArgs.success) return parsedArgs.failure;
 
-    const update = parsedArgs.data;
+    const update = normalizeFormattingUpdate(parsedArgs.data);
 
     const hasFormatting = Object.entries(update).some(([key, value]) => key !== "range" && key !== "sheetName" && value !== undefined);
     if (!hasFormatting) {
@@ -75,9 +121,23 @@ export const applyCellFormatting: Tool = {
     try {
       return await Excel.run(async (context) => {
         const sheet = await getWorksheet(context, update.sheetName);
-        const range = sheet.getRange(update.range);
-        range.load(["address", "rowCount", "columnCount"]);
+        const targetRange = sheet.getRange(update.range);
+        const isUnbounded = looksUnboundedRange(update.range);
+        const range = isUnbounded && typeof (targetRange as Excel.Range & { getUsedRangeOrNullObject?: (valuesOnly?: boolean) => Excel.Range }).getUsedRangeOrNullObject === "function"
+          ? (targetRange as Excel.Range & { getUsedRangeOrNullObject: (valuesOnly?: boolean) => Excel.Range }).getUsedRangeOrNullObject(true)
+          : targetRange;
+        range.load(["address", "rowCount", "columnCount", "isNullObject"]);
         await context.sync();
+
+        if ((range as Excel.Range & { isNullObject?: boolean }).isNullObject) {
+          return createToolFailure(`Range ${update.range} in ${sheet.name} has no used cells to format.`);
+        }
+
+        if (isUnbounded && update.numberFormat !== undefined) {
+          // Narrow unbounded number-format writes to used cells to avoid huge
+          // 2D payloads like full-column A:A across 1M rows.
+          range.numberFormat = buildRepeated2DArray(range.rowCount, range.columnCount, update.numberFormat);
+        }
 
         let overlapsTable = false;
         if (update.merge !== undefined && typeof (range as Excel.Range & { getTables?: (fullyContained?: boolean) => Excel.TableScopedCollection }).getTables === "function") {
@@ -101,8 +161,8 @@ export const applyCellFormatting: Tool = {
         if (update.fontSize !== undefined) font.size = update.fontSize;
         if (update.fontColor !== undefined) font.color = normalizeExcelColor(update.fontColor);
         if (update.backgroundColor !== undefined) format.fill.color = normalizeExcelColor(update.backgroundColor);
-        if (update.numberFormat !== undefined) {
-          range.numberFormat = Array.from({ length: range.rowCount }, () => Array.from({ length: range.columnCount }, () => update.numberFormat));
+        if (!isUnbounded && update.numberFormat !== undefined) {
+          range.numberFormat = buildRepeated2DArray(range.rowCount, range.columnCount, update.numberFormat);
         }
 
         if (update.horizontalAlignment !== undefined) {

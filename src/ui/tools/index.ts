@@ -8,6 +8,7 @@ import { getSlideImage } from "./getSlideImage";
 import { getWorkbookContent } from "./getWorkbookContent";
 import { setWorkbookContent } from "./setWorkbookContent";
 import { getSelectedRange } from "./getSelectedRange";
+import { getRangeImage } from "./getRangeImage";
 import { setSelectedRange } from "./setSelectedRange";
 import { getWorkbookInfo } from "./getWorkbookInfo";
 
@@ -99,6 +100,7 @@ const officeToolHandlers = {
   [getWorkbookContent.name]: getWorkbookContent,
   [setWorkbookContent.name]: setWorkbookContent,
   [getSelectedRange.name]: getSelectedRange,
+  [getRangeImage.name]: getRangeImage,
   [setSelectedRange.name]: setSelectedRange,
   [findAndReplaceCells.name]: findAndReplaceCells,
   [applyCellFormatting.name]: applyCellFormatting,
@@ -200,6 +202,7 @@ export const excelTools = [
   getWorkbookContent,
   setWorkbookContent,
   getSelectedRange,
+  getRangeImage,
   setSelectedRange,
   findAndReplaceCells,
   applyCellFormatting,

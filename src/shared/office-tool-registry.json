@@ -299,6 +299,20 @@
     },
     "ui": { "icon": "✂️", "activity": { "type": "static", "text": "Reading selected range" } }
   },
+  "get_range_image": {
+    "hosts": ["excel"],
+    "description": "Render an Excel range as a PNG snapshot. Useful for checking layout, truncation, spacing, wrapping, and readability after formatting changes.",
+    "mutating": false,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "range": { "type": "string", "description": "Target range such as A1:F12." },
+        "sheetName": { "type": "string", "description": "Optional worksheet name. Defaults to the active sheet." }
+      },
+      "required": ["range"]
+    },
+    "ui": { "icon": "📸", "activity": { "type": "sheet_name_or_default", "field": "sheetName", "prefix": "Capturing ", "default": "Capturing range image" } }
+  },
   "set_selected_range": {
     "hosts": ["excel"],
     "description": "Write values or formulas to the currently selected Excel range.",
@@ -364,7 +378,7 @@
   },
   "apply_cell_formatting": {
     "hosts": ["excel"],
-    "description": "Apply formatting to Excel cells, including alignment, wrapping, borders, sizing, and optional merge-state changes. Omit merge to leave merge state unchanged.",
+    "description": "Apply formatting to Excel cells, including alignment, wrapping, borders, sizing, and optional merge-state changes. Pass only the fields you want to change and omit unchanged/default values. Omit merge to leave merge state unchanged.",
     "mutating": true,
     "parameters": {
       "type": "object",

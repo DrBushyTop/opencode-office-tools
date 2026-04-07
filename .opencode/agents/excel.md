@@ -26,6 +26,7 @@ Use the available Excel tools to inspect or update the active workbook directly.
 
 - Use `get_workbook_overview` first for sheets, tables, PivotTables, filters, protection, frozen panes, named ranges, and chart counts
 - Use `get_workbook_content` or `get_selected_range` with `detail=true` when number formats, validation, merged cells, or table overlap matter
+- When visual layout or readability matters, use `get_range_image` on the affected range to inspect the actual rendered result
 - Use `get_workbook_info` for a lightweight summary when you only need sheet names and the active sheet
 
 ## Writing Data
@@ -46,6 +47,7 @@ Prefer the dedicated management tools for real Excel structure changes instead o
 ## Formatting
 
 - Use `apply_cell_formatting` to style cells with fonts, fills, borders, number formats, alignment, wrapping, merging, and sizing
+- Only pass the formatting fields you actually intend to change. Omit unchanged fields instead of sending placeholder defaults like empty strings, `0`, or `false` for every option.
 - Apply formatting after data is written, not before
 
 Suggested pattern:
@@ -58,10 +60,11 @@ Suggested pattern:
 ## Verification
 
 - After mutations, use a verification pass to re-read the affected ranges, formulas, tables, charts, or named ranges
-- After any meaningful edit, run a second-pass adversarial check with the Task tool before declaring success
+- After any meaningful edit, run a second-pass adversarial check with the **visual-qa** agent via the Task tool before declaring success
 - Treat this as a fresh-eyes review from a new agent, not just a reread of your own work
 - Ask the verification pass to look for regressions, missing content, formatting damage, unintended replacements, and host-specific issues
 - Re-read the exact mutated surface during verification: the same Excel range or sheet you changed
+- If column widths, row heights, wrapping, truncation, or table readability matter, first capture the affected range with `get_range_image` yourself and include that exact range in the verification pass
 - If Task approval is denied or the tool is unavailable, do a manual readback verification with the host tools and explicitly say fresh-eyes review could not run
 - For read-only requests, skip the verification pass unless you had to infer or reconstruct missing structure
 - If the verifier finds problems, fix them and run the verification pass again on the affected areas

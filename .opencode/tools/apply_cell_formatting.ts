@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { excel } from "../lib/office-excel"
 
-export default excel("apply_cell_formatting", "Apply formatting to Excel cells, including alignment, wrapping, borders, sizing, and optional merge-state changes. Omit merge to leave merge state unchanged.", {
+export default excel("apply_cell_formatting", "Apply formatting to Excel cells, including alignment, wrapping, borders, sizing, and optional merge-state changes. Pass only the fields you want to change and omit unchanged/default values. Omit merge to leave merge state unchanged.", {
   range: tool.schema.string().describe("Cell range to format."),
   sheetName: tool.schema.string().optional().describe("Worksheet name. Defaults to the active sheet."),
   bold: tool.schema.boolean().optional(),

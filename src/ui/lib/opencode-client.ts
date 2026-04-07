@@ -1,5 +1,5 @@
 import { getLatestAssistantMessage, normalizeOpencodeEvent, trafficStats, type UiEvent } from "./opencode-events";
-import { modelInfoSchema, opencodeConfigSchema, opencodeMessageSchema, sessionInfoSchema } from "./opencode-schemas";
+import { modelInfoSchema, opencodeConfigSchema, opencodeMessageSchema, sessionInfoSchema, slashCommandSchema, type SlashCommand } from "./opencode-schemas";
 import { z } from "zod";
 
 export type ModelInfo = z.infer<typeof modelInfoSchema>;
@@ -137,6 +137,25 @@ export class OpencodeClient {
 
     if (!response.ok) {
       throw new Error((await response.text()) || "Failed to send prompt");
+    }
+  }
+
+  async listCommands(): Promise<SlashCommand[]> {
+    return readJson("/api/opencode/commands", z.array(slashCommandSchema));
+  }
+
+  async sendCommand(sessionId: string, input: { command: string; arguments: string; agent?: string; model?: string }) {
+    const payload = { command: input.command, arguments: input.arguments, agent: input.agent, model: input.model };
+    trafficStats.bytesOut += JSON.stringify(payload).length;
+
+    const response = await fetch(`/api/opencode/session/${sessionId}/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error((await response.text()) || "Failed to send command");
     }
   }
 

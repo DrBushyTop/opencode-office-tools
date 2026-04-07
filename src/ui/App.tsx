@@ -12,6 +12,7 @@ import { SessionHistory } from "./components/SessionHistory";
 import { PermissionDialog, type PermissionDecision } from "./components/PermissionDialog";
 import { useLocalStorage } from "./useLocalStorage";
 import { createOpencodeClient, ModelInfo, OpencodeConfig, SessionInfo, TodoItem } from "./lib/opencode-client";
+import type { SlashCommand } from "./lib/opencode-schemas";
 import { createOfficeToolBridge, readPowerPointContextSnapshot } from "./lib/office-tool-bridge";
 import { carry, makeSessionTitle, mapAssistantParts, restoreSession, updateSessionTitle, type OpencodeSessionInfo } from "./lib/opencode-session-history";
 import { trafficStats, type UiEvent } from "./lib/opencode-events";
@@ -367,6 +368,7 @@ export const App: React.FC = () => {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [pptContext, setPptContext] = useState<PowerPointContextSnapshot | null>(null);
   const [connectionState, setConnectionState] = useState({ isLoading: true, hasLoaded: false, hasFailed: false });
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [themePreference, setThemePreference] = useLocalStorage<ThemePreference>("opencode-theme-mode", "system");
   const safeThemePreference: ThemePreference = (themePreference === "light" || themePreference === "dark") ? themePreference : "system";
   const themeMode = useThemeMode(safeThemePreference);
@@ -657,6 +659,13 @@ export const App: React.FC = () => {
       setQaSubagentModel("");
       setQaSubagentVariant(undefined);
     }
+
+    try {
+      const commands = await client.listCommands();
+      setSlashCommands(commands);
+    } catch {
+      setSlashCommands([]);
+    }
   };
 
   useEffect(() => {
@@ -922,40 +931,61 @@ export const App: React.FC = () => {
     try {
       await ensureSessionStream(sessionId);
 
-      const uploads: Array<{ path: string; name: string; mime: string }> = [];
+      // Detect slash command: /<name> [arguments]
+      const slashMatch = userInput.match(/^\/(\S+)(?:\s(.*))?$/s);
+      const matchedCommand = slashMatch
+        ? slashCommands.find((cmd) => cmd.name === slashMatch[1])
+        : null;
 
-      for (const image of userImages) {
-        const response = await fetch("/api/upload-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataUrl: image.dataUrl, name: image.name }),
-        });
+      if (matchedCommand) {
+        const commandArgs = (slashMatch![2] || "").trim();
 
-        if (!response.ok) {
-          throw new Error(`Failed to upload image: ${response.statusText}`);
+        if (isFirstUserTurn && userInput.trim()) {
+          updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
         }
 
-        const result = await response.json();
-        const upload = UploadImageResponseSchema.parse(result);
-        uploads.push({ path: upload.path, name: image.name, mime: upload.mime || "image/png" });
+        await client.sendCommand(sessionId, {
+          command: matchedCommand.name,
+          arguments: commandArgs,
+          agent: matchedCommand.agent || officeHost,
+          model: matchedCommand.model,
+        });
+      } else {
+        const uploads: Array<{ path: string; name: string; mime: string }> = [];
+
+        for (const image of userImages) {
+          const response = await fetch("/api/upload-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataUrl: image.dataUrl, name: image.name }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to upload image: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          const upload = UploadImageResponseSchema.parse(result);
+          uploads.push({ path: upload.path, name: image.name, mime: upload.mime || "image/png" });
+        }
+
+        const model = availableModels.find((item) => item.key === safeSelectedModel) || FALLBACK_MODELS[0];
+        const parts = toPromptParts(userInput, uploads);
+        const tools = getEnabledTools(officeHost);
+
+        if (isFirstUserTurn && userInput.trim()) {
+          updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
+        }
+
+        await client.sendMessage(sessionId, {
+          model: { providerID: model.providerID, modelID: model.modelID },
+          agent: officeHost,
+          system: getSystemMessage(Office.context.host),
+          parts,
+          tools,
+          variant: safeSelectedVariant,
+        });
       }
-
-      const model = availableModels.find((item) => item.key === safeSelectedModel) || FALLBACK_MODELS[0];
-      const parts = toPromptParts(userInput, uploads);
-      const tools = getEnabledTools(officeHost);
-
-      if (isFirstUserTurn && userInput.trim()) {
-        updateSessionTitle(sessionId, makeSessionTitle(officeHost, userInput)).catch(() => undefined);
-      }
-
-      await client.sendMessage(sessionId, {
-        model: { providerID: model.providerID, modelID: model.modelID },
-        agent: officeHost,
-        system: getSystemMessage(Office.context.host),
-        parts,
-        tools,
-        variant: safeSelectedVariant,
-      });
     } catch (err) {
       setConnectionState({ isLoading: false, hasLoaded: false, hasFailed: true });
       const text = err instanceof Error ? err.message : String(err);
@@ -1082,6 +1112,7 @@ export const App: React.FC = () => {
             liveMessages={liveMessages}
             currentActivity={currentActivity}
             todos={todos}
+            slashCommands={slashCommands}
           />
           {permission && (
             <PermissionDialog
