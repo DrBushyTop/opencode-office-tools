@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Tool } from "./types";
-import { getWorksheet, nonNegativeFiniteNumberSchema, normalizeExcelColor, parseToolArgs, toolFailure } from "./excelShared";
+import { getWorksheet, nonNegativeFiniteNumberSchema, normalizeExcelColor, parseToolArgs } from "./excelShared";
+import { createToolFailure, describeErrorWithCode } from "./toolShared";
 
 const horizontalAlignmentSchema = z.enum(["left", "center", "right", "general", "fill", "justify", "centerAcrossSelection", "distributed"]);
 const verticalAlignmentSchema = z.enum(["top", "center", "bottom", "justify", "distributed"]);
@@ -32,7 +33,7 @@ const applyCellFormattingArgsSchema = z.object({
 
 export const applyCellFormatting: Tool = {
   name: "apply_cell_formatting",
-  description: "Apply formatting to Excel cells, including fonts, fills, number formats, alignment, wrapping, merging, borders, and row or column sizing.",
+  description: "Apply formatting to Excel cells, including fonts, fills, number formats, alignment, wrapping, borders, row or column sizing, and optional merge-state changes. Omit merge to leave merge state unchanged.",
   parameters: {
     type: "object",
     properties: {
@@ -48,8 +49,8 @@ export const applyCellFormatting: Tool = {
       horizontalAlignment: { type: "string", enum: ["left", "center", "right", "general", "fill", "justify", "centerAcrossSelection", "distributed"] },
       verticalAlignment: { type: "string", enum: ["top", "center", "bottom", "justify", "distributed"] },
       wrapText: { type: "boolean" },
-      merge: { type: "boolean", description: "Merge or unmerge the target range." },
-      mergeAcross: { type: "boolean", description: "When merging, merge each row separately instead of the full range." },
+      merge: { type: "boolean", description: "Set to true to merge the target range, or false to actively unmerge it. Omit this field to leave merge state unchanged. Excel table cells cannot be merged." },
+      mergeAcross: { type: "boolean", description: "When merge=true, merge each row separately instead of the full range." },
       borderStyle: { type: "string", enum: ["thin", "medium", "thick", "none", "double", "dashed", "dotted"] },
       borderColor: { type: "string" },
       interiorBorders: { type: "boolean", description: "Also apply border formatting to inside horizontal and vertical borders." },
@@ -68,7 +69,7 @@ export const applyCellFormatting: Tool = {
 
     const hasFormatting = Object.entries(update).some(([key, value]) => key !== "range" && key !== "sheetName" && value !== undefined);
     if (!hasFormatting) {
-      return toolFailure("No formatting options specified.");
+      return createToolFailure("No formatting options specified.");
     }
 
     try {
@@ -77,6 +78,18 @@ export const applyCellFormatting: Tool = {
         const range = sheet.getRange(update.range);
         range.load(["address", "rowCount", "columnCount"]);
         await context.sync();
+
+        let overlapsTable = false;
+        if (update.merge !== undefined && typeof (range as Excel.Range & { getTables?: (fullyContained?: boolean) => Excel.TableScopedCollection }).getTables === "function") {
+          const tables = (range as Excel.Range & { getTables: (fullyContained?: boolean) => Excel.TableScopedCollection }).getTables(false);
+          tables.load("items/name");
+          await context.sync();
+          overlapsTable = tables.items.length > 0;
+
+          if (update.merge) {
+            return createToolFailure(`Cannot merge ${range.address} because it overlaps an Excel table. Convert the table to a normal range first or omit merge.`);
+          }
+        }
 
         const format = range.format;
         const font = format.font;
@@ -117,18 +130,26 @@ export const applyCellFormatting: Tool = {
           format.verticalAlignment = verticalMap[update.verticalAlignment] || Excel.VerticalAlignment.bottom;
         }
 
+        // Apply merge state changes before sizing operations. Excel can reject
+        // row-height and autofit updates against merged ranges.
+        let mergeSummary: string | null = null;
+        if (update.merge !== undefined) {
+          if (update.merge) {
+            range.merge(Boolean(update.mergeAcross));
+            mergeSummary = "merged";
+          } else if (!overlapsTable) {
+            range.unmerge();
+            mergeSummary = "unmerged";
+          } else {
+            mergeSummary = "merge unchanged (table cells cannot be merged or unmerged)";
+          }
+        }
+
         if (update.wrapText !== undefined) format.wrapText = update.wrapText;
         if (update.rowHeight !== undefined) format.rowHeight = update.rowHeight;
         if (update.columnWidth !== undefined) format.columnWidth = update.columnWidth;
         if (update.autoFitRows) format.autofitRows();
         if (update.autoFitColumns) format.autofitColumns();
-        if (update.merge !== undefined) {
-          if (update.merge) {
-            range.merge(Boolean(update.mergeAcross));
-          } else {
-            range.unmerge();
-          }
-        }
 
         if (update.borderStyle !== undefined) {
           const styleMap: Record<string, Excel.BorderLineStyle> = {
@@ -183,7 +204,7 @@ export const applyCellFormatting: Tool = {
         if (update.horizontalAlignment !== undefined) applied.push(`${update.horizontalAlignment} horizontal alignment`);
         if (update.verticalAlignment !== undefined) applied.push(`${update.verticalAlignment} vertical alignment`);
         if (update.wrapText !== undefined) applied.push(update.wrapText ? "wrap text on" : "wrap text off");
-        if (update.merge !== undefined) applied.push(update.merge ? "merged" : "unmerged");
+        if (mergeSummary) applied.push(mergeSummary);
         if (update.borderStyle !== undefined) applied.push(`${update.borderStyle} borders${update.interiorBorders ? " including interior" : ""}`);
         if (update.rowHeight !== undefined) applied.push(`row height ${update.rowHeight}`);
         if (update.columnWidth !== undefined) applied.push(`column width ${update.columnWidth}`);
@@ -193,7 +214,7 @@ export const applyCellFormatting: Tool = {
         return `Applied formatting to ${range.address} in ${sheet.name}: ${applied.join(", ")}.`;
       });
     } catch (error: unknown) {
-      return toolFailure(error);
+      return createToolFailure(error, { describe: describeErrorWithCode });
     }
   },
 };

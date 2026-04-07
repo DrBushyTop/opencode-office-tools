@@ -364,7 +364,7 @@
   },
   "apply_cell_formatting": {
     "hosts": ["excel"],
-    "description": "Apply formatting to cells in Excel, including alignment, wrapping, merging, borders, and sizing.",
+    "description": "Apply formatting to Excel cells, including alignment, wrapping, borders, sizing, and optional merge-state changes. Omit merge to leave merge state unchanged.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -381,8 +381,8 @@
         "horizontalAlignment": { "type": "string", "enum": ["left", "center", "right", "general", "fill", "justify", "centerAcrossSelection", "distributed"] },
         "verticalAlignment": { "type": "string", "enum": ["top", "center", "bottom", "justify", "distributed"] },
         "wrapText": { "type": "boolean" },
-        "merge": { "type": "boolean" },
-        "mergeAcross": { "type": "boolean" },
+        "merge": { "type": "boolean", "description": "Set to true to merge the target range, or false to actively unmerge it. Omit this field to leave merge state unchanged. Excel table cells cannot be merged." },
+        "mergeAcross": { "type": "boolean", "description": "When merge=true, merge each row separately instead of the full range." },
         "borderStyle": { "type": "string", "enum": ["thin", "medium", "thick", "none", "double", "dashed", "dotted"] },
         "borderColor": { "type": "string" },
         "interiorBorders": { "type": "boolean" },
