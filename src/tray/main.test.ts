@@ -84,8 +84,10 @@ describe("tray main entrypoint", () => {
           createEmpty: vi.fn(() => ({ empty: true })),
         },
         shell: { showItemInFolder: vi.fn() },
+        dialog: { showMessageBox: vi.fn(), showErrorBox: vi.fn() },
       },
       path,
+      child_process: { execFile: vi.fn() },
       zod: await import("zod"),
       "../server/devLogger": {
         logInfo: vi.fn(),
@@ -93,6 +95,7 @@ describe("tray main entrypoint", () => {
         getLogFilePath: vi.fn(() => "/tmp/fallback.log"),
       },
       "../server-prod.js": { createServer },
+      "../../package.json": { version: "1.0.0" },
     }, {
       console,
       process: fakeProcess,
@@ -100,7 +103,7 @@ describe("tray main entrypoint", () => {
 
     expect(app.requestSingleInstanceLock).toHaveBeenCalledTimes(1);
     expect(app.dock.hide).toHaveBeenCalledTimes(1);
-    expect(readyHandler).toEqual(expect.any(Function));
+    expect(typeof readyHandler).toBe("function");
 
     await readyHandler?.();
 
@@ -113,20 +116,21 @@ describe("tray main entrypoint", () => {
       OPENCODE_OFFICE_CERT_DIR: path.join(path.resolve("."), ".opencode", "certs"),
     });
     expect(fakeProcess.env.OPENCODE_OFFICE_LOG_FILE).toBe(path.join(path.resolve("."), ".opencode", "debug.log"));
-    expect(processEvents.uncaughtException).toEqual(expect.any(Function));
-    expect(processEvents.unhandledRejection).toEqual(expect.any(Function));
+    expect(typeof processEvents.uncaughtException).toBe("function");
+    expect(typeof processEvents.unhandledRejection).toBe("function");
     expect(trayInstances).toHaveLength(1);
 
     const tray = trayInstances[0];
     const lastMenu = tray.setContextMenu.mock.calls[tray.setContextMenu.mock.calls.length - 1]?.[0] as { template: Array<{ label?: string }> };
     expect(lastMenu.template.map((entry) => entry.label).filter(Boolean)).toEqual(expect.arrayContaining([
-      "OpenCode Office Add-in",
+      "OpenCode Office Add-in v1.0.0",
       "● Service Running",
       "Disable Service",
       "Open Debug Log",
+      "Uninstall...",
       "Quit",
     ]));
     expect(tray.setToolTip.mock.calls[tray.setToolTip.mock.calls.length - 1]?.[0]).toBe("OpenCode Office Add-in - Running");
-    expect(appEvents["before-quit"]).toEqual(expect.any(Function));
+    expect(typeof appEvents["before-quit"]).toBe("function");
   });
 });

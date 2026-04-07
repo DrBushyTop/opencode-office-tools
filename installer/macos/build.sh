@@ -8,7 +8,7 @@ BUILD_DIR="${ROOT_DIR}/build/macos"
 ELECTRON_OUTPUT_DIR="${ROOT_DIR}/build/electron"
 APP_NAME="OpenCode Office Add-in"
 APP_IDENTIFIER="com.opencode.office-addin"
-APP_VERSION="1.0.0"
+APP_VERSION="$(node -p "require('${ROOT_DIR}/package.json').version")"
 TARGET_ARCH="${TARGET_ARCH:-}"
 
 package_filename() {
@@ -162,8 +162,18 @@ EOF
 }
 
 build_component_pkg() {
+  echo "Analyzing component plist..."
+  pkgbuild --analyze --root "${BUILD_DIR}/component-root" \
+    "${BUILD_DIR}/component.plist"
+
+  # Disable bundle relocation so macOS Installer always writes into
+  # /Applications regardless of any existing copy found elsewhere on disk.
+  plutil -replace BundleIsRelocatable -bool false \
+    "${BUILD_DIR}/component.plist"
+
   pkgbuild \
     --root "${BUILD_DIR}/component-root" \
+    --component-plist "${BUILD_DIR}/component.plist" \
     --scripts "${BUILD_DIR}/script-root" \
     --identifier "${APP_IDENTIFIER}" \
     --version "${APP_VERSION}" \
@@ -184,6 +194,7 @@ build_distribution_pkg() {
 
 cleanup_stage_layout() {
   rm -f "${BUILD_DIR}/OpenCodeOfficeAddin-component.pkg"
+  rm -f "${BUILD_DIR}/component.plist"
   rm -f "${BUILD_DIR}/distribution.xml"
   rm -rf "${BUILD_DIR}/component-root"
   rm -rf "${BUILD_DIR}/script-root"

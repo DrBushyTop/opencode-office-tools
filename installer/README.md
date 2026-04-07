@@ -63,11 +63,14 @@ bun run build:installer:win
 Use "Add or Remove Programs" in Windows Settings. The NSIS uninstaller removes the generated cert, app data, and Office registration.
 
 ### macOS
+Click the OpenCode menu bar icon and select **Uninstall...**. A confirmation dialog will appear, and the system will prompt for your administrator password before proceeding.
+
+Alternatively, you can run the uninstall script directly from a terminal:
 ```bash
 sudo /Applications/OpenCode\ Office\ Add-in.app/Contents/Resources/uninstall.sh
 ```
 
-The uninstall script removes the generated certificate, LaunchAgent, packaged app, and Office sideload registrations.
+The uninstall removes the application, sideloaded Office manifests, the localhost certificate and its keychain trust entry, the LaunchAgent, and the macOS package receipt.
 
 ## Code Signing (Optional)
 

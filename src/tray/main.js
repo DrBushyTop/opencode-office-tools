@@ -1,8 +1,10 @@
-const { app, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, Tray, Menu, nativeImage, shell, dialog } = require('electron');
 const path = require('path');
+const { execFile } = require('child_process');
 const { logInfo, logError, getLogFilePath } = require('../server/devLogger');
 
 const PRODUCT_NAME = 'OpenCode Office Add-in';
+const APP_VERSION = require('../../package.json').version;
 
 function assertPath(value, label) {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -176,10 +178,55 @@ function menuState(status) {
   };
 }
 
+function uninstallScriptPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'uninstall.sh');
+  }
+  return path.resolve(__dirname, '../../installer/macos/uninstall.sh');
+}
+
+async function runUninstall() {
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Cancel', 'Uninstall'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Uninstall OpenCode Office Add-in',
+    message: 'Are you sure you want to uninstall OpenCode Office Add-in?',
+    detail:
+      'This will remove the application, sideloaded Office manifests, the localhost certificate, and the login helper.',
+  });
+  if (response !== 1) return;
+
+  const scriptPath = uninstallScriptPath();
+  logInfo('tray', 'Starting uninstall', { scriptPath });
+
+  execFile(
+    '/usr/bin/osascript',
+    [
+      '-e',
+      `do shell script "bash '${scriptPath.replace(/'/g, "'\\''")}'" with administrator privileges`,
+    ],
+    (error, stdout, stderr) => {
+      if (error) {
+        const detail = [stderr, stdout, error.message].filter(Boolean).join('\n\n');
+        logError('tray', 'Uninstall failed', { message: error.message, stderr, stdout });
+        dialog.showErrorBox(
+          'Uninstall failed',
+          `The uninstall script returned an error.\n\n${detail}`,
+        );
+        return;
+      }
+      logInfo('tray', 'Uninstall completed');
+      app.quit();
+    },
+  );
+}
+
 function createTrayMenu(paths, controller, state) {
   const view = menuState(state);
   return Menu.buildFromTemplate([
-    { label: PRODUCT_NAME, enabled: false },
+    { label: `${PRODUCT_NAME} v${APP_VERSION}`, enabled: false },
     { type: 'separator' },
     { label: view.statusLabel, enabled: false },
     {
@@ -195,6 +242,9 @@ function createTrayMenu(paths, controller, state) {
       },
     },
     { type: 'separator' },
+    ...(process.platform === 'darwin'
+      ? [{ label: 'Uninstall...', click: () => runUninstall() }]
+      : []),
     { label: 'Quit', click: () => app.quit() },
   ]);
 }

@@ -34,15 +34,15 @@ manifest_id() {
     local manifest_path="$1"
 
     if [ ! -f "$manifest_path" ]; then
-        return 1
-    fi
-
-    if command -v xmllint >/dev/null 2>&1; then
-        xmllint --xpath 'string(/*[local-name()="OfficeApp"]/*[local-name()="Id"][1])' "$manifest_path" 2>/dev/null
         return 0
     fi
 
-    grep -o '<Id>[^<]*</Id>' "$manifest_path" | sed -E 's#</?Id>##g' | head -n 1
+    if command -v xmllint >/dev/null 2>&1; then
+        xmllint --xpath 'string(/*[local-name()="OfficeApp"]/*[local-name()="Id"][1])' "$manifest_path" 2>/dev/null || true
+        return 0
+    fi
+
+    grep -o '<Id>[^<]*</Id>' "$manifest_path" 2>/dev/null | sed -E 's#</?Id>##g' | head -n 1 || true
 }
 
 is_opencode_manifest_name() {
@@ -78,11 +78,35 @@ resolve_install_user() {
         return
     fi
 
-    stat -f "%Su" /dev/console
+    # osascript "with administrator privileges" runs as root without SUDO_USER;
+    # stat the console device to find the GUI-session owner.
+    local console_user
+    console_user="$(stat -f "%Su" /dev/console 2>/dev/null || true)"
+    if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
+        printf '%s\n' "$console_user"
+        return
+    fi
+
+    # Last resort: the user who owns /Applications/<app>.app
+    if [ -d "$APP_DIR" ]; then
+        console_user="$(stat -f "%Su" "$APP_DIR" 2>/dev/null || true)"
+        if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
+            printf '%s\n' "$console_user"
+            return
+        fi
+    fi
+
+    echo "root"
 }
 
 resolve_user_home() {
-    dscl . -read "/Users/$1" NFSHomeDirectory | awk '{print $2}'
+    local home_dir
+    home_dir="$(dscl . -read "/Users/$1" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    if [ -z "$home_dir" ]; then
+        # Fallback: use eval to expand ~user
+        home_dir="$(eval echo "~$1" 2>/dev/null || echo "/Users/$1")"
+    fi
+    printf '%s\n' "$home_dir"
 }
 
 remove_manifest_registrations() {
@@ -110,7 +134,13 @@ run_uninstall_action() {
         stop-launch-agent)
             local launch_agent_path="${user_home}/Library/LaunchAgents/${LAUNCHAGENT_ID}.plist"
             if [ -f "$launch_agent_path" ]; then
-                sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
+                local uid
+                uid="$(id -u "$install_user" 2>/dev/null || echo "")"
+                if [ -n "$uid" ] && [ "$uid" != "0" ]; then
+                    # Prefer bootout (modern launchctl); fall back to unload
+                    launchctl bootout "gui/${uid}/${LAUNCHAGENT_ID}" 2>/dev/null || \
+                        sudo -u "$install_user" launchctl unload "$launch_agent_path" 2>/dev/null || true
+                fi
                 rm -f "$launch_agent_path"
             fi
             ;;
@@ -142,6 +172,9 @@ main() {
     echo "Removing application..."
     run_uninstall_action "$install_user" "$user_home" remove-app
     remove_generated_certificate "$user_home"
+
+    echo "Removing package receipt..."
+    pkgutil --forget com.opencode.office-addin >/dev/null 2>&1 || true
 
     echo ""
     echo "✓ OpenCode Office Add-in has been uninstalled."
