@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { executeOfficeJs, executePowerPointOfficeJs } from "./executeOfficeJs";
+import { executeOfficeJs, executePowerPointOfficeJs, formatUserCodeSnippet } from "./executeOfficeJs";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -201,5 +201,115 @@ describe("executeOfficeJs tool", () => {
     expect(result.resultType).toBe("failure");
     expect(result.error).toContain("Shapes.addGeometricShape");
     expect(result.error).toContain("The argument is invalid or missing");
+  });
+
+  it("enables OfficeExtension.config.extendedErrorLogging before running user code", async () => {
+    const config = { extendedErrorLogging: false } as { extendedErrorLogging: boolean };
+    vi.stubGlobal("OfficeExtension", { config });
+    const run = vi.fn(async (callback: (context: PowerPoint.RequestContext) => Promise<unknown>) => callback({
+      sync: vi.fn().mockResolvedValue(undefined),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext));
+
+    vi.stubGlobal("PowerPoint", { run });
+    vi.stubGlobal("Office", {});
+
+    await executeOfficeJs.handler({ code: "return 1;" });
+
+    expect(config.extendedErrorLogging).toBe(true);
+  });
+
+  it("surfaces the failing statement from extended error logging", async () => {
+    const officeError = Object.assign(new Error("InvalidArgument"), {
+      code: "InvalidArgument",
+      debugInfo: {
+        errorLocation: "Shape.geometricShapeType",
+        statement: 'shape.geometricShapeType = "RoundRectangle"',
+        surroundingStatements: [
+          "shape = shapes.addGeometricShape(...)",
+          'shape.geometricShapeType = "RoundRectangle"',
+        ],
+      },
+    });
+    const run = vi.fn(async (callback: (context: PowerPoint.RequestContext) => Promise<unknown>) => callback({
+      sync: vi.fn().mockRejectedValue(officeError),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext));
+
+    vi.stubGlobal("PowerPoint", { run });
+    vi.stubGlobal("Office", {});
+
+    const result = await executeOfficeJs.handler({ code: "await sync();" }) as { error: string };
+    expect(result.error).toContain('statement: shape.geometricShapeType = "RoundRectangle"');
+    expect(result.error).toContain("surrounding statements:");
+  });
+
+  it("includes a code snippet with caret for plain JS errors thrown in user code", async () => {
+    const run = vi.fn(async (callback: (context: PowerPoint.RequestContext) => Promise<unknown>) => callback({
+      sync: vi.fn().mockResolvedValue(undefined),
+      presentation: { slides: { items: [] } },
+    } as unknown as PowerPoint.RequestContext));
+
+    vi.stubGlobal("PowerPoint", { run });
+    vi.stubGlobal("Office", {});
+
+    const result = await executeOfficeJs.handler({
+      code: [
+        "const ok = 1;",
+        "const missing = notDefinedSymbol;",
+        "return ok;",
+      ].join("\n"),
+    }) as { resultType: string; error: string };
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("notDefinedSymbol is not defined");
+    expect(result.error).toContain("In user code:");
+    expect(result.error).toContain("> 2: const missing = notDefinedSymbol;");
+  });
+});
+
+describe("formatUserCodeSnippet", () => {
+  it("produces a snippet with a caret for an anonymous stack frame", () => {
+    // We cannot hard-code the reported line because the AsyncFunction header
+    // spans a different number of lines per engine. Instead we generate a real
+    // error via the same AsyncFunction path used by the tool and feed its stack
+    // straight back into formatUserCodeSnippet — this exercises the header
+    // detection exactly as the tool does at runtime.
+    const code = [
+      "const a = 1;",
+      "throw new Error('boom');",
+      "const c = 3;",
+    ].join("\n");
+    const AsyncFn = Object.getPrototypeOf(async function () { /* noop */ }).constructor as new (
+      ...args: string[]
+    ) => () => Promise<unknown>;
+    const fn = new AsyncFn(
+      "context",
+      "presentation",
+      "PowerPoint",
+      "Office",
+      "console",
+      "sync",
+      "setResult",
+      code,
+    );
+
+    return fn().then(
+      () => { throw new Error("expected probe to throw"); },
+      (error: Error) => {
+        const snippet = formatUserCodeSnippet(code, error.stack);
+        expect(snippet).not.toBeNull();
+        expect(snippet).toContain("> 2: throw new Error('boom');");
+        expect(snippet).toContain("^");
+      },
+    );
+  });
+
+  it("returns null when the stack has no anonymous frame", () => {
+    expect(formatUserCodeSnippet("a();", "Error\n    at Foo.bar (/tmp/x.ts:1:1)")).toBeNull();
+  });
+
+  it("returns null when the mapped line is out of range", () => {
+    expect(formatUserCodeSnippet("a();", "Error\n    at anonymous:999:1")).toBeNull();
   });
 });

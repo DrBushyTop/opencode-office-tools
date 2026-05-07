@@ -213,18 +213,27 @@ function validateOfficeToolCall(host, toolName, args) {
   }
 
   if (toolName === 'edit_slide_xml') {
+    const mode = normalizedArgs.mode
     const hasCode = hasNonBlankString(normalizedArgs.code)
     const hasReplacements = Array.isArray(normalizedArgs.replacements) && normalizedArgs.replacements.length > 0
 
-    if (!hasCode && !hasReplacements) {
-      throw new Error('Provide args.code or args.replacements')
+    if (mode === 'code' && !hasCode) {
+      throw new Error('Provide args.code when args.mode is code')
     }
 
-    if (hasCode && hasReplacements) {
-      throw new Error('Provide either args.code or args.replacements, not both')
+    if (mode === 'replacements' && !hasReplacements) {
+      throw new Error('Provide args.replacements when args.mode is replacements')
     }
 
-    if (hasReplacements) {
+    if (mode === 'code' && hasReplacements) {
+      throw new Error('Do not provide args.replacements when args.mode is code')
+    }
+
+    if (mode === 'replacements' && hasCode) {
+      throw new Error('Do not provide args.code when args.mode is replacements')
+    }
+
+    if (mode === 'replacements' && hasReplacements) {
       const invalidReplacementIndex = normalizedArgs.replacements.findIndex((replacement) => !replacement || isBlankString(replacement.ref))
       if (invalidReplacementIndex >= 0) {
         throw new Error(`Invalid args.replacements[${invalidReplacementIndex}].ref: cannot be empty`)

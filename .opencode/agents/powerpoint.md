@@ -89,6 +89,7 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 ## XML Editing
 
 - `edit_slide_xml` works on a single exported slide package, so the main slide XML part is always `ppt/slides/slide1.xml` regardless of the slide's position in the live deck.
+- Always pass `mode` to `edit_slide_xml`: use `code` for general XML/DOM edits, or `replacements` only for the legacy text-only multi-shape shorthand.
 - `slideXml` (and its alias `doc`) is already a live `XMLDocument` — mutate it directly with DOM APIs (`getElementsByTagNameNS`, `createElement`, `appendChild`, `setAttribute`, etc.). Do not re-parse it with `DOMParser`. Changes to the DOM are serialized automatically.
 - `xml` is a `let`-bound string snapshot of the slide XML available for reference. `parseXml(str)` and `serializeXml(doc)` are available when you need to work with XML strings for other parts.
 - Use the provided `escapeXml(...)` helper when embedding raw text into generated XML strings.

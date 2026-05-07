@@ -658,7 +658,7 @@
   },
   "execute_office_js": {
     "hosts": ["powerpoint"],
-    "description": "Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context). Use only when the higher-level tools (manage_slide_shapes, edit_slide_xml, edit_slide_text, etc.) cannot express the operation cleanly. Do not use for batch shape creation or text formatting that edit_slide_xml or manage_slide_shapes can handle.",
+    "description": "Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context). Use only when the higher-level tools, especially edit_slide_xml, edit_slide_text, layout/slide tools, and manage_slide_shapes, cannot express the operation cleanly. Do not use this for existing-slide text, formatting, or structure edits that edit_slide_xml can handle.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -684,7 +684,7 @@
   },
   "read_slide_text": {
     "hosts": ["powerpoint"],
-    "description": "Read the raw paragraph XML from one PowerPoint text shape using a stable shape ref. Use this before fidelity-sensitive text edits.",
+    "description": "Read the raw paragraph XML from one PowerPoint text shape using a stable shape ref. Use this before fidelity-sensitive single-shape edits with edit_slide_text, or before preparing broader slide-scoped XML edits with edit_slide_xml.",
     "mutating": false,
     "parameters": {
       "type": "object",
@@ -697,7 +697,7 @@
   },
   "edit_slide_text": {
     "hosts": ["powerpoint"],
-    "description": "Preferred text-editing tool for one PowerPoint text shape. Replaces paragraph XML in place while preserving the rest of the slide.",
+    "description": "Preferred text-editing tool for one existing PowerPoint text shape. Replaces paragraph XML in place while preserving the rest of the slide. If multiple existing shapes on the same slide need edits, prefer edit_slide_xml.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -715,13 +715,14 @@
   },
   "edit_slide_xml": {
     "hosts": ["powerpoint"],
-    "description": "General-purpose single-slide XML editor. Exports one slide as a ZIP package, provides slideXml as a live XMLDocument (already parsed, not a string), and reimports the edited slide in one round-trip. Mutate slideXml in place with DOM APIs — changes are serialized automatically. Use for batch text edits across multiple shapes, advanced formatting, structural shape work, shape geometry and style fixes, and any single-slide edit that benefits from full OOXML fidelity. Prefer this over execute_office_js for text editing and formatting work.",
+    "description": "Primary tool for most edits to existing content on one PowerPoint slide. Exports one slide as a ZIP package, provides slideXml as a live XMLDocument (already parsed, not a string), and reimports the edited slide in one round-trip. Mutate slideXml in place with DOM APIs — changes are serialized automatically. Use it by default for existing-slide text rewrites, batch text edits across shapes, advanced formatting, structural shape work, shape geometry/style fixes, and any slide-scoped edit that benefits from full OOXML fidelity. Prefer this over manage_slide_shapes for most edits to existing shapes, and over execute_office_js unless the host API is specifically required.",
     "mutating": true,
     "parameters": {
       "type": "object",
       "properties": {
+        "mode": { "type": "string", "enum": ["code", "replacements"], "description": "Required discriminator. Use \"code\" for general XML DOM edits, or \"replacements\" for the legacy text-only multi-shape replacement shorthand." },
         "slideIndex": { "type": "number", "description": "Optional 0-based slide index. Required when no active slide can be inferred safely. Use this for arbitrary single-slide XML edits." },
-        "code": { "type": "string", "minLength": 1, "description": "Async JavaScript function body. Key variables in scope: slideXml and doc (same object) are a live XMLDocument — already parsed, not a string. Mutate it in place with standard DOM APIs (getElementsByTagNameNS, createElement, appendChild, setAttribute, etc.) and changes are saved automatically. Do not re-parse slideXml with DOMParser. Also available: xml (a let-bound string snapshot of the slide XML), zip (JSZip-style single-slide package supporting zip.file(path) and zip.files[path]), slidePath (always ppt/slides/slide1.xml regardless of deck position), namespaces ({ a, p, r } namespace URIs), escapeXml(str), parseXml(str), serializeXml(doc), console, setResult(value), DOMParser, and XMLSerializer. You can also return an XML string or XMLDocument to replace the slide, or write via zip.file(slidePath, xmlString)." },
+        "code": { "type": "string", "minLength": 1, "description": "Required when mode is \"code\". Async JavaScript function body. Key variables in scope: slideXml and doc (same object) are a live XMLDocument — already parsed, not a string. Mutate it in place with standard DOM APIs (getElementsByTagNameNS, createElement, appendChild, setAttribute, etc.) and changes are saved automatically. Do not re-parse slideXml with DOMParser. Also available: xml (a let-bound string snapshot of the slide XML), zip (JSZip-style single-slide package supporting zip.file(path) and zip.files[path]), slidePath (always ppt/slides/slide1.xml regardless of deck position), namespaces ({ a, p, r } namespace URIs), escapeXml(str), parseXml(str), serializeXml(doc), console, setResult(value), DOMParser, and XMLSerializer. You can also return an XML string or XMLDocument to replace the slide, or write via zip.file(slidePath, xmlString)." },
         "autosize_shape_ids": {
           "type": "array",
           "items": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
@@ -730,7 +731,7 @@
         "replacements": {
           "type": "array",
           "minItems": 1,
-          "description": "Legacy shorthand for text-only multi-shape updates on one slide. Prefer code for general slide XML edits.",
+          "description": "Required when mode is \"replacements\". Legacy shorthand for text-only multi-shape updates on one slide. Prefer code for general slide XML edits, but still prefer this tool over manage_slide_shapes when updating existing copy across shapes on one slide.",
           "items": {
             "type": "object",
             "properties": {
@@ -740,7 +741,8 @@
             "required": ["ref", "paragraphsXml"]
           }
         }
-      }
+      },
+      "required": ["mode"]
     },
     "ui": { "icon": "🧬", "activity": { "type": "static", "text": "Editing slide XML" } }
   },
@@ -985,7 +987,7 @@
   },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
-    "description": "Create, update, delete, group, or ungroup PowerPoint shapes for geometry, styling, naming, and structure changes. For wording or rich-text edits, prefer read_slide_text plus edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
+    "description": "Create, update, delete, group, or ungroup PowerPoint shapes for native geometry, styling, naming, grouping, and structure changes. Do not default to this for existing-slide copy or formatting rewrites; prefer edit_slide_xml for most edits to existing shapes, and read_slide_text plus edit_slide_text for one existing text shape. Use this mainly for shape creation, sparse native property patches, grouping, and simple labels.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -1009,7 +1011,7 @@
         "shapeType": { "type": "string", "enum": ["textBox", "geometricShape", "line"], "description": "Shape type to create. Create-only; omit for update/delete/group/ungroup." },
         "geometricShapeType": { "type": "string", "description": "Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow. Create-only." },
         "connectorType": { "type": "string", "enum": ["Straight", "Elbow", "Curve"], "description": "Optional connector type for line creation. Default Straight. Create-only." },
-        "text": { "type": "string", "description": "Text content to create or replace. Best for simple labels or newly created shapes. For fidelity-sensitive wording changes, prefer read_slide_text plus edit_slide_text, or edit_slide_xml for several text shapes on one slide." },
+        "text": { "type": "string", "description": "Text content to create or replace. Best for newly created shapes or very simple labels. If you are editing existing slide copy, default to read_slide_text plus edit_slide_text for one shape, or edit_slide_xml for anything broader or fidelity-sensitive." },
         "name": { "type": "string", "description": "Descriptive shape name for identification and animation targeting. Use semantic names like 'Bullet 1 - Revenue' or 'Hero Image'." },
         "left": { "type": "number", "description": "Left position in points. For update, omit to keep the current position." },
         "top": { "type": "number", "description": "Top position in points. For update, omit to keep the current position." },

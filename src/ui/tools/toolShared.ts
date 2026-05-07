@@ -40,10 +40,44 @@ export function describeError(error: unknown): string {
   return error.message;
 }
 
-export function describeErrorWithCode(error: unknown): string {
+interface OfficeDebugInfo {
+  message?: string;
+  errorLocation?: string;
+  statement?: string;
+  surroundingStatements?: string[] | string;
+  fullStatements?: string[] | string;
+  innerError?: unknown;
+}
+
+interface OfficeErrorLike {
+  code?: string;
+  debugInfo?: OfficeDebugInfo;
+  innerError?: unknown;
+}
+
+function truncateStatement(statement: string, maxLength = 240): string {
+  const normalized = statement.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function formatSurroundingStatements(value: OfficeDebugInfo["surroundingStatements"], maxLines = 6): string | null {
+  if (!value) return null;
+  const lines = Array.isArray(value)
+    ? value
+    : String(value).split(/\r?\n/);
+  const trimmed = lines.map((line) => line.trim()).filter(Boolean);
+  if (trimmed.length === 0) return null;
+  const head = trimmed.slice(0, maxLines).map((line) => `  ${truncateStatement(line, 200)}`).join("\n");
+  const suffix = trimmed.length > maxLines ? `\n  ...(${trimmed.length - maxLines} more)` : "";
+  return head + suffix;
+}
+
+export function describeErrorWithCode(error: unknown, depth = 0): string {
   if (!(error instanceof Error)) return String(error);
-  const code = (error as { code?: string }).code;
-  const debugInfo = (error as { debugInfo?: { message?: string; errorLocation?: string } }).debugInfo;
+  const officeLike = error as OfficeErrorLike;
+  const code = officeLike.code;
+  const debugInfo = officeLike.debugInfo;
 
   let base = error.message;
 
@@ -58,7 +92,36 @@ export function describeErrorWithCode(error: unknown): string {
   }
 
   // Only append [code] if it adds information not already in the message
-  return code && code !== error.message ? `${base} [${code}]` : base;
+  if (code && code !== error.message) {
+    base = `${base} [${code}]`;
+  }
+
+  // Append the failing statement from extendedErrorLogging (the single most useful
+  // piece of info the LLM needs to retry). Requires
+  // OfficeExtension.config.extendedErrorLogging = true before the batch ran.
+  if (debugInfo?.statement) {
+    base = `${base}\n  statement: ${truncateStatement(debugInfo.statement)}`;
+  }
+
+  const surrounding = formatSurroundingStatements(debugInfo?.surroundingStatements);
+  if (surrounding) {
+    base = `${base}\n  surrounding statements:\n${surrounding}`;
+  }
+
+  // Unwrap a single level of inner error, which Office.js uses to chain
+  // the underlying host exception (e.g. real reason behind a GenericException).
+  const innerError = debugInfo?.innerError ?? officeLike.innerError;
+  if (innerError && depth < 2) {
+    const innerDescription = describeErrorWithCode(
+      innerError instanceof Error ? innerError : Object.assign(new Error(String((innerError as { message?: string })?.message || innerError)), innerError),
+      depth + 1,
+    );
+    if (innerDescription && innerDescription !== base) {
+      base = `${base}\n  caused by: ${innerDescription.replace(/\n/g, "\n  ")}`;
+    }
+  }
+
+  return base;
 }
 
 export function createToolFailure(

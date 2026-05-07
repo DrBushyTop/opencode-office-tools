@@ -22,22 +22,37 @@ const legacyReplacementSchema = z.object({
 });
 
 const editSlideXmlArgsSchema = z.object({
+  mode: z.enum(["code", "replacements"]),
   slideIndex: z.number().optional(),
   code: z.string().trim().min(1).optional(),
   autosize_shape_ids: z.array(z.union([z.string(), z.number()])).optional(),
   replacements: z.array(legacyReplacementSchema).min(1).optional(),
 }).superRefine((value, context) => {
-  if (!value.code && !value.replacements?.length) {
+  if (value.mode === "code" && !value.code) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Provide code or replacements.",
+      message: "Provide code when mode is code.",
       path: ["code"],
     });
   }
-  if (value.code && value.replacements?.length) {
+  if (value.mode === "replacements" && !value.replacements?.length) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Provide either code or replacements, not both.",
+      message: "Provide replacements when mode is replacements.",
+      path: ["replacements"],
+    });
+  }
+  if (value.mode === "code" && value.replacements?.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Do not provide replacements when mode is code.",
+      path: ["replacements"],
+    });
+  }
+  if (value.mode === "replacements" && value.code) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Do not provide code when mode is replacements.",
       path: ["code"],
     });
   }
@@ -80,13 +95,18 @@ export const editSlideXml: Tool = {
   parameters: {
     type: "object",
     properties: {
+      mode: {
+        type: "string",
+        enum: ["code", "replacements"],
+        description: "Required discriminator. Use `code` for general XML DOM edits, or `replacements` for the legacy text-only multi-shape replacement shorthand.",
+      },
       slideIndex: {
         type: "number",
         description: "Optional 0-based slide index. Required when no active slide can be inferred safely. Use this for arbitrary single-slide XML edits.",
       },
       code: {
         type: "string",
-        description: "Async JavaScript function body. Key variables in scope: slideXml and doc (same object) are a live XMLDocument — already parsed, not a string. Mutate in place with standard DOM APIs and changes are saved automatically. Do not re-parse slideXml with DOMParser. Also available: xml (let-bound string snapshot), zip (JSZip-style package), slidePath (always ppt/slides/slide1.xml), namespaces ({ a, p, r }), escapeXml(str), parseXml(str), serializeXml(doc), console, setResult(value), DOMParser, XMLSerializer.",
+        description: "Required when mode is `code`. Async JavaScript function body. Key variables in scope: slideXml and doc (same object) are a live XMLDocument — already parsed, not a string. Mutate in place with standard DOM APIs and changes are saved automatically. Do not re-parse slideXml with DOMParser. Also available: xml (let-bound string snapshot), zip (JSZip-style package), slidePath (always ppt/slides/slide1.xml), namespaces ({ a, p, r }), escapeXml(str), parseXml(str), serializeXml(doc), console, setResult(value), DOMParser, XMLSerializer.",
       },
       autosize_shape_ids: {
         type: "array",
@@ -95,7 +115,7 @@ export const editSlideXml: Tool = {
       },
       replacements: {
         type: "array",
-        description: "Legacy shorthand for text-only multi-shape updates on one slide. Prefer `code` for general slide XML edits.",
+        description: "Required when mode is `replacements`. Legacy shorthand for text-only multi-shape updates on one slide. Prefer `code` for general slide XML edits.",
         items: {
           type: "object",
           properties: {
@@ -106,6 +126,7 @@ export const editSlideXml: Tool = {
         },
       },
     },
+    required: ["mode"],
   },
   handler: async (args) => {
     const parsedArgs = editSlideXmlArgsSchema.safeParse(args ?? {});
@@ -120,7 +141,7 @@ export const editSlideXml: Tool = {
       return toolFailure(error);
     }
 
-    if (parsedArgs.data.code) {
+    if (parsedArgs.data.mode === "code") {
       if (parsedArgs.data.slideIndex !== undefined && (!Number.isInteger(parsedArgs.data.slideIndex) || parsedArgs.data.slideIndex < 0)) {
         return toolFailure("slideIndex must be a non-negative integer.");
       }
@@ -194,7 +215,7 @@ export const editSlideXml: Tool = {
 
     const replacements = parsedArgs.data.replacements;
     if (!replacements?.length) {
-      return toolFailure("Provide code or replacements.");
+      return toolFailure("Provide replacements when mode is replacements.");
     }
 
     let parsedRefs: Array<ReturnType<typeof parsePowerPointShapeRef>>;

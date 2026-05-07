@@ -145,7 +145,10 @@ run_uninstall_action() {
             fi
             ;;
         kill-app)
-            pkill -f "$APP_NAME" 2>/dev/null || true
+            # Match the Electron binary path (Contents/MacOS), NOT the broad
+            # app name — pkill -f "$APP_NAME" would also match this script's
+            # own process tree (bash, osascript) and kill the uninstaller.
+            pkill -f "${APP_DIR}/Contents/MacOS" 2>/dev/null || true
             pkill -f "opencode-office-server" 2>/dev/null || true
             pkill -f "copilot-office-server" 2>/dev/null || true
             ;;

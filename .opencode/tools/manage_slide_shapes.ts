@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { powerpoint } from "../lib/office-powerpoint"
 
-export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes for geometry, styling, naming, and structure changes. For wording or rich-text edits, prefer read_slide_text plus edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.", {
+export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes for native geometry, styling, naming, grouping, and structure changes. Do not default to this for existing-slide copy or formatting rewrites; prefer edit_slide_xml for most edits to existing shapes, and read_slide_text plus edit_slide_text for one existing text shape. Use this mainly for shape creation, sparse native property patches, grouping, and simple labels.", {
   action: tool.schema.enum(["create", "update", "delete", "group", "ungroup"]).describe("Shape operation to perform. Use update as a sparse patch: include only targeting fields and the properties that should change."),
   slideIndex: tool.schema.union([tool.schema.number(), tool.schema.array(tool.schema.number())]).optional().describe("0-based slide index. Optional when the active slide can be inferred from the current selection."),
   shapeId: tool.schema.string().optional().describe("Existing shape id. Preferred targeting field for update/delete/ungroup when available."),
@@ -11,7 +11,7 @@ export default powerpoint("manage_slide_shapes", "Create, update, delete, group,
   shapeType: tool.schema.enum(["textBox", "geometricShape", "line"]).optional().describe("Shape type to create. Create-only; omit for update/delete/group/ungroup."),
   geometricShapeType: tool.schema.string().optional().describe("Geometric shape type for create. Must be a valid PowerPoint.GeometricShapeType value such as Rectangle, Ellipse, Chevron, or RightArrow. Create-only."),
   connectorType: tool.schema.enum(["Straight", "Elbow", "Curve"]).optional().describe("Optional connector type for line creation. Default Straight. Create-only."),
-  text: tool.schema.string().optional().describe("Text content to create or replace. Best for simple labels or newly created shapes. For fidelity-sensitive wording changes, prefer read_slide_text plus edit_slide_text, or edit_slide_xml for several text shapes on one slide."),
+  text: tool.schema.string().optional().describe("Text content to create or replace. Best for newly created shapes or very simple labels. If you are editing existing slide copy, default to read_slide_text plus edit_slide_text for one shape, or edit_slide_xml for anything broader or fidelity-sensitive."),
   name: tool.schema.string().optional().describe("Descriptive shape name for identification and animation targeting. Use semantic names like 'Bullet 1 - Revenue' or 'Hero Image'."),
   left: tool.schema.number().optional().describe("Left position in points. For update, omit to keep the current position."),
   top: tool.schema.number().optional().describe("Top position in points. For update, omit to keep the current position."),

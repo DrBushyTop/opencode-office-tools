@@ -92,5 +92,63 @@ describe("powerpointShared", () => {
       });
       expect(describeError(error)).toBe("InvalidArgument");
     });
+
+    it("includes debugInfo.statement from extended error logging", () => {
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: {
+          errorLocation: "Shape.geometricShapeType",
+          statement: 'shape.geometricShapeType = "RoundRectangle"',
+        },
+      });
+      const result = describeError(error);
+      expect(result).toContain("Shape.geometricShapeType");
+      expect(result).toContain('statement: shape.geometricShapeType = "RoundRectangle"');
+    });
+
+    it("includes surrounding statements when provided", () => {
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: {
+          statement: "shape.lineFormat.weight = 0.75",
+          surroundingStatements: [
+            "shape = shapes.addGeometricShape(\"Rectangle\")",
+            "shape.fill.setSolidColor(\"#0B1E36\")",
+            "shape.lineFormat.weight = 0.75",
+          ],
+        },
+      });
+      const result = describeError(error);
+      expect(result).toContain("surrounding statements:");
+      expect(result).toContain("shape = shapes.addGeometricShape");
+      expect(result).toContain("shape.lineFormat.weight = 0.75");
+    });
+
+    it("truncates very long surrounding statement lists", () => {
+      const lines = Array.from({ length: 12 }, (_, index) => `statement_${index}()`);
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: { surroundingStatements: lines },
+      });
+      const result = describeError(error);
+      expect(result).toContain("statement_0");
+      expect(result).toContain("(6 more)");
+      expect(result).not.toContain("statement_11");
+    });
+
+    it("unwraps a single level of innerError", () => {
+      const inner = Object.assign(new Error("GenericException"), {
+        code: "GenericException",
+        debugInfo: { message: "The underlying shape could not be created", errorLocation: "Fill.setSolidColor" },
+      });
+      const error = Object.assign(new Error("InvalidArgument"), {
+        code: "InvalidArgument",
+        debugInfo: { innerError: inner },
+      });
+      const result = describeError(error);
+      expect(result).toContain("caused by:");
+      expect(result).toContain("The underlying shape could not be created");
+      expect(result).toContain("Fill.setSolidColor");
+    });
   });
 });
