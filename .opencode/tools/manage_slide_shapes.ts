@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { powerpoint } from "../lib/office-powerpoint"
 
-export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes for native geometry, styling, naming, grouping, and structure changes. Do not default to this for existing-slide copy or formatting rewrites; prefer edit_slide_xml for most edits to existing shapes, and read_slide_text plus edit_slide_text for one existing text shape. Use this mainly for shape creation, sparse native property patches, grouping, and simple labels.", {
+export default powerpoint("manage_slide_shapes", "Create, update, delete, group, or ungroup PowerPoint shapes for small sparse geometry, styling, naming, grouping, and simple-label changes. For live slide authoring and coordinated shape layout, prefer execute_office_js. For wording or rich-text edits, prefer read_slide_text with edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.", {
   action: tool.schema.enum(["create", "update", "delete", "group", "ungroup"]).describe("Shape operation to perform. Use update as a sparse patch: include only targeting fields and the properties that should change."),
   slideIndex: tool.schema.union([tool.schema.number(), tool.schema.array(tool.schema.number())]).optional().describe("0-based slide index. Optional when the active slide can be inferred from the current selection."),
   shapeId: tool.schema.string().optional().describe("Existing shape id. Preferred targeting field for update/delete/ungroup when available."),

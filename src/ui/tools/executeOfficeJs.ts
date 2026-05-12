@@ -193,7 +193,7 @@ export async function executePowerPointOfficeJs(
 
 export const executeOfficeJs: Tool = {
   name: "execute_office_js",
-  description: "Office.js escape hatch for live PowerPoint automation. Use only when the higher-level tools (manage_slide_shapes, edit_slide_xml, edit_slide_text, etc.) cannot express the operation cleanly. Do not use for batch shape creation or text formatting that edit_slide_xml or manage_slide_shapes can handle.",
+  description: "Run Office.js against the live PowerPoint deck. Prefer this for host-native slide authoring, coordinated shape layout, direct positioning/sizing, fills, lines, z-order, and operations that are clearer as one Office.js batch. Keep specialized tools for safer precision workflows such as rich text, OOXML, charts, masters, animations, notes, and transitions.",
   parameters: {
     type: "object",
     properties: {

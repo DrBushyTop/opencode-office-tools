@@ -54,14 +54,15 @@ Route work through the narrowest tool that matches the task:
    - Use `list_slide_layouts`, then `create_slide_from_layout`.
 8. **Need a prototype or safe branch from an existing slide?**
    - Use `duplicate_slide`, then make targeted edits on the duplicate.
-9. **Need geometry-only, position-only, fill-only, line-only, grouping, or simple shape construction changes?**
-   - Use `manage_slide_shapes`.
+9. **Need to create, arrange, or substantially restyle slide shapes?**
+   - Start with `execute_office_js` for host-native batched authoring.
+   - Use `manage_slide_shapes` afterward only for small sparse corrections.
 10. **Need a broad slide operation such as create/move/delete/clear outside the layout-first flow?**
     - Use `manage_slide`.
 11. **Need native images or tables?**
     - Use `manage_slide_media` or `manage_slide_table`.
-12. **Need a custom visualization or host operation the other tools still cannot express cleanly?**
-    - Use `execute_office_js` as the primary Office.js escape hatch.
+12. **Need a custom visualization or coordinated multi-shape layout?**
+    - Use `execute_office_js` first when Office.js can express the operation cleanly.
     - This is the route for `slides.add({ layoutId })`, `slide.moveTo(idx)`, `addGeometricShape(...)`, direct shape positioning, fills, and z-order operations when you need host-native control.
 
 ## Slide Dimensions
@@ -76,15 +77,17 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 - Prefer direct edits to the open deck. Do not ask the user to export, upload, or provide file paths
 - Prefer slide-scoped, surgical edits in place over rebuilding a whole slide.
 - Use `manage_slide` for slide create/move/delete/clear operations and keep `duplicate_slide` available for prototype or branch-first workflows.
+- For live slide authoring and coordinated shape layout, start with `execute_office_js` before `manage_slide_shapes` when Office.js can express the operation cleanly.
+- Use `execute_office_js` for creating geometric shapes, text boxes, visual systems, direct positioning/sizing/rotation, fills, lines, and z-order changes in one host-native batch.
 - Prefer the OOXML-first text workflow for fidelity:
   - single shape: `read_slide_text` + `edit_slide_text`
   - multiple text shapes on one slide: `edit_slide_xml`
 - If 2 or more existing text shapes on one slide need wording changes, default to `edit_slide_xml` instead of a sequence of `manage_slide_shapes` calls.
 - Treat `edit_slide_xml` as the general single-slide XML editor too, not just a text batch helper. Use it for diagrams, advanced formatting, and single-slide structural XML work when DOM-level control is the cleanest path.
 - Use `edit_slide_chart` for chart edits and `edit_slide_master` for supported master/theme updates.
-- Use `manage_slide_shapes` for geometry, fill, line, grouping, naming, z-order-adjacent cleanup, and other shape-structure edits. Keep it as a secondary option for text only when the change is very simple and fidelity is not a concern.
+- Use `manage_slide_shapes` as a secondary convenience tool for small sparse patches after structure exists, such as a single position, fill, line, name, grouping, or simple text update.
 - Use `manage_slide_media` and `manage_slide_table` for first-class native image and table content.
-- Use `execute_office_js` for Office.js-native slide and shape work that needs more power than the higher-level tools expose, especially custom visualizations, geometric shapes, slide insertion/movement, fills, and z-order control.
+- Do not use `manage_slide_shapes` as the default slide-building tool when `execute_office_js` can express the operation cleanly.
 
 ## XML Editing
 
@@ -101,7 +104,8 @@ Always check the actual slide dimensions from `get_presentation_structure` befor
 ## Office.js Execution
 
 - `execute_office_js` runs inside `PowerPoint.run(...)` with `context` in scope.
-- Prefer it for host-native geometric shape creation like `addGeometricShape(...)`, direct `.left/.top/.width/.height` updates, fill control, and z-order adjustments when the higher-level tools are too constraining.
+- Prefer it for host-native slide authoring, geometric shape creation like `addGeometricShape(...)`, direct `.left/.top/.width/.height` updates, fill control, coordinated multi-shape layout, and z-order adjustments.
+- Keep specialized tools for precision workflows where they are safer than raw Office.js: `edit_slide_text`, `edit_slide_xml`, `edit_slide_chart`, `edit_slide_master`, animations, speaker notes, and transitions.
 - If a newly created geometric shape has invisible fill despite a successful `setSolidColor(...)`, treat that as an OOXML geometry/style bug candidate and repair it with `edit_slide_xml` rather than repeatedly retrying the Office.js fill call.
 - When you need a simple icon fallback, geometric shapes with accent fills and centered text are acceptable.
 - Prefer stable shape refs from `list_slide_shapes` or ids returned by the latest mutation over shape indices when a later edit needs to target an existing object reliably.

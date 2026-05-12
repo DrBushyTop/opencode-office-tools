@@ -658,7 +658,7 @@
   },
   "execute_office_js": {
     "hosts": ["powerpoint"],
-    "description": "Office.js escape hatch for live PowerPoint automation. Runs custom code inside PowerPoint.run(context). Use only when the higher-level tools, especially edit_slide_xml, edit_slide_text, layout/slide tools, and manage_slide_shapes, cannot express the operation cleanly. Do not use this for existing-slide text, formatting, or structure edits that edit_slide_xml can handle.",
+    "description": "Run Office.js against the live PowerPoint deck. Prefer this for host-native slide authoring, coordinated shape layout, direct positioning/sizing, fills, lines, z-order, and operations that are clearer as one Office.js batch. Keep specialized tools for safer precision workflows such as rich text, OOXML, charts, masters, animations, notes, and transitions.",
     "mutating": true,
     "parameters": {
       "type": "object",
@@ -987,7 +987,7 @@
   },
   "manage_slide_shapes": {
     "hosts": ["powerpoint"],
-    "description": "Create, update, delete, group, or ungroup PowerPoint shapes for native geometry, styling, naming, grouping, and structure changes. Do not default to this for existing-slide copy or formatting rewrites; prefer edit_slide_xml for most edits to existing shapes, and read_slide_text plus edit_slide_text for one existing text shape. Use this mainly for shape creation, sparse native property patches, grouping, and simple labels.",
+    "description": "Create, update, delete, group, or ungroup PowerPoint shapes for small sparse geometry, styling, naming, grouping, and simple-label changes. For live slide authoring and coordinated shape layout, prefer execute_office_js. For wording or rich-text edits, prefer read_slide_text with edit_slide_text or edit_slide_xml. Updates are patch-like: pass a target plus only the properties you want to change, and omit unchanged/default values.",
     "mutating": true,
     "parameters": {
       "type": "object",
