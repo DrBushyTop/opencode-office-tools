@@ -16,6 +16,10 @@ export default powerpoint("create_slide_from_layout", "Create a new slide from a
 }), tool.schema.object({
   placeholderType: tool.schema.string().optional(),
   placeholderName: tool.schema.string().optional(),
+  imagePath: tool.schema.string().describe("Local filesystem path to an image on the user's machine."),
+}), tool.schema.object({
+  placeholderType: tool.schema.string().optional(),
+  placeholderName: tool.schema.string().optional(),
   tableData: tool.schema.array(tool.schema.array(tool.schema.union([tool.schema.string(), tool.schema.number(), tool.schema.boolean()]))),
 })])).optional().describe("Optional placeholder bindings by placeholderType or placeholderName."),
 })

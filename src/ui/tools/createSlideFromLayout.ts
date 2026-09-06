@@ -1,5 +1,5 @@
 import type { Tool } from "./types";
-import { createImageRectangle, fetchImageUrlAsBase64, getShapeBounds, toPowerPointTableValues } from "./powerpointNativeContent";
+import { createImageRectangle, getShapeBounds, resolveImageSourceAsBase64, toPowerPointTableValues } from "./powerpointNativeContent";
 import { isPowerPointRequirementSetSupported, readOfficeValue, toolFailure } from "./powerpointShared";
 import { loadTextFrames } from "./powerpointText";
 import { z } from "zod";
@@ -26,6 +26,27 @@ const textBindingSchema = z.object({
 const imageBindingSchema = z.object({
   ...bindingTargetFields,
   imageUrl: z.string(),
+  imagePath: z.string().optional(),
+  imageBase64: z.string().optional(),
+}).strict().refine((value) => value.placeholderType !== undefined || value.placeholderName !== undefined, {
+  message: "Each binding must include placeholderType or placeholderName.",
+}).refine((value) => [value.imageUrl, value.imagePath, value.imageBase64].filter((source) => typeof source === "string" && source.trim() !== "").length === 1, {
+  message: "Image bindings must include exactly one of imageUrl or imagePath.",
+});
+
+const localImageBindingSchema = z.object({
+  ...bindingTargetFields,
+  imagePath: z.string(),
+  imageBase64: z.string().optional(),
+}).strict().refine((value) => value.placeholderType !== undefined || value.placeholderName !== undefined, {
+  message: "Each binding must include placeholderType or placeholderName.",
+}).refine((value) => [value.imagePath, value.imageBase64].filter((source) => typeof source === "string" && source.trim() !== "").length === 1, {
+  message: "Image bindings must include exactly one of imageUrl or imagePath.",
+});
+
+const internalImageBindingSchema = z.object({
+  ...bindingTargetFields,
+  imageBase64: z.string(),
 }).strict().refine((value) => value.placeholderType !== undefined || value.placeholderName !== undefined, {
   message: "Each binding must include placeholderType or placeholderName.",
 });
@@ -37,7 +58,7 @@ const tableBindingSchema = z.object({
   message: "Each binding must include placeholderType or placeholderName.",
 });
 
-const slideBindingSchema = z.union([textBindingSchema, imageBindingSchema, tableBindingSchema]);
+const slideBindingSchema = z.union([textBindingSchema, imageBindingSchema, localImageBindingSchema, internalImageBindingSchema, tableBindingSchema]);
 
 const createSlideFromLayoutArgsSchema = z.object({
   layoutId: z.string(),
@@ -58,7 +79,7 @@ interface PlaceholderTarget {
 }
 
 type TextSlideBinding = Extract<SlideBinding, { text: string }>;
-type ImageSlideBinding = Extract<SlideBinding, { imageUrl: string }>;
+type ImageSlideBinding = Extract<SlideBinding, { imageUrl: string } | { imagePath: string } | { imageBase64: string }>;
 type TableSlideBinding = Extract<SlideBinding, { tableData: Array<Array<boolean | number | string>> }>;
 
 type ResolvedBindingPlan =
@@ -136,8 +157,8 @@ async function planBindings(
       continue;
     }
 
-    if ("imageUrl" in binding) {
-      const imageBase64 = await fetchImageUrlAsBase64(binding.imageUrl);
+    if ("imageUrl" in binding || "imagePath" in binding || "imageBase64" in binding) {
+      const imageBase64 = await resolveImageSourceAsBase64(binding);
       plans.push({ binding, placeholder, imageBase64 });
       continue;
     }
@@ -171,7 +192,7 @@ async function applyBinding(
     };
   }
 
-  if ("imageUrl" in binding) {
+  if ("imageUrl" in binding || "imagePath" in binding || "imageBase64" in binding) {
     if (!("imageBase64" in plan)) {
       throw new Error(`Image binding for ${JSON.stringify(placeholder.placeholderName)} is missing prepared image data.`);
     }
@@ -193,7 +214,7 @@ async function applyBinding(
       replacedShapeId: placeholder.shapeId,
       placeholderName: placeholder.placeholderName,
       placeholderType: placeholder.placeholderType,
-      imageUrl: binding.imageUrl,
+      imageUrl: "imageUrl" in binding ? binding.imageUrl : undefined,
     };
   }
 
@@ -261,6 +282,15 @@ export const createSlideFromLayout: Tool = {
                 imageUrl: { type: "string" },
               },
               required: ["imageUrl"],
+            },
+            {
+              type: "object",
+              properties: {
+                placeholderType: { type: "string" },
+                placeholderName: { type: "string" },
+                imagePath: { type: "string" },
+              },
+              required: ["imagePath"],
             },
             {
               type: "object",

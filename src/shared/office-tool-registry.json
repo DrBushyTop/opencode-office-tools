@@ -947,6 +947,15 @@
                 "properties": {
                   "placeholderType": { "type": "string" },
                   "placeholderName": { "type": "string" },
+                  "imagePath": { "type": "string", "minLength": 1, "description": "Local filesystem path to an image on the user's machine." }
+                },
+                "required": ["imagePath"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "placeholderType": { "type": "string" },
+                  "placeholderName": { "type": "string" },
                   "tableData": {
                     "type": "array",
                     "minItems": 1,
@@ -1065,7 +1074,8 @@
         "action": { "type": "string", "enum": ["insertImage", "replaceImage", "deleteImage"] },
         "slideIndex": { "type": "number", "description": "0-based slide index. Defaults to the active slide when available." },
         "shapeId": { "anyOf": [{ "type": "string" }, { "type": "number" }], "description": "Existing image shape id for replaceImage or deleteImage." },
-        "imageUrl": { "type": "string", "description": "Source image URL for insertImage or replaceImage." },
+        "imageUrl": { "type": "string", "description": "Source HTTPS image URL for insertImage or replaceImage." },
+        "imagePath": { "type": "string", "description": "Local filesystem image path for insertImage or replaceImage." },
         "left": { "type": "number" },
         "top": { "type": "number" },
         "width": { "type": "number" },

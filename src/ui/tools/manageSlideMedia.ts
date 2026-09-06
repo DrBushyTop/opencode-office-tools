@@ -1,6 +1,6 @@
 import type { Tool } from "./types";
 import { resolvePowerPointTargetingArgs } from "./powerpointContext";
-import { createImageRectangle, fetchImageUrlAsBase64, getShapeBounds, getSlideByIndex } from "./powerpointNativeContent";
+import { createImageRectangle, getShapeBounds, getSlideByIndex, resolveImageSourceAsBase64 } from "./powerpointNativeContent";
 import { resolveSlideShapeByIdWithXmlFallback } from "./powerpointShapeTarget";
 import { toolFailure } from "./powerpointShared";
 import { z } from "zod";
@@ -12,6 +12,8 @@ const manageSlideMediaArgsSchema = z.object({
   slideIndex: z.number().optional(),
   shapeId: z.union([z.string(), z.number()]).optional(),
   imageUrl: z.string().optional(),
+  imagePath: z.string().optional(),
+  imageBase64: z.string().optional(),
   left: z.number().optional(),
   top: z.number().optional(),
   width: z.number().optional(),
@@ -30,7 +32,8 @@ export const manageSlideMedia: Tool = {
       action: { type: "string", enum: ["insertImage", "replaceImage", "deleteImage"], description: "Media action to perform." },
       slideIndex: { type: "number", description: "0-based slide index. Defaults to the active slide when available." },
       shapeId: { anyOf: [{ type: "string" }, { type: "number" }], description: "Existing image shape id for replaceImage or deleteImage." },
-      imageUrl: { type: "string", description: "Source image URL for insertImage or replaceImage." },
+      imageUrl: { type: "string", description: "Source HTTPS image URL for insertImage or replaceImage." },
+      imagePath: { type: "string", description: "Local filesystem image path for insertImage or replaceImage." },
       left: { type: "number" },
       top: { type: "number" },
       width: { type: "number" },
@@ -48,8 +51,11 @@ export const manageSlideMedia: Tool = {
     if (!Number.isInteger(media.slideIndex) || (media.slideIndex as number) < 0) {
       return toolFailure("slideIndex must be a non-negative integer.");
     }
-    if ((media.action === "insertImage" || media.action === "replaceImage") && !media.imageUrl) {
-      return toolFailure("imageUrl is required for insertImage and replaceImage.");
+    if (media.action === "insertImage" || media.action === "replaceImage") {
+      const sourceCount = [media.imageUrl, media.imagePath, media.imageBase64].filter((value) => typeof value === "string" && value.trim() !== "").length;
+      if (sourceCount !== 1) {
+        return toolFailure("Provide exactly one of imageUrl or imagePath for insertImage and replaceImage.");
+      }
     }
     if ((media.action === "replaceImage" || media.action === "deleteImage") && media.shapeId === undefined) {
       return toolFailure("shapeId is required for replaceImage and deleteImage.");
@@ -62,7 +68,7 @@ export const manageSlideMedia: Tool = {
         const slide = await getSlideByIndex(context, slideIndex);
 
         if (media.action === "insertImage") {
-          const imageBase64 = await fetchImageUrlAsBase64(media.imageUrl!);
+          const imageBase64 = await resolveImageSourceAsBase64(media);
           const created = createImageRectangle(slide, {
             left: media.left ?? 60,
             top: media.top ?? 80,
@@ -97,7 +103,7 @@ export const manageSlideMedia: Tool = {
         }
 
         const bounds = await getShapeBounds(resolved.shape, context);
-        const imageBase64 = await fetchImageUrlAsBase64(media.imageUrl!);
+        const imageBase64 = await resolveImageSourceAsBase64(media);
         resolved.shape.delete();
         const created = createImageRectangle(slide, {
           left: media.left ?? bounds.left,

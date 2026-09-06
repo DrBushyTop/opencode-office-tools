@@ -51,8 +51,29 @@ afterEach(() => {
 });
 
 describe("editSlideXml", () => {
+  it.each([
+    { args: { code: "setResult({ ok: true });" }, error: /code.*replacements/ },
+    { args: { mode: "unknown", code: "setResult({ ok: true });" }, error: /code.*replacements/ },
+    { args: { mode: "code" }, error: "Provide code when mode is code." },
+    { args: { mode: "replacements" }, error: "Provide replacements when mode is replacements." },
+    {
+      args: { mode: "code", code: "setResult({ ok: true });", replacements: [{ ref: "slide-id:one/shape:1", paragraphsXml: [] }] },
+      error: "Do not provide replacements when mode is code.",
+    },
+    {
+      args: { mode: "replacements", code: "setResult({ ok: true });", replacements: [{ ref: "slide-id:one/shape:1", paragraphsXml: [] }] },
+      error: "Do not provide code when mode is replacements.",
+    },
+  ])("rejects an invalid mode or payload: $args", async ({ args, error }) => {
+    await expect(editSlideXml.handler(args)).resolves.toMatchObject({
+      resultType: "failure",
+      error: typeof error === "string" ? error : expect.stringMatching(error),
+    });
+  });
+
   it("rejects mixed-slide batches before touching PowerPoint", async () => {
     await expect(editSlideXml.handler({
+      mode: "replacements",
       replacements: [
         { ref: "slide-id:slide-1/shape:10", paragraphsXml: ["<a:p xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"/>"] },
         { ref: "slide-id:slide-2/shape:11", paragraphsXml: ["<a:p xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"/>"] },
@@ -127,6 +148,7 @@ describe("editSlideXml", () => {
     });
 
     const result = await editSlideXml.handler({
+      mode: "replacements",
       replacements: [
         {
           ref: "slide-id:slide-old/shape:10",
@@ -215,6 +237,7 @@ describe("editSlideXml", () => {
     });
 
     const result = await editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       autosize_shape_ids: [10],
       code: `
@@ -261,6 +284,7 @@ setResult({ slidePath, textCount: textNodes.length });
 
   it("rejects invalid autosize_shape_ids before starting the round-trip", async () => {
     await expect(editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       autosize_shape_ids: ["body"],
       code: `setResult({ ok: true });`,
@@ -321,6 +345,7 @@ setResult({ slidePath, textCount: textNodes.length });
     });
 
     const result = await editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       code: `
 const textNodes = doc.getElementsByTagNameNS(namespaces.a, "t");
@@ -395,6 +420,7 @@ setResult({ count: textNodes.length });
     });
 
     const result = await editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       code: `
 const parser = new DOMParser();
@@ -474,6 +500,7 @@ return new XMLSerializer().serializeToString(doc);
     });
 
     const result = await editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       code: `
 const parsed = new DOMParser().parseFromString(xml, "application/xml");
@@ -549,6 +576,7 @@ xml = new XMLSerializer().serializeToString(parsed);
     });
 
     const result = await editSlideXml.handler({
+      mode: "code",
       slideIndex: 0,
       code: `
 const xmlStr = await zip.files[slidePath].async("string");

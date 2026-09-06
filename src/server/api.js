@@ -132,8 +132,72 @@ function sendExecuteResponse(res, bridge, body, token) {
   return (async () => {
     const args = body && Object.prototype.hasOwnProperty.call(body, 'args') ? body.args : {};
     validateOfficeToolCall(body.host, body.toolName, args);
-    res.json(await bridge.execute(body.host, body.toolName, args, token));
+    res.json(await bridge.execute(body.host, body.toolName, normalizeOfficeToolArgs(body.toolName, args), token));
   })();
+}
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg']);
+
+function imageMimeFromPath(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg';
+  if (extension === '.svg') return 'image/svg+xml';
+  if (IMAGE_EXTENSIONS.has(extension)) return `image/${extension.slice(1)}`;
+  return '';
+}
+
+function readLocalImageAsBase64(imagePath) {
+  if (typeof imagePath !== 'string' || imagePath.trim() === '') {
+    throw new Error('Invalid args.imagePath: cannot be empty');
+  }
+
+  const resolvedPath = path.resolve(imagePath);
+  let stats;
+  try {
+    stats = fs.lstatSync(resolvedPath);
+  } catch {
+    throw new Error(`Invalid args.imagePath: file not found ${resolvedPath}`);
+  }
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Invalid args.imagePath: refusing symbolic link ${resolvedPath}`);
+  }
+  if (!stats.isFile()) {
+    throw new Error(`Invalid args.imagePath: not a file ${resolvedPath}`);
+  }
+  if (stats.size > 10 * 1024 * 1024) {
+    throw new Error('Invalid args.imagePath: image is too large');
+  }
+
+  const mime = imageMimeFromPath(resolvedPath);
+  if (!mime) {
+    throw new Error('Invalid args.imagePath: unsupported image file extension');
+  }
+
+  return fs.readFileSync(resolvedPath).toString('base64');
+}
+
+function normalizeImageSource(value) {
+  if (!value || typeof value !== 'object' || typeof value.imagePath !== 'string') return value;
+  const { imagePath, ...rest } = value;
+  return {
+    ...rest,
+    imageBase64: readLocalImageAsBase64(imagePath),
+  };
+}
+
+function normalizeOfficeToolArgs(toolName, args) {
+  if (toolName === 'manage_slide_media') {
+    return normalizeImageSource(args);
+  }
+
+  if (toolName === 'create_slide_from_layout' && args && typeof args === 'object' && Array.isArray(args.bindings)) {
+    return {
+      ...args,
+      bindings: args.bindings.map((binding) => normalizeImageSource(binding)),
+    };
+  }
+
+  return args;
 }
 
 function readRecentLogs(limit = 200) {
@@ -161,6 +225,16 @@ function requestDirectory(req) {
       || req.body?.directory
       || req.query.directory,
   );
+}
+
+function canonicalDirectory(value) {
+  const directory = path.resolve(value);
+  try {
+    return fs.realpathSync(directory);
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return directory;
+    throw error;
+  }
 }
 
 function runtimeOptions(req, options = {}) {
@@ -312,6 +386,7 @@ function createApiRouter(runtime, bridge) {
     try {
       res.json(await runtime.request('/config', runtimeOptions(req, {
         method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: req.body || {},
       })));
     } catch (error) {
@@ -323,7 +398,7 @@ function createApiRouter(runtime, bridge) {
     try {
       const host = String(req.query.host || 'word');
       const shared = String(req.query.shared || '0') === '1';
-      const directory = requestDirectory(req) || runtime.directory();
+      const directory = canonicalDirectory(requestDirectory(req) || runtime.directory());
       const sessions = await runtime.request(
         `/session?roots=true&limit=100${shared ? '' : `&directory=${encodeURIComponent(directory)}`}`,
         runtimeOptions(req),
@@ -331,7 +406,11 @@ function createApiRouter(runtime, bridge) {
       const prefix = hostPrefix(host);
       const filtered = shared
         ? sessions
-        : sessions.filter((item) => item.directory === directory && String(item.title || '').startsWith(prefix));
+        : sessions.filter((item) =>
+          typeof item.directory === 'string'
+          && String(item.title || '').startsWith(prefix)
+          && canonicalDirectory(item.directory) === directory,
+        );
       res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: error.message });

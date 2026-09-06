@@ -257,8 +257,11 @@ function validateOfficeToolCall(host, toolName, args) {
   }
 
   if (toolName === 'manage_slide_media') {
-    if ((normalizedArgs.action === 'insertImage' || normalizedArgs.action === 'replaceImage') && !hasNonBlankString(normalizedArgs.imageUrl)) {
-      throw new Error('Missing required args.imageUrl for insertImage and replaceImage actions')
+    if (normalizedArgs.action === 'insertImage' || normalizedArgs.action === 'replaceImage') {
+      const sourceCount = [normalizedArgs.imageUrl, normalizedArgs.imagePath].filter(hasNonBlankString).length
+      if (sourceCount !== 1) {
+        throw new Error('Invalid args.imageUrl/args.imagePath: provide exactly one for insertImage and replaceImage actions')
+      }
     }
     if ((normalizedArgs.action === 'replaceImage' || normalizedArgs.action === 'deleteImage') && normalizedArgs.shapeId === undefined) {
       throw new Error('Missing required args.shapeId for replaceImage and deleteImage actions')

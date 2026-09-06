@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   loadTextFramesMock,
-  fetchImageUrlAsBase64Mock,
+  resolveImageSourceAsBase64Mock,
   getShapeBoundsMock,
   createImageRectangleMock,
   toPowerPointTableValuesMock,
 } = vi.hoisted(() => ({
   loadTextFramesMock: vi.fn(),
-  fetchImageUrlAsBase64Mock: vi.fn(),
+  resolveImageSourceAsBase64Mock: vi.fn(),
   getShapeBoundsMock: vi.fn(),
   createImageRectangleMock: vi.fn(),
   toPowerPointTableValuesMock: vi.fn((values: Array<Array<string | number | boolean>>) => values.map((row) => row.map((cell) => String(cell)))),
@@ -33,7 +33,7 @@ vi.mock("./powerpointText", () => ({
 
 vi.mock("./powerpointNativeContent", () => ({
   createImageRectangle: createImageRectangleMock,
-  fetchImageUrlAsBase64: fetchImageUrlAsBase64Mock,
+  resolveImageSourceAsBase64: resolveImageSourceAsBase64Mock,
   getShapeBounds: getShapeBoundsMock,
   toPowerPointTableValues: toPowerPointTableValuesMock,
 }));
@@ -56,7 +56,7 @@ describe("createSlideFromLayout", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     loadTextFramesMock.mockReset();
-    fetchImageUrlAsBase64Mock.mockReset();
+    resolveImageSourceAsBase64Mock.mockReset();
     getShapeBoundsMock.mockReset();
     createImageRectangleMock.mockReset();
     toPowerPointTableValuesMock.mockClear();
@@ -187,7 +187,7 @@ describe("createSlideFromLayout", () => {
       }),
     } as unknown as PowerPoint.RequestContext;
 
-    fetchImageUrlAsBase64Mock.mockResolvedValue("IMAGE64");
+    resolveImageSourceAsBase64Mock.mockResolvedValue("IMAGE64");
     getShapeBoundsMock.mockImplementation(async (shape: { id: string; name: string }) => shape.id === "ph-image"
       ? { left: 10, top: 20, width: 300, height: 180, name: shape.name, id: shape.id }
       : { left: 40, top: 220, width: 400, height: 120, name: shape.name, id: shape.id });
@@ -207,7 +207,7 @@ describe("createSlideFromLayout", () => {
       ],
     });
 
-    expect(fetchImageUrlAsBase64Mock).toHaveBeenCalledWith("https://example.com/photo.png");
+    expect(resolveImageSourceAsBase64Mock).toHaveBeenCalledWith({ placeholderName: "Picture Placeholder 2", imageUrl: "https://example.com/photo.png" });
     expect(createImageRectangleMock).toHaveBeenCalledWith(createdSlide, {
       left: 10,
       top: 20,

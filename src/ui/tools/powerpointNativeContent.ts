@@ -24,6 +24,11 @@ const tableValuesSchema = z.array(z.array(z.union([z.boolean(), z.number(), z.st
 export type ShapeBounds = z.infer<typeof shapeBoundsSchema>;
 export type ImageRectangleOptions = z.infer<typeof imageRectangleOptionsSchema>;
 
+export interface ImageSourceOptions {
+  imageUrl?: string;
+  imageBase64?: string;
+}
+
 export async function getSlideByIndex(context: PowerPoint.RequestContext, slideIndex: number) {
   const slides = context.presentation.slides;
   slides.load("items");
@@ -85,6 +90,12 @@ export async function fetchImageUrlAsBase64(imageUrl: string) {
     };
     reader.readAsDataURL(blob);
   });
+}
+
+export async function resolveImageSourceAsBase64(source: ImageSourceOptions) {
+  if (source.imageBase64) return source.imageBase64;
+  if (source.imageUrl) return await fetchImageUrlAsBase64(source.imageUrl);
+  throw new Error("Provide imageUrl or imagePath for image insertion. Local imagePath values must be normalized by the local Office bridge.");
 }
 
 export async function getShapeBounds(shape: PowerPoint.Shape, context: PowerPoint.RequestContext) {

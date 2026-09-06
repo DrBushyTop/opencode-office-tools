@@ -1,13 +1,15 @@
 import express from "express";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "module";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const { createApiRouter, createBridgeRouter } = require("./api.js");
 const { OfficeToolBridge } = require("./officeToolBridge.js");
+const { OpencodeRuntime } = require("./opencodeRuntime.js");
 
 const closers: Array<() => Promise<void>> = [];
 
@@ -143,6 +145,64 @@ describe("server api hardening", () => {
     expect(basename).not.toContain("..");
     fs.unlinkSync(payload.path);
   });
+
+  it("normalizes local PowerPoint image paths before bridge execution", async () => {
+    const { baseUrl, bridge } = await startApiServer();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-office-image-test-"));
+    const imagePath = path.join(tempDir, "tiny.png");
+    fs.writeFileSync(imagePath, Buffer.from([0]));
+    const execute = vi.spyOn(bridge, "execute").mockResolvedValue({ result: { textResultForLlm: "ok" } });
+
+    const response = await fetch(`${baseUrl}/api/office-tools/execute`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-office-bridge-token": bridge.bridgeToken,
+      },
+      body: JSON.stringify({
+        host: "powerpoint",
+        toolName: "manage_slide_media",
+        args: { action: "insertImage", slideIndex: 0, imagePath },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith("powerpoint", "manage_slide_media", expect.objectContaining({
+      action: "insertImage",
+      slideIndex: 0,
+      imageBase64: "AA==",
+    }), bridge.bridgeToken);
+    expect(execute.mock.calls[0]?.[2]).not.toHaveProperty("imagePath");
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("normalizes local image paths in PowerPoint layout bindings", async () => {
+    const { baseUrl, bridge } = await startApiServer();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-office-binding-image-test-"));
+    const imagePath = path.join(tempDir, "hero.jpg");
+    fs.writeFileSync(imagePath, Buffer.from([1, 2]));
+    const execute = vi.spyOn(bridge, "execute").mockResolvedValue({ result: { textResultForLlm: "ok" } });
+
+    const response = await fetch(`${baseUrl}/api/office-tools/execute`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-office-bridge-token": bridge.bridgeToken,
+      },
+      body: JSON.stringify({
+        host: "powerpoint",
+        toolName: "create_slide_from_layout",
+        args: { layoutId: "layout-1", bindings: [{ placeholderName: "Hero", imagePath }] },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith("powerpoint", "create_slide_from_layout", expect.objectContaining({
+      bindings: [expect.objectContaining({ placeholderName: "Hero", imageBase64: "AQI=" })],
+    }), bridge.bridgeToken);
+    expect((execute.mock.calls[0]?.[2] as any).bindings[0]).not.toHaveProperty("imagePath");
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
 });
 
 describe("bridge router hardening", () => {
@@ -153,6 +213,46 @@ describe("bridge router hardening", () => {
 
     expect(statusResponse.status).toBe(404);
     expect(sessionResponse.status).toBe(404);
+  });
+});
+
+describe("opencode config proxy", () => {
+  it("forwards QA settings as JSON through the real runtime", async () => {
+    const upstream = express.Router();
+    upstream.use(express.json());
+    upstream.patch("/config", (req, res) => {
+      if (!req.is("application/json")) {
+        res.status(415).send("Expected application/json");
+        return;
+      }
+      res.json({
+        body: req.body,
+        contentType: req.get("content-type"),
+        directory: req.get("x-opencode-directory"),
+      });
+    });
+    const endpoint = await startServer(upstream);
+    const runtime = new OpencodeRuntime();
+    runtime.runtime = { baseUrl: `${endpoint.baseUrl}/api`, mode: "attached" };
+    const { baseUrl } = await startServer(createApiRouter(runtime, new OfficeToolBridge()));
+    const config = { agent: { "visual-qa": { model: "test/model", variant: "high" } } };
+    const directory = path.resolve("test workspace");
+
+    const response = await fetch(`${baseUrl}/api/opencode/config`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-opencode-directory": directory,
+      },
+      body: JSON.stringify(config),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      body: config,
+      contentType: "application/json",
+      directory: encodeURIComponent(directory),
+    });
   });
 });
 
@@ -205,6 +305,37 @@ describe("directory-scoped opencode routing", () => {
     await expect(response.json()).resolves.toEqual([
       expect.objectContaining({ id: "two", directory: "/tmp/folder" }),
     ]);
+  });
+
+  it.each(["canonical", "symlink"])("matches %s session paths for a symlinked directory", async (stored) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-office-history-test-"));
+    closers.push(async () => fs.rmSync(temp, { recursive: true, force: true }));
+    const directory = path.join(temp, "project");
+    const alias = path.join(temp, "alias");
+    const other = path.join(temp, "other");
+    fs.mkdirSync(directory);
+    fs.mkdirSync(other);
+    fs.symlinkSync(directory, alias, "junction");
+    const canonical = fs.realpathSync(directory);
+    const session = { id: "matching", title: "Word: A", directory: stored === "canonical" ? canonical : alias };
+    const calls: string[] = [];
+    const { baseUrl } = await startApiServer(undefined, {
+      request: async (url: string) => {
+        calls.push(url);
+        return [
+          session,
+          { id: "other-host", title: "Excel: A", directory: canonical },
+          { id: "other-directory", title: "Word: B", directory: other },
+          { id: "missing-directory", title: "Word: C", directory: path.join(temp, "missing") },
+        ];
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/opencode/sessions?host=word&directory=${encodeURIComponent(alias)}`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([session]);
+    expect(calls).toEqual([`/session?roots=true&limit=100&directory=${encodeURIComponent(canonical)}`]);
   });
 
   it("proxies file mention search requests", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { fetchImageUrlAsBase64 } from "./powerpointNativeContent";
+import { fetchImageUrlAsBase64, resolveImageSourceAsBase64 } from "./powerpointNativeContent";
 
 describe("powerpointNativeContent", () => {
   afterEach(() => {
@@ -49,5 +49,13 @@ describe("powerpointNativeContent", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchImageUrlAsBase64("https://example.com/a.png")).rejects.toThrow(/too large/i);
+  });
+
+  it("uses already-normalized base64 image data", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(resolveImageSourceAsBase64({ imageBase64: "abc123" })).resolves.toBe("abc123");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_layout", { layoutId: "layout-1", bindings: [{ placeholderType: "Title", text: "Quarterly review" }] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "fade" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "replaceImage", slideIndex: 0, shapeId: "shape-1", imageUrl: "https://example.com/a.png" })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "replaceImage", slideIndex: 0, shapeId: "shape-1", imagePath: "/tmp/a.png" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_table", { action: "update", slideIndex: 0, shapeId: "shape-1", values: [["A", 1]] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_notes", { notes: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "clear_slide_animations", {})).not.toThrow();
@@ -38,6 +39,7 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "update", text: "Hello" })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_shapes", { action: "create", slideIndex: 0, shapeType: "line", width: -20, height: 10 })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "insertImage", slideIndex: 0, imageUrl: "https://example.com/a.png" })).not.toThrow();
+    expect(() => validateOfficeToolCall("powerpoint", "create_slide_from_layout", { layoutId: "layout-1", bindings: [{ placeholderName: "Hero", imagePath: "/tmp/a.png" }] })).not.toThrow();
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_table", { action: "create", slideIndex: 0, values: [["A", 1, true]] })).not.toThrow();
   });
 
@@ -73,7 +75,8 @@ describe("office tool validation", () => {
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide", { action: "duplicate", sourceIndex: 0 })).toThrow(/expected one of/);
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "split", direction: "left" })).toThrow(/args\.direction/);
     expect(() => validateOfficeToolCall("powerpoint", "set_slide_transition", { effect: "fade", slideIndex: [] })).toThrow(/args\.slideIndex/);
-    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "replaceImage", slideIndex: 0 })).toThrow(/args\.imageUrl|args\.shapeId/);
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "replaceImage", slideIndex: 0 })).toThrow(/args\.imageUrl|args\.imagePath|args\.shapeId/);
+    expect(() => validateOfficeToolCall("powerpoint", "manage_slide_media", { action: "insertImage", slideIndex: 0, imageUrl: "https://example.com/a.png", imagePath: "/tmp/a.png" })).toThrow(/exactly one/);
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_table", { action: "update", slideIndex: 0, values: [["A"]] })).toThrow(/args\.shapeId/);
     expect(() => validateOfficeToolCall("powerpoint", "manage_slide_table", { action: "create", slideIndex: 0, values: [] })).toThrow(/args\.values/);
     expect(() => validateOfficeToolCall("powerpoint", "get_slide_shapes", { slideIndex: 0 })).toThrow(/Unknown Office tool/);
